@@ -115,6 +115,7 @@ async def create_job(
     file: UploadFile = File(...),
     transcript: UploadFile | None = File(default=None),
     top_n: int = Form(default=5),
+    remove_silence: bool = Form(default=True),
 ) -> dict:
     """Lädt ein Video hoch, legt einen Job an und startet die Analyse im Hintergrund.
 
@@ -135,7 +136,7 @@ async def create_job(
         )
 
     top_n = max(1, int(top_n))
-    job = registry.create(filename=filename, top_n=top_n)
+    job = registry.create(filename=filename, top_n=top_n, remove_silence=remove_silence)
 
     # Upload speichern: jobs/<id>/input.<ext>
     input_path = os.path.join(job.job_dir, f"input{ext}")

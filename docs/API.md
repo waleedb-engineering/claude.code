@@ -85,7 +85,12 @@ Enthält alle vorhandenen `clip_*.mp4`, dazu — falls vorhanden — `clips.json
 |---|---|---|---|---|
 | `file` | Datei | ja | – | Video (`.mp4 .mov .mkv .webm .avi .m4v`) |
 | `top_n` | int | nein | `5` | Anzahl der Top-Clips |
+| `remove_silence` | bool | nein | `true` | Stille Pausen automatisch entfernen (schnellere, dichtere Clips) |
 | `transcript` | Datei | nein | – | Vorhandenes Transkript-JSON; überspringt Whisper (spiegelt CLI-Flag `--transcript`, ideal für schnelle Tests) |
+
+Der gewählte `remove_silence`-Wert ist im Job-Status sichtbar (Feld
+`remove_silence`) und im `progress`-Log (erkannte Stellen, entfernte Dauer,
+ggf. Fallback). Werden keine sinnvollen Pausen gefunden, wird normal gerendert.
 
 ---
 

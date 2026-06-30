@@ -44,6 +44,12 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Nur analysieren/scoren, keine MP4s rendern",
     )
+    p.add_argument(
+        "--remove-silence",
+        action="store_true",
+        help="Stille Pausen automatisch entfernen (schnellere, dichtere Clips). "
+        "Ohne dieses Flag bleibt das normale Verhalten erhalten.",
+    )
     return p
 
 
@@ -65,6 +71,7 @@ def main(argv: list[str] | None = None) -> int:
             transcript_path=args.transcript,
             top_n=args.top,
             render=not args.no_render,
+            remove_silence=args.remove_silence,
             progress=_progress,
         )
     except FileNotFoundError as exc:

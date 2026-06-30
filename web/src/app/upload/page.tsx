@@ -15,6 +15,7 @@ export default function UploadPage() {
   const [file, setFile] = useState<File | null>(null);
   const [transcript, setTranscript] = useState<File | null>(null);
   const [topN, setTopN] = useState(5);
+  const [removeSilence, setRemoveSilence] = useState(true);
   const [dragging, setDragging] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -32,7 +33,7 @@ export default function UploadPage() {
     setSubmitting(true);
     setError(null);
     try {
-      const { job_id } = await createJob({ file, topN, transcript });
+      const { job_id } = await createJob({ file, topN, transcript, removeSilence });
       router.push(`/jobs/${job_id}`);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Upload fehlgeschlagen.");
@@ -136,6 +137,36 @@ export default function UploadPage() {
           </span>
         </label>
       </div>
+
+      {/* Silence-Removal-Toggle */}
+      <button
+        type="button"
+        onClick={() => setRemoveSilence((v) => !v)}
+        className="flex w-full items-start justify-between gap-4 rounded-2xl border border-neutral-800 bg-neutral-900/40 p-5 text-left transition hover:border-neutral-700"
+      >
+        <div>
+          <p className="font-medium text-neutral-100">
+            Stille Pausen automatisch entfernen
+          </p>
+          <p className="mt-1 text-sm text-neutral-400">
+            Macht Clips schneller und dichter. Kann bei sehr leisen Stellen
+            manchmal ungenau sein.
+          </p>
+        </div>
+        <span
+          role="switch"
+          aria-checked={removeSilence}
+          className={`mt-1 inline-flex h-6 w-11 shrink-0 items-center rounded-full transition ${
+            removeSilence ? "bg-indigo-500" : "bg-neutral-700"
+          }`}
+        >
+          <span
+            className={`inline-block h-5 w-5 transform rounded-full bg-white transition ${
+              removeSilence ? "translate-x-5" : "translate-x-0.5"
+            }`}
+          />
+        </span>
+      </button>
 
       {error && (
         <div className="rounded-xl border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-300">

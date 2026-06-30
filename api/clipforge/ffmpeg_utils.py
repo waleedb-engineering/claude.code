@@ -68,16 +68,29 @@ def extract_audio(video_path: str, out_wav_path: str, sample_rate: int = 16000) 
 
 
 def detect_silences(
-    path: str, noise_db: float = -30.0, min_seconds: float = 0.6
+    path: str,
+    noise_db: float = -30.0,
+    min_seconds: float = 0.6,
+    start: float | None = None,
+    end: float | None = None,
 ) -> list[tuple[float, float]]:
     """Erkennt Stille-Intervalle via ffmpeg silencedetect.
 
-    Rückgabe: Liste von (start, end) der Stille-Bereiche (absolute Sekunden).
-    Wird für "schnelle Schnitte" (Entfernen von Pausen) genutzt.
+    Ohne `start`/`end`: ganze Datei, Rückgabe in absoluten Sekunden
+    (unverändertes Verhalten).
+
+    Mit `start`/`end`: Erkennung wird per Input-Seeking auf den Clip-Bereich
+    beschränkt; die zurückgegebenen Zeiten sind dann **clip-relativ** (0 =
+    Clip-Anfang) — passend zum select-Filter und zum Caption-Re-Mapping.
     """
     ensure_ffmpeg()
+    seek: list[str] = []
+    if start is not None:
+        seek += ["-ss", f"{start:.3f}"]
+    if end is not None:
+        seek += ["-to", f"{end:.3f}"]
     cmd = [
-        "ffmpeg", "-i", path,
+        "ffmpeg", *seek, "-i", path,
         "-af", f"silencedetect=noise={noise_db}dB:d={min_seconds}",
         "-f", "null", "-",
     ]

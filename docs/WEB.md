@@ -50,7 +50,7 @@ App öffnen: <http://127.0.0.1:3000>
 | Pfad | Inhalt |
 |---|---|
 | `/` | Landing mit „Video hochladen" |
-| `/upload` | Drop-Zone, Top-Clip-Anzahl, optionales Transkript-JSON |
+| `/upload` | Drop-Zone, Top-Clip-Anzahl, **Toggle „Stille Pausen entfernen"**, optionales Transkript-JSON |
 | `/jobs` | Übersicht aller Jobs mit Live-Status |
 | `/jobs/[jobId]` | Status + Progress/Logs, danach Clip-Karten + Downloads |
 
@@ -64,7 +64,9 @@ App öffnen: <http://127.0.0.1:3000>
    „Transkript (optional)" anhängen:
    - Video: `api/testdata/sample.mp4`
    - Transkript: `api/testdata/transcript.json`
-3. **Analyse starten** → Weiterleitung zur Job-Seite; Fortschritt erscheint live.
+3. Optional den Toggle **„Stille Pausen automatisch entfernen"** lassen (Default
+   an) oder ausschalten. **Analyse starten** → Weiterleitung zur Job-Seite;
+   Fortschritt erscheint live (inkl. Anzahl entfernter Stellen und Dauer).
 4. Nach „Fertig" erscheinen die Clip-Karten mit **eingebetteter `<video>`-
    Vorschau**, Score, Aufschlüsselung, Begründung und Transkript-Ausschnitt.
    Die Statuszeile zeigt erkannte Clips, exportierte MP4s und ob Downloads

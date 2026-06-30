@@ -145,6 +145,10 @@ export default function JobDetailPage() {
                 label="Downloads"
                 value={job.files?.exports_ready ? "bereit" : "—"}
               />
+              <Stat
+                label="Stille-Schnitt"
+                value={job.remove_silence ? "an" : "aus"}
+              />
             </div>
             {job.files?.exports_ready && (
               <a

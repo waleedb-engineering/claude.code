@@ -52,6 +52,7 @@ export interface Job {
   updated_at: string;
   input_path: string | null;
   transcript_path: string | null;
+  remove_silence?: boolean;
   progress: string[];
   error: string | null;
   result: JobResult | null;

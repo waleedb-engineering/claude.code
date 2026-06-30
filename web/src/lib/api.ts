@@ -67,16 +67,19 @@ export interface CreateJobInput {
   file: File;
   topN?: number;
   transcript?: File | null;
+  removeSilence?: boolean;
 }
 
 export async function createJob({
   file,
   topN = 5,
   transcript = null,
+  removeSilence = true,
 }: CreateJobInput): Promise<{ job_id: string; status: string }> {
   const form = new FormData();
   form.append("file", file);
   form.append("top_n", String(topN));
+  form.append("remove_silence", String(removeSilence));
   if (transcript) form.append("transcript", transcript);
 
   let res: Response;

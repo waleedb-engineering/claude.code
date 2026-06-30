@@ -1,0 +1,129 @@
+{
+  "language": "de",
+  "duration": 18.0,
+  "segments": [
+    {
+      "text": "Warum die meisten scheitern",
+      "start": 0.0,
+      "end": 3.0,
+      "words": [
+        {
+          "text": "Warum",
+          "start": 0,
+          "end": 0.675
+        },
+        {
+          "text": "die",
+          "start": 0.75,
+          "end": 1.425
+        },
+        {
+          "text": "meisten",
+          "start": 1.5,
+          "end": 2.175
+        },
+        {
+          "text": "scheitern",
+          "start": 2.25,
+          "end": 2.925
+        }
+      ]
+    },
+    {
+      "text": "Der echte Fehler liegt hier",
+      "start": 5.0,
+      "end": 8.0,
+      "words": [
+        {
+          "text": "Der",
+          "start": 5,
+          "end": 5.54
+        },
+        {
+          "text": "echte",
+          "start": 5.6,
+          "end": 6.14
+        },
+        {
+          "text": "Fehler",
+          "start": 6.2,
+          "end": 6.74
+        },
+        {
+          "text": "liegt",
+          "start": 6.8,
+          "end": 7.34
+        },
+        {
+          "text": "hier",
+          "start": 7.4,
+          "end": 7.94
+        }
+      ]
+    },
+    {
+      "text": "Stell dir das kurz vor",
+      "start": 10.0,
+      "end": 13.0,
+      "words": [
+        {
+          "text": "Stell",
+          "start": 10,
+          "end": 10.54
+        },
+        {
+          "text": "dir",
+          "start": 10.6,
+          "end": 11.14
+        },
+        {
+          "text": "das",
+          "start": 11.2,
+          "end": 11.74
+        },
+        {
+          "text": "kurz",
+          "start": 11.8,
+          "end": 12.34
+        },
+        {
+          "text": "vor",
+          "start": 12.4,
+          "end": 12.94
+        }
+      ]
+    },
+    {
+      "text": "Und das ist die Pointe",
+      "start": 15.0,
+      "end": 18.0,
+      "words": [
+        {
+          "text": "Und",
+          "start": 15,
+          "end": 15.54
+        },
+        {
+          "text": "das",
+          "start": 15.6,
+          "end": 16.14
+        },
+        {
+          "text": "ist",
+          "start": 16.2,
+          "end": 16.74
+        },
+        {
+          "text": "die",
+          "start": 16.8,
+          "end": 17.34
+        },
+        {
+          "text": "Pointe",
+          "start": 17.4,
+          "end": 17.94
+        }
+      ]
+    }
+  ]
+}

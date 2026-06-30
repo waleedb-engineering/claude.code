@@ -49,6 +49,7 @@ def run_pipeline(
     transcript_path: str | None = None,
     top_n: int = 5,
     render: bool = True,
+    remove_silence: bool = False,
     progress: ProgressFn = _noop,
 ) -> PipelineResult:
     settings = settings or get_settings()
@@ -85,6 +86,9 @@ def run_pipeline(
     # 4) Rendering
     rendered: list[str] = []
     if render and top:
+        progress(
+            f"Silence-Removal: {'aktiviert' if remove_silence else 'deaktiviert'}"
+        )
         for i, clip in enumerate(top, start=1):
             out_path = os.path.join(output_dir, f"clip_{i:02d}_score{int(clip.score)}.mp4")
             progress(
@@ -92,7 +96,14 @@ def run_pipeline(
                 f"({clip.start:.1f}-{clip.end:.1f}s, Score {clip.score}) …"
             )
             try:
-                render_clip(video_path, clip, out_path, settings)
+                render_clip(
+                    video_path,
+                    clip,
+                    out_path,
+                    settings,
+                    remove_silence=remove_silence,
+                    progress=progress,
+                )
                 rendered.append(out_path)
             except Exception as exc:  # noqa: BLE001
                 progress(f"  ⚠ Rendering fehlgeschlagen: {exc}")
@@ -101,6 +112,7 @@ def run_pipeline(
     clips_json = {
         "source": os.path.abspath(video_path),
         "scorer": scorer,
+        "remove_silence": remove_silence,
         "disclaimer": (
             "Der Performance-Potential-Score ist eine Wahrscheinlichkeits-"
             "Einschätzung auf Basis messbarer Signale und KEINE Garantie für "

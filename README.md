@@ -33,10 +33,11 @@ npm run dev      # http://127.0.0.1:3000
 
 | Stufe | Inhalt | Status |
 |---|---|---|
-| **Schritt 1–2 (dieser Stand)** | Lauffähiger **Pipeline-Kern als CLI** | ✅ fertig & verifiziert |
-| Schritt 3 | FastAPI-Layer (Upload, Job-Status, Download) | ⏳ geplant |
-| Schritt 4 | Next.js + Tailwind Frontend | ⏳ geplant |
-| Schritt 5 | Face-Tracking-Reframe, echtes A/B-Tracking, Direkt-Posten | 🔭 später |
+| Schritt 1–2 | Lauffähiger **Pipeline-Kern als CLI** | ✅ fertig & verifiziert |
+| Schritt 3 | **FastAPI-Layer** (Upload, Job-Status, Preview, Download, ZIP) | ✅ fertig & verifiziert |
+| Schritt 4 | **Next.js + Tailwind Frontend** | ✅ fertig & verifiziert |
+| Schritt 5 | **Schnelle Schnitte** (Silence-Removal) | ✅ fertig & verifiziert |
+| später | Face-Tracking-Reframe, echtes A/B-Tracking, Direkt-Posten | 🔭 später |
 
 ### Was schon echt funktioniert
 - **Transkription** lokal via `faster-whisper` (Wort-Level-Timestamps) — verifiziert
@@ -44,13 +45,14 @@ npm run dev      # http://127.0.0.1:3000
 - **Performance-Potential-Score** als transparente Heuristik (Hook, Klarheit,
   Emotion, Tempo, Pointe) — **optional** durch Claude verstärkt
 - **Rendering** zu 9:16-MP4 mit **eingebrannten Untertiteln** (FFmpeg) — verifiziert
+- **Silence-Removal** („schnelle Schnitte"): entfernt stille Pausen synchron in
+  Video/Audio und **mappt die Untertitel-Timings korrekt mit** — verifiziert
+- **Web-App + API**: Upload, Live-Status, `<video>`-Vorschau, Einzel- & ZIP-Download
 - **Plattform-Metadaten** (Titel/Beschreibung/Hashtags) + **Hook-Varianten**
   (nur mit gesetztem `ANTHROPIC_API_KEY`)
 
 ### Klar als TODO gekennzeichnet (noch nicht echt)
 - Reframe = **Center-Crop** (kein Speaker/Face-Tracking) — `render.py`
-- „Schnelle Schnitte" (Stille-Erkennung) ist implementiert (`detect_silences`),
-  aber im Render-Pfad noch nicht angewandt — `render.py` TODO
 - **A/B-Performance-Messung** erzeugt Varianten, misst aber (noch) keine echten
   Plattform-Views — dafür bräuchte es Plattform-APIs
 
@@ -113,7 +115,16 @@ python -m clipforge.cli mein_video.mp4 --transcript transkript.json --out ./out
 
 # Nur analysieren/scoren, nicht rendern
 python -m clipforge.cli mein_video.mp4 --transcript transkript.json --no-render
+
+# Mit Silence-Removal (schnelle Schnitte: entfernt stille Pausen)
+python -m clipforge.cli mein_video.mp4 --transcript transkript.json --remove-silence
 ```
+
+> **`--remove-silence`** entfernt erkannte Stille (Standard: `silencedetect`
+> bei −30 dB, ≥ 0,6 s) synchron aus Video **und** Audio und passt die
+> Untertitel-Timings entsprechend an. Ohne den Flag bleibt das Verhalten
+> unverändert. Findet die Pipeline keine sinnvollen Pausen oder schlägt der
+> Schnitt fehl, wird automatisch normal gerendert (Fallback).
 
 Ergebnis im `--out`-Verzeichnis:
 - `clip_01_score81.mp4 …` — fertige 9:16-Clips mit Untertiteln
