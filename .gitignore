@@ -7,6 +7,7 @@ venv/
 
 # ClipForge generated / test artifacts
 api/testdata/out/
+api/testdata/out_*/
 api/testdata/*.mp4
 api/testdata/*.wav
 api/jobs/
