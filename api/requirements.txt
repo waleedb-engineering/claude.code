@@ -1,0 +1,7 @@
+# ClipForge API / Pipeline dependencies
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+python-multipart==0.0.20
+anthropic>=0.40.0
+faster-whisper>=1.0.0
+pydantic>=2.0.0

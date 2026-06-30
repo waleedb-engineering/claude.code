@@ -1,0 +1,26 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+
+# ClipForge generated / test artifacts
+api/testdata/out/
+api/testdata/*.mp4
+api/testdata/*.wav
+clipforge_out/
+*.mp4
+!.gitkeep
+
+# Whisper model cache
+.cache/
+
+# Env
+.env
+.env.local
+
+# Node / Next.js (kommt im nächsten Schritt)
+node_modules/
+.next/
+out/

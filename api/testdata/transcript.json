@@ -1,0 +1,479 @@
+{
+  "language": "de",
+  "duration": 60.0,
+  "segments": [
+    {
+      "text": "Warum scheitern die meisten an ihrem ersten Geld? Der Fehler ist simpel. Sie sparen, statt zu investieren. Deshalb bleibt am Ende nichts übrig.",
+      "start": 0.0,
+      "end": 14.0,
+      "words": [
+        {
+          "text": "Warum",
+          "start": 0.0,
+          "end": 0.548
+        },
+        {
+          "text": "scheitern",
+          "start": 0.609,
+          "end": 1.157
+        },
+        {
+          "text": "die",
+          "start": 1.217,
+          "end": 1.765
+        },
+        {
+          "text": "meisten",
+          "start": 1.826,
+          "end": 2.374
+        },
+        {
+          "text": "an",
+          "start": 2.435,
+          "end": 2.983
+        },
+        {
+          "text": "ihrem",
+          "start": 3.043,
+          "end": 3.591
+        },
+        {
+          "text": "ersten",
+          "start": 3.652,
+          "end": 4.2
+        },
+        {
+          "text": "Geld?",
+          "start": 4.261,
+          "end": 4.809
+        },
+        {
+          "text": "Der",
+          "start": 4.87,
+          "end": 5.417
+        },
+        {
+          "text": "Fehler",
+          "start": 5.478,
+          "end": 6.026
+        },
+        {
+          "text": "ist",
+          "start": 6.087,
+          "end": 6.635
+        },
+        {
+          "text": "simpel.",
+          "start": 6.696,
+          "end": 7.243
+        },
+        {
+          "text": "Sie",
+          "start": 7.304,
+          "end": 7.852
+        },
+        {
+          "text": "sparen,",
+          "start": 7.913,
+          "end": 8.461
+        },
+        {
+          "text": "statt",
+          "start": 8.522,
+          "end": 9.07
+        },
+        {
+          "text": "zu",
+          "start": 9.13,
+          "end": 9.678
+        },
+        {
+          "text": "investieren.",
+          "start": 9.739,
+          "end": 10.287
+        },
+        {
+          "text": "Deshalb",
+          "start": 10.348,
+          "end": 10.896
+        },
+        {
+          "text": "bleibt",
+          "start": 10.957,
+          "end": 11.504
+        },
+        {
+          "text": "am",
+          "start": 11.565,
+          "end": 12.113
+        },
+        {
+          "text": "Ende",
+          "start": 12.174,
+          "end": 12.722
+        },
+        {
+          "text": "nichts",
+          "start": 12.783,
+          "end": 13.33
+        },
+        {
+          "text": "übrig.",
+          "start": 13.391,
+          "end": 13.939
+        }
+      ]
+    },
+    {
+      "text": "Heute ist ein normaler Tag. Ich sitze hier und rede ein bisschen. Es passiert nicht besonders viel und das ist auch okay so.",
+      "start": 15.0,
+      "end": 29.0,
+      "words": [
+        {
+          "text": "Heute",
+          "start": 15.0,
+          "end": 15.548
+        },
+        {
+          "text": "ist",
+          "start": 15.609,
+          "end": 16.157
+        },
+        {
+          "text": "ein",
+          "start": 16.217,
+          "end": 16.765
+        },
+        {
+          "text": "normaler",
+          "start": 16.826,
+          "end": 17.374
+        },
+        {
+          "text": "Tag.",
+          "start": 17.435,
+          "end": 17.983
+        },
+        {
+          "text": "Ich",
+          "start": 18.043,
+          "end": 18.591
+        },
+        {
+          "text": "sitze",
+          "start": 18.652,
+          "end": 19.2
+        },
+        {
+          "text": "hier",
+          "start": 19.261,
+          "end": 19.809
+        },
+        {
+          "text": "und",
+          "start": 19.87,
+          "end": 20.417
+        },
+        {
+          "text": "rede",
+          "start": 20.478,
+          "end": 21.026
+        },
+        {
+          "text": "ein",
+          "start": 21.087,
+          "end": 21.635
+        },
+        {
+          "text": "bisschen.",
+          "start": 21.696,
+          "end": 22.243
+        },
+        {
+          "text": "Es",
+          "start": 22.304,
+          "end": 22.852
+        },
+        {
+          "text": "passiert",
+          "start": 22.913,
+          "end": 23.461
+        },
+        {
+          "text": "nicht",
+          "start": 23.522,
+          "end": 24.07
+        },
+        {
+          "text": "besonders",
+          "start": 24.13,
+          "end": 24.678
+        },
+        {
+          "text": "viel",
+          "start": 24.739,
+          "end": 25.287
+        },
+        {
+          "text": "und",
+          "start": 25.348,
+          "end": 25.896
+        },
+        {
+          "text": "das",
+          "start": 25.957,
+          "end": 26.504
+        },
+        {
+          "text": "ist",
+          "start": 26.565,
+          "end": 27.113
+        },
+        {
+          "text": "auch",
+          "start": 27.174,
+          "end": 27.722
+        },
+        {
+          "text": "okay",
+          "start": 27.783,
+          "end": 28.33
+        },
+        {
+          "text": "so.",
+          "start": 28.391,
+          "end": 28.939
+        }
+      ]
+    },
+    {
+      "text": "Stell dir vor, du verdoppelst deine Reichweite in dreißig Tagen. Das Geheimnis ist ein starker Hook. Darum funktionieren kurze Clips so gut.",
+      "start": 30.0,
+      "end": 44.0,
+      "words": [
+        {
+          "text": "Stell",
+          "start": 30.0,
+          "end": 30.573
+        },
+        {
+          "text": "dir",
+          "start": 30.636,
+          "end": 31.209
+        },
+        {
+          "text": "vor,",
+          "start": 31.273,
+          "end": 31.845
+        },
+        {
+          "text": "du",
+          "start": 31.909,
+          "end": 32.482
+        },
+        {
+          "text": "verdoppelst",
+          "start": 32.545,
+          "end": 33.118
+        },
+        {
+          "text": "deine",
+          "start": 33.182,
+          "end": 33.755
+        },
+        {
+          "text": "Reichweite",
+          "start": 33.818,
+          "end": 34.391
+        },
+        {
+          "text": "in",
+          "start": 34.455,
+          "end": 35.027
+        },
+        {
+          "text": "dreißig",
+          "start": 35.091,
+          "end": 35.664
+        },
+        {
+          "text": "Tagen.",
+          "start": 35.727,
+          "end": 36.3
+        },
+        {
+          "text": "Das",
+          "start": 36.364,
+          "end": 36.936
+        },
+        {
+          "text": "Geheimnis",
+          "start": 37.0,
+          "end": 37.573
+        },
+        {
+          "text": "ist",
+          "start": 37.636,
+          "end": 38.209
+        },
+        {
+          "text": "ein",
+          "start": 38.273,
+          "end": 38.845
+        },
+        {
+          "text": "starker",
+          "start": 38.909,
+          "end": 39.482
+        },
+        {
+          "text": "Hook.",
+          "start": 39.545,
+          "end": 40.118
+        },
+        {
+          "text": "Darum",
+          "start": 40.182,
+          "end": 40.755
+        },
+        {
+          "text": "funktionieren",
+          "start": 40.818,
+          "end": 41.391
+        },
+        {
+          "text": "kurze",
+          "start": 41.455,
+          "end": 42.027
+        },
+        {
+          "text": "Clips",
+          "start": 42.091,
+          "end": 42.664
+        },
+        {
+          "text": "so",
+          "start": 42.727,
+          "end": 43.3
+        },
+        {
+          "text": "gut.",
+          "start": 43.364,
+          "end": 43.936
+        }
+      ]
+    },
+    {
+      "text": "Niemand spricht über diesen einen Fehler beim Schnitt. Zu lange Pausen töten die Spannung. Also schneide gnadenlos. Das ist die Pointe.",
+      "start": 45.0,
+      "end": 59.0,
+      "words": [
+        {
+          "text": "Niemand",
+          "start": 45.0,
+          "end": 45.6
+        },
+        {
+          "text": "spricht",
+          "start": 45.667,
+          "end": 46.267
+        },
+        {
+          "text": "über",
+          "start": 46.333,
+          "end": 46.933
+        },
+        {
+          "text": "diesen",
+          "start": 47.0,
+          "end": 47.6
+        },
+        {
+          "text": "einen",
+          "start": 47.667,
+          "end": 48.267
+        },
+        {
+          "text": "Fehler",
+          "start": 48.333,
+          "end": 48.933
+        },
+        {
+          "text": "beim",
+          "start": 49.0,
+          "end": 49.6
+        },
+        {
+          "text": "Schnitt.",
+          "start": 49.667,
+          "end": 50.267
+        },
+        {
+          "text": "Zu",
+          "start": 50.333,
+          "end": 50.933
+        },
+        {
+          "text": "lange",
+          "start": 51.0,
+          "end": 51.6
+        },
+        {
+          "text": "Pausen",
+          "start": 51.667,
+          "end": 52.267
+        },
+        {
+          "text": "töten",
+          "start": 52.333,
+          "end": 52.933
+        },
+        {
+          "text": "die",
+          "start": 53.0,
+          "end": 53.6
+        },
+        {
+          "text": "Spannung.",
+          "start": 53.667,
+          "end": 54.267
+        },
+        {
+          "text": "Also",
+          "start": 54.333,
+          "end": 54.933
+        },
+        {
+          "text": "schneide",
+          "start": 55.0,
+          "end": 55.6
+        },
+        {
+          "text": "gnadenlos.",
+          "start": 55.667,
+          "end": 56.267
+        },
+        {
+          "text": "Das",
+          "start": 56.333,
+          "end": 56.933
+        },
+        {
+          "text": "ist",
+          "start": 57.0,
+          "end": 57.6
+        },
+        {
+          "text": "die",
+          "start": 57.667,
+          "end": 58.267
+        },
+        {
+          "text": "Pointe.",
+          "start": 58.333,
+          "end": 58.933
+        }
+      ]
+    }
+  ]
+}
