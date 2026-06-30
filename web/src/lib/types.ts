@@ -53,6 +53,8 @@ export interface Job {
   input_path: string | null;
   transcript_path: string | null;
   remove_silence?: boolean;
+  caption_mode?: string;
+  caption_style?: string;
   progress: string[];
   error: string | null;
   result: JobResult | null;
@@ -90,6 +92,16 @@ export interface SilenceInfo {
   fallback: boolean;
 }
 
+export interface CaptionInfo {
+  requested_mode: string;
+  applied_mode: string;
+  caption_style: string;
+  word_level_available: boolean;
+  fallback: boolean;
+  fallback_reason: string | null;
+  caption_blocks_count: number;
+}
+
 // Entspricht ScoredClip.to_dict() aus dem Kern.
 export interface ScoredClipDict {
   start: number;
@@ -104,6 +116,7 @@ export interface ScoredClipDict {
   scorer: string;
   output_path: string | null;
   silence_info?: SilenceInfo | null;
+  caption_info?: CaptionInfo | null;
 }
 
 export interface ClipsJson {

@@ -16,6 +16,8 @@ export default function UploadPage() {
   const [transcript, setTranscript] = useState<File | null>(null);
   const [topN, setTopN] = useState(5);
   const [removeSilence, setRemoveSilence] = useState(true);
+  const [captionMode, setCaptionMode] = useState("karaoke");
+  const [captionStyle, setCaptionStyle] = useState("high_energy");
   const [dragging, setDragging] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -33,7 +35,14 @@ export default function UploadPage() {
     setSubmitting(true);
     setError(null);
     try {
-      const { job_id } = await createJob({ file, topN, transcript, removeSilence });
+      const { job_id } = await createJob({
+        file,
+        topN,
+        transcript,
+        removeSilence,
+        captionMode,
+        captionStyle,
+      });
       router.push(`/jobs/${job_id}`);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Upload fehlgeschlagen.");
@@ -167,6 +176,39 @@ export default function UploadPage() {
           />
         </span>
       </button>
+
+      {/* Untertitel-Optionen */}
+      <div className="rounded-2xl border border-neutral-800 bg-neutral-900/40 p-5">
+        <p className="font-medium text-neutral-100">Untertitel</p>
+        <p className="mt-1 text-sm text-neutral-400">
+          Wortgenaue Captions erhöhen Lesbarkeit und Aufmerksamkeit. Bei
+          fehlenden Wort-Timestamps wird automatisch Standard genutzt.
+        </p>
+        <div className="mt-4 grid gap-4 sm:grid-cols-2">
+          <label className="block">
+            <span className="text-sm text-neutral-300">Untertitel-Stil</span>
+            <select
+              value={captionMode}
+              onChange={(e) => setCaptionMode(e.target.value)}
+              className="mt-1 w-full rounded-lg border border-neutral-700 bg-neutral-950 px-3 py-2 text-sm text-neutral-100 outline-none focus:border-indigo-500"
+            >
+              <option value="karaoke">Wortgenau / Karaoke</option>
+              <option value="standard">Standard</option>
+            </select>
+          </label>
+          <label className="block">
+            <span className="text-sm text-neutral-300">Caption-Style</span>
+            <select
+              value={captionStyle}
+              onChange={(e) => setCaptionStyle(e.target.value)}
+              className="mt-1 w-full rounded-lg border border-neutral-700 bg-neutral-950 px-3 py-2 text-sm text-neutral-100 outline-none focus:border-indigo-500"
+            >
+              <option value="high_energy">High Energy</option>
+              <option value="clean">Clean</option>
+            </select>
+          </label>
+        </div>
+      </div>
 
       {error && (
         <div className="rounded-xl border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-300">

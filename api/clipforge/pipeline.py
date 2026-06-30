@@ -51,6 +51,8 @@ def run_pipeline(
     render: bool = True,
     remove_silence: bool = False,
     audio_smoothing: bool = True,
+    caption_mode: str = "karaoke",
+    caption_style: str = "high_energy",
     progress: ProgressFn = _noop,
 ) -> PipelineResult:
     settings = settings or get_settings()
@@ -90,6 +92,7 @@ def run_pipeline(
         progress(
             f"Silence-Removal: {'aktiviert' if remove_silence else 'deaktiviert'}"
         )
+        progress(f"Caption-Modus: {caption_mode}, Style: {caption_style}")
         for i, clip in enumerate(top, start=1):
             out_path = os.path.join(output_dir, f"clip_{i:02d}_score{int(clip.score)}.mp4")
             progress(
@@ -104,6 +107,8 @@ def run_pipeline(
                     settings,
                     remove_silence=remove_silence,
                     audio_smoothing=audio_smoothing,
+                    caption_mode=caption_mode,
+                    caption_style=caption_style,
                     progress=progress,
                 )
                 rendered.append(out_path)
@@ -115,12 +120,18 @@ def run_pipeline(
         sum((c.silence_info or {}).get("removed_seconds", 0.0) for c in top), 2
     )
     any_smoothing = any((c.silence_info or {}).get("audio_smoothing") for c in top)
+    caption_fallback_count = sum(
+        1 for c in top if (c.caption_info or {}).get("fallback")
+    )
     clips_json = {
         "source": os.path.abspath(video_path),
         "scorer": scorer,
         "remove_silence": remove_silence,
         "audio_smoothing": any_smoothing,
         "total_removed_silence_seconds": total_removed,
+        "caption_mode": caption_mode,
+        "caption_style": caption_style,
+        "caption_fallback_count": caption_fallback_count,
         "disclaimer": (
             "Der Performance-Potential-Score ist eine Wahrscheinlichkeits-"
             "Einschätzung auf Basis messbarer Signale und KEINE Garantie für "

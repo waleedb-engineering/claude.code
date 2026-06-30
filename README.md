@@ -45,6 +45,9 @@ npm run dev      # http://127.0.0.1:3000
 - **Performance-Potential-Score** als transparente Heuristik (Hook, Klarheit,
   Emotion, Tempo, Pointe) — **optional** durch Claude verstärkt
 - **Rendering** zu 9:16-MP4 mit **eingebrannten Untertiteln** (FFmpeg) — verifiziert
+- **Wortgenaue Karaoke-Captions** (ASS): aktuelles Wort hervorgehoben, 2 Styles
+  (`clean`/`high_energy`), automatischer Umbruch in der Safe Area, Fallback auf
+  Standard ohne Wort-Timestamps — verifiziert
 - **Silence-Removal** („schnelle Schnitte"): entfernt stille Pausen synchron in
   Video/Audio und **mappt die Untertitel-Timings korrekt mit** — verifiziert
 - **Web-App + API**: Upload, Live-Status, `<video>`-Vorschau, Einzel- & ZIP-Download
@@ -121,7 +124,21 @@ python -m clipforge.cli mein_video.mp4 --transcript transkript.json --remove-sil
 
 # Silence-Removal ohne Audio-Glättung an den Schnitten
 python -m clipforge.cli mein_video.mp4 --transcript transkript.json --remove-silence --no-audio-smoothing
+
+# Untertitel-Modus & -Style wählen (Default: karaoke / high_energy)
+python -m clipforge.cli mein_video.mp4 --transcript transkript.json \
+       --caption-mode karaoke --caption-style high_energy
+python -m clipforge.cli mein_video.mp4 --transcript transkript.json \
+       --caption-mode standard --caption-style clean
 ```
+
+> **Untertitel:** `--caption-mode karaoke` hebt das aktuell gesprochene Wort
+> wortgenau hervor (Default; nutzt die Wort-Timestamps, auch nach
+> Silence-Removal über die re-gemappten Zeiten). Ohne Wort-Timestamps wird
+> automatisch auf `standard` zurückgefallen (Warnung im Log, Job läuft weiter).
+> `--caption-style`: `high_energy` (groß, GROSSBUCHSTABEN, grünes Wort, Default)
+> oder `clean` (schlicht, gelbes Wort). Pro Clip werden die Caption-Metriken in
+> `clips.json` unter `caption_info` gespeichert.
 
 > **`--remove-silence`** entfernt erkannte Stille (Standard: `silencedetect`
 > bei −30 dB, ≥ 0,6 s) synchron aus Video **und** Audio und passt die

@@ -18,7 +18,7 @@ import tempfile
 from dataclasses import dataclass
 from typing import Callable
 
-from .captions import build_ass
+from .captions import make_captions
 from .config import Settings
 from .ffmpeg_utils import detect_silences, ensure_ffmpeg
 from .models import ScoredClip
@@ -89,34 +89,27 @@ def _run_ffmpeg(cmd: list[str], clip: ScoredClip) -> None:
 
 
 def _render_plain(
-    video_path: str, clip: ScoredClip, out_path: str, settings: Settings
+    video_path: str,
+    clip: ScoredClip,
+    out_path: str,
+    settings: Settings,
+    ass_path: str,
 ) -> None:
-    """Originaler Single-Pass-Render (unverändertes Verhalten)."""
+    """Originaler Single-Pass-Render (Captions werden als ass_path übergeben)."""
     out_w, out_h = settings.output_width, settings.output_height
-    ass = build_ass(
-        words=clip.words,
-        clip_start=clip.start,
-        clip_end=clip.end,
-        width=out_w,
-        height=out_h,
-    )
-    ass_path = _write_ass_tmp(ass)
-    try:
-        vf = f"{_crop_filter(out_w, out_h)},ass='{_escape_ass_path(ass_path)}'"
-        cmd = [
-            "ffmpeg", "-y",
-            "-ss", f"{clip.start:.3f}",
-            "-to", f"{clip.end:.3f}",
-            "-i", video_path,
-            "-vf", vf,
-            "-c:v", "libx264", "-preset", "veryfast", "-crf", "20",
-            "-c:a", "aac", "-b:a", "128k",
-            "-movflags", "+faststart",
-            out_path,
-        ]
-        _run_ffmpeg(cmd, clip)
-    finally:
-        _safe_unlink(ass_path)
+    vf = f"{_crop_filter(out_w, out_h)},ass='{_escape_ass_path(ass_path)}'"
+    cmd = [
+        "ffmpeg", "-y",
+        "-ss", f"{clip.start:.3f}",
+        "-to", f"{clip.end:.3f}",
+        "-i", video_path,
+        "-vf", vf,
+        "-c:v", "libx264", "-preset", "veryfast", "-crf", "20",
+        "-c:a", "aac", "-b:a", "128k",
+        "-movflags", "+faststart",
+        out_path,
+    ]
+    _run_ffmpeg(cmd, clip)
 
 
 def _render_with_silence(
@@ -125,44 +118,32 @@ def _render_with_silence(
     out_path: str,
     settings: Settings,
     keeps,
+    ass_path: str,
 ) -> None:
-    """Render mit entfernten Pausen. Captions sind bereits re-gemappt."""
+    """Render mit entfernten Pausen (harte Schnitte). Captions bereits re-gemappt."""
     out_w, out_h = settings.output_width, settings.output_height
-    new_duration = sum(b - a for a, b in keeps)
-    new_words = remap_words(clip.words, clip.start, keeps)
-    ass = build_ass(
-        words=new_words,
-        clip_start=0.0,
-        clip_end=new_duration,
-        width=out_w,
-        height=out_h,
+    expr = select_expr(keeps)
+    # select/setpts staucht Video, aselect/asetpts staucht Audio identisch
+    # -> Bild und Ton bleiben synchron. Einfachanführungszeichen schützen
+    # die Kommas im between()-Ausdruck im Filtergraph.
+    vf = (
+        f"select='{expr}',setpts=N/FRAME_RATE/TB,"
+        f"{_crop_filter(out_w, out_h)},ass='{_escape_ass_path(ass_path)}'"
     )
-    ass_path = _write_ass_tmp(ass)
-    try:
-        expr = select_expr(keeps)
-        # select/setpts staucht Video, aselect/asetpts staucht Audio identisch
-        # -> Bild und Ton bleiben synchron. Einfachanführungszeichen schützen
-        # die Kommas im between()-Ausdruck im Filtergraph.
-        vf = (
-            f"select='{expr}',setpts=N/FRAME_RATE/TB,"
-            f"{_crop_filter(out_w, out_h)},ass='{_escape_ass_path(ass_path)}'"
-        )
-        af = f"aselect='{expr}',asetpts=N/SR/TB"
-        cmd = [
-            "ffmpeg", "-y",
-            "-ss", f"{clip.start:.3f}",
-            "-to", f"{clip.end:.3f}",
-            "-i", video_path,
-            "-vf", vf,
-            "-af", af,
-            "-c:v", "libx264", "-preset", "veryfast", "-crf", "20",
-            "-c:a", "aac", "-b:a", "128k",
-            "-movflags", "+faststart",
-            out_path,
-        ]
-        _run_ffmpeg(cmd, clip)
-    finally:
-        _safe_unlink(ass_path)
+    af = f"aselect='{expr}',asetpts=N/SR/TB"
+    cmd = [
+        "ffmpeg", "-y",
+        "-ss", f"{clip.start:.3f}",
+        "-to", f"{clip.end:.3f}",
+        "-i", video_path,
+        "-vf", vf,
+        "-af", af,
+        "-c:v", "libx264", "-preset", "veryfast", "-crf", "20",
+        "-c:a", "aac", "-b:a", "128k",
+        "-movflags", "+faststart",
+        out_path,
+    ]
+    _run_ffmpeg(cmd, clip)
 
 
 def _render_with_silence_smoothed(
@@ -171,6 +152,7 @@ def _render_with_silence_smoothed(
     out_path: str,
     settings: Settings,
     keeps,
+    ass_path: str,
 ) -> None:
     """Wie _render_with_silence, aber mit kurzen Audio-Fades an den Schnitten.
 
@@ -179,39 +161,26 @@ def _render_with_silence_smoothed(
     A/V und Captions bleiben synchron.
     """
     out_w, out_h = settings.output_width, settings.output_height
-    new_duration = sum(b - a for a, b in keeps)
-    new_words = remap_words(clip.words, clip.start, keeps)
-    ass = build_ass(
-        words=new_words,
-        clip_start=0.0,
-        clip_end=new_duration,
-        width=out_w,
-        height=out_h,
+    expr = select_expr(keeps)
+    v_chain = (
+        f"[0:v]select='{expr}',setpts=N/FRAME_RATE/TB,"
+        f"{_crop_filter(out_w, out_h)},ass='{_escape_ass_path(ass_path)}'[v]"
     )
-    ass_path = _write_ass_tmp(ass)
-    try:
-        expr = select_expr(keeps)
-        v_chain = (
-            f"[0:v]select='{expr}',setpts=N/FRAME_RATE/TB,"
-            f"{_crop_filter(out_w, out_h)},ass='{_escape_ass_path(ass_path)}'[v]"
-        )
-        a_chain = audio_smoothing_filter(keeps, fade=0.015)
-        filter_complex = f"{v_chain};{a_chain}"
-        cmd = [
-            "ffmpeg", "-y",
-            "-ss", f"{clip.start:.3f}",
-            "-to", f"{clip.end:.3f}",
-            "-i", video_path,
-            "-filter_complex", filter_complex,
-            "-map", "[v]", "-map", "[a]",
-            "-c:v", "libx264", "-preset", "veryfast", "-crf", "20",
-            "-c:a", "aac", "-b:a", "128k",
-            "-movflags", "+faststart",
-            out_path,
-        ]
-        _run_ffmpeg(cmd, clip)
-    finally:
-        _safe_unlink(ass_path)
+    a_chain = audio_smoothing_filter(keeps, fade=0.015)
+    filter_complex = f"{v_chain};{a_chain}"
+    cmd = [
+        "ffmpeg", "-y",
+        "-ss", f"{clip.start:.3f}",
+        "-to", f"{clip.end:.3f}",
+        "-i", video_path,
+        "-filter_complex", filter_complex,
+        "-map", "[v]", "-map", "[a]",
+        "-c:v", "libx264", "-preset", "veryfast", "-crf", "20",
+        "-c:a", "aac", "-b:a", "128k",
+        "-movflags", "+faststart",
+        out_path,
+    ]
+    _run_ffmpeg(cmd, clip)
 
 
 def _safe_unlink(path: str) -> None:
@@ -229,6 +198,8 @@ def render_clip(
     *,
     remove_silence: bool = False,
     audio_smoothing: bool = True,
+    caption_mode: str = "karaoke",
+    caption_style: str = "high_energy",
     progress: LogFn | None = None,
 ) -> RenderInfo:
     """Rendert einen einzelnen Clip. Gibt RenderInfo zurück.
@@ -237,11 +208,32 @@ def render_clip(
     `audio_smoothing` (nur relevant bei remove_silence) glättet harte
     Audio-Schnitte mit sehr kurzen Fades; bei Fehler wird auf den einfachen
     Silence-Render und zuletzt auf den normalen Render zurückgefallen.
+    `caption_mode` (standard|karaoke) und `caption_style` (clean|high_energy)
+    steuern die Untertitel; ohne Wort-Timestamps fällt Karaoke auf Standard
+    zurück. Die Caption-Infos landen in clip.caption_info.
     """
     ensure_ffmpeg()
     os.makedirs(os.path.dirname(os.path.abspath(out_path)), exist_ok=True)
     log = progress or (lambda _m: None)
+    out_w, out_h = settings.output_width, settings.output_height
     duration = clip.end - clip.start
+
+    def _caps(words, cs: float, ce: float):
+        return make_captions(
+            words, cs, ce, mode=caption_mode, style=caption_style,
+            width=out_w, height=out_h,
+        )
+
+    def _log_caps(cap: dict) -> None:
+        msg = (
+            f"  Captions: Modus {cap['applied_mode']} "
+            f"(angefragt {cap['requested_mode']}), Style {cap['caption_style']}, "
+            f"{cap['caption_blocks_count']} Blöcke"
+        )
+        if cap["fallback"]:
+            msg += f" — Fallback: {cap['fallback_reason']}"
+        log(msg)
+
     info = RenderInfo(
         silence_enabled=remove_silence,
         original_duration=duration,
@@ -285,32 +277,38 @@ def render_clip(
 
     if keeps is not None:
         info.final_duration = sum(b - a for a, b in keeps)
-
-        # Stufe 1: Silence-Render mit Audio-Glättung (kurze Fades an Schnitten)
-        if audio_smoothing:
-            try:
-                _render_with_silence_smoothed(
-                    video_path, clip, out_path, settings, keeps
-                )
-                info.applied = True
-                info.audio_smoothing = True
-                log("  Audio-Smoothing: 15 ms Fades an Schnitten angewandt.")
-                clip.output_path = out_path
-                clip.silence_info = info.to_dict()
-                return info
-            except Exception as exc:  # noqa: BLE001 — eine Stufe zurückfallen
-                log(
-                    f"  ⚠ Audio-Smoothing fehlgeschlagen ({type(exc).__name__}) "
-                    f"→ einfacher Silence-Render."
-                )
-
-        # Stufe 2: einfacher Silence-Render (harte Schnitte, ohne Glättung)
+        # Captions auf der gestauchten (re-gemappten) Zeitachse
+        cap_words = remap_words(clip.words, clip.start, keeps)
+        ass_text, cap_info = _caps(cap_words, 0.0, info.final_duration)
+        _log_caps(cap_info)
+        ass_path = _write_ass_tmp(ass_text)
         try:
-            _render_with_silence(video_path, clip, out_path, settings, keeps)
+            # Stufe 1: Silence-Render mit Audio-Glättung
+            if audio_smoothing:
+                try:
+                    _render_with_silence_smoothed(
+                        video_path, clip, out_path, settings, keeps, ass_path
+                    )
+                    info.applied = True
+                    info.audio_smoothing = True
+                    log("  Audio-Smoothing: 15 ms Fades an Schnitten angewandt.")
+                    clip.output_path = out_path
+                    clip.silence_info = info.to_dict()
+                    clip.caption_info = cap_info
+                    return info
+                except Exception as exc:  # noqa: BLE001 — eine Stufe zurück
+                    log(
+                        f"  ⚠ Audio-Smoothing fehlgeschlagen ({type(exc).__name__}) "
+                        f"→ einfacher Silence-Render."
+                    )
+
+            # Stufe 2: einfacher Silence-Render (harte Schnitte)
+            _render_with_silence(video_path, clip, out_path, settings, keeps, ass_path)
             info.applied = True
             info.audio_smoothing = False
             clip.output_path = out_path
             clip.silence_info = info.to_dict()
+            clip.caption_info = cap_info
             return info
         except Exception as exc:  # noqa: BLE001 — auf normalen Render zurück
             info.fallback = True
@@ -321,9 +319,18 @@ def render_clip(
                 f"  ⚠ Silence-Render fehlgeschlagen ({type(exc).__name__}) → "
                 f"Fallback auf normalen Render."
             )
+        finally:
+            _safe_unlink(ass_path)
 
-    # Stufe 3 / Normalfall: unveränderter Plain-Render
-    _render_plain(video_path, clip, out_path, settings)
+    # Stufe 3 / Normalfall: Plain-Render (Captions auf Original-Zeitachse)
+    ass_text, cap_info = _caps(clip.words, clip.start, clip.end)
+    _log_caps(cap_info)
+    ass_path = _write_ass_tmp(ass_text)
+    try:
+        _render_plain(video_path, clip, out_path, settings, ass_path)
+    finally:
+        _safe_unlink(ass_path)
     clip.output_path = out_path
     clip.silence_info = info.to_dict()
+    clip.caption_info = cap_info
     return info

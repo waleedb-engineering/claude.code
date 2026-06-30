@@ -93,7 +93,8 @@ Ohne gerenderte Clips → `404`.
 
 ### Schnitt-Metriken in `clips.json`
 
-Top-Level: `remove_silence`, `audio_smoothing`, `total_removed_silence_seconds`.
+Top-Level: `remove_silence`, `audio_smoothing`, `total_removed_silence_seconds`,
+`caption_mode`, `caption_style`, `caption_fallback_count`.
 Pro Clip (`clips[i].silence_info`):
 
 ```json
@@ -104,6 +105,19 @@ Pro Clip (`clips[i].silence_info`):
 }
 ```
 
+Caption-Metriken pro Clip (`clips[i].caption_info`):
+
+```json
+"caption_info": {
+  "requested_mode": "karaoke", "applied_mode": "karaoke",
+  "caption_style": "high_energy", "word_level_available": true,
+  "fallback": false, "fallback_reason": null, "caption_blocks_count": 7
+}
+```
+
+Die ZIP-`metadata.json` enthält zusätzlich `caption_mode`, `caption_style`
+und `caption_fallback_count`.
+
 ### `POST /api/jobs` — Felder (multipart/form-data)
 
 | Feld | Typ | Pflicht | Default | Beschreibung |
@@ -111,6 +125,8 @@ Pro Clip (`clips[i].silence_info`):
 | `file` | Datei | ja | – | Video (`.mp4 .mov .mkv .webm .avi .m4v`) |
 | `top_n` | int | nein | `5` | Anzahl der Top-Clips |
 | `remove_silence` | bool | nein | `true` | Stille Pausen automatisch entfernen (schnellere, dichtere Clips) |
+| `caption_mode` | string | nein | `karaoke` | `karaoke` (wortgenaue Hervorhebung) oder `standard` |
+| `caption_style` | string | nein | `high_energy` | `high_energy` oder `clean` |
 | `transcript` | Datei | nein | – | Vorhandenes Transkript-JSON; überspringt Whisper (spiegelt CLI-Flag `--transcript`, ideal für schnelle Tests) |
 
 Der gewählte `remove_silence`-Wert ist im Job-Status sichtbar (Feld

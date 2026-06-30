@@ -56,6 +56,19 @@ def build_parser() -> argparse.ArgumentParser:
         help="Audio-Glättung (kurze Fades an Schnitten) deaktivieren. "
         "Nur relevant zusammen mit --remove-silence.",
     )
+    p.add_argument(
+        "--caption-mode",
+        choices=("standard", "karaoke"),
+        default="karaoke",
+        help="Untertitel-Modus. 'karaoke' hebt das aktuelle Wort hervor "
+        "(Default; fällt ohne Wort-Timestamps auf 'standard' zurück).",
+    )
+    p.add_argument(
+        "--caption-style",
+        choices=("clean", "high_energy"),
+        default="high_energy",
+        help="Caption-Style: 'clean' (schlicht) oder 'high_energy' (Default).",
+    )
     return p
 
 
@@ -79,6 +92,8 @@ def main(argv: list[str] | None = None) -> int:
             render=not args.no_render,
             remove_silence=args.remove_silence,
             audio_smoothing=not args.no_audio_smoothing,
+            caption_mode=args.caption_mode,
+            caption_style=args.caption_style,
             progress=_progress,
         )
     except FileNotFoundError as exc:

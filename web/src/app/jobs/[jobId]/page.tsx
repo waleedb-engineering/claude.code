@@ -149,6 +149,12 @@ export default function JobDetailPage() {
                 label="Stille-Schnitt"
                 value={job.remove_silence ? "an" : "aus"}
               />
+              <Stat
+                label="Captions"
+                value={
+                  job.caption_mode === "karaoke" ? "Wortgenau" : "Standard"
+                }
+              />
             </div>
             {job.files?.exports_ready && (
               <a

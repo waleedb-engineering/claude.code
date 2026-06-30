@@ -116,6 +116,8 @@ async def create_job(
     transcript: UploadFile | None = File(default=None),
     top_n: int = Form(default=5),
     remove_silence: bool = Form(default=True),
+    caption_mode: str = Form(default="karaoke"),
+    caption_style: str = Form(default="high_energy"),
 ) -> dict:
     """Lädt ein Video hoch, legt einen Job an und startet die Analyse im Hintergrund.
 
@@ -136,7 +138,13 @@ async def create_job(
         )
 
     top_n = max(1, int(top_n))
-    job = registry.create(filename=filename, top_n=top_n, remove_silence=remove_silence)
+    job = registry.create(
+        filename=filename,
+        top_n=top_n,
+        remove_silence=remove_silence,
+        caption_mode=caption_mode,
+        caption_style=caption_style,
+    )
 
     # Upload speichern: jobs/<id>/input.<ext>
     input_path = os.path.join(job.job_dir, f"input{ext}")
@@ -269,6 +277,9 @@ def export_zip(job_id: str):
     remove_silence = job.remove_silence
     audio_smoothing = False
     total_removed = 0.0
+    caption_mode = job.caption_mode
+    caption_style = job.caption_style
+    caption_fallback_count = 0
     clips_json_path = os.path.join(job.job_dir, "clips.json")
     if os.path.exists(clips_json_path):
         try:
@@ -278,6 +289,9 @@ def export_zip(job_id: str):
             remove_silence = cj.get("remove_silence", remove_silence)
             audio_smoothing = bool(cj.get("audio_smoothing", False))
             total_removed = float(cj.get("total_removed_silence_seconds", 0.0))
+            caption_mode = cj.get("caption_mode", caption_mode)
+            caption_style = cj.get("caption_style", caption_style)
+            caption_fallback_count = int(cj.get("caption_fallback_count", 0))
         except (OSError, ValueError):
             pass
 
@@ -293,6 +307,9 @@ def export_zip(job_id: str):
         "remove_silence": remove_silence,
         "audio_smoothing": audio_smoothing,
         "total_removed_silence_seconds": round(total_removed, 2),
+        "caption_mode": caption_mode,
+        "caption_style": caption_style,
+        "caption_fallback_count": caption_fallback_count,
         "disclaimer": (
             "Der Performance-Potential-Score ist eine Wahrscheinlichkeits-"
             "Einschätzung und keine Garantie für Reichweite oder Viralität."

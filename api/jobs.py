@@ -44,6 +44,8 @@ class Job:
     input_path: str | None = None
     transcript_path: str | None = None
     remove_silence: bool = True
+    caption_mode: str = "karaoke"
+    caption_style: str = "high_energy"
     progress: list[str] = field(default_factory=list)  # dient auch als Log
     error: str | None = None
     result: dict | None = None
@@ -75,7 +77,14 @@ class JobRegistry:
 
     # ---------- Lese-/Schreibzugriffe (thread-safe) ----------
 
-    def create(self, filename: str, top_n: int, remove_silence: bool = True) -> Job:
+    def create(
+        self,
+        filename: str,
+        top_n: int,
+        remove_silence: bool = True,
+        caption_mode: str = "karaoke",
+        caption_style: str = "high_energy",
+    ) -> Job:
         job_id = uuid.uuid4().hex[:12]
         job_dir = os.path.join(self.base_dir, job_id)
         os.makedirs(job_dir, exist_ok=True)
@@ -86,6 +95,8 @@ class JobRegistry:
             job_dir=job_dir,
             top_n=top_n,
             remove_silence=remove_silence,
+            caption_mode=caption_mode,
+            caption_style=caption_style,
             created_at=_now(),
             updated_at=_now(),
         )
@@ -159,6 +170,8 @@ class JobRegistry:
                 top_n=job.top_n,
                 render=True,
                 remove_silence=job.remove_silence,
+                caption_mode=job.caption_mode,
+                caption_style=job.caption_style,
                 progress=progress,
             )
         except Exception as exc:  # noqa: BLE001 — Pipeline-Fehler sauber melden
