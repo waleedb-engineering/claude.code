@@ -6,7 +6,20 @@ TikTok, Instagram Reels und YouTube Shorts erzeugt.
 📄 **Produktdefinition:** [`docs/PRODUCT.md`](docs/PRODUCT.md) — Problem, Lösung,
 MVP-Scope, Architektur, Risiken und Akzeptanzkriterien.
 🌐 **Web-Plan:** [`docs/WEB_PLAN.md`](docs/WEB_PLAN.md) · **HTTP-API:**
-[`docs/API.md`](docs/API.md) — FastAPI-Bridge über dem Pipeline-Kern.
+[`docs/API.md`](docs/API.md) — FastAPI-Bridge über dem Pipeline-Kern ·
+🖥️ **Web-App:** [`docs/WEB.md`](docs/WEB.md) — Next.js-UI lokal starten.
+
+## Schnellstart Web-App
+
+```bash
+# Terminal A — Backend
+cd api && export PYTHONPATH=$PWD && pip install -r requirements.txt
+uvicorn app:app --reload --port 8000
+
+# Terminal B — Frontend
+cd web && npm install && cp .env.example .env.local
+npm run dev      # http://127.0.0.1:3000
+```
 
 > **Ehrlicher Hinweis:** ClipForge garantiert **keine** Viralität. Es
 > **maximiert die Wahrscheinlichkeit** für starke Performance durch messbare
