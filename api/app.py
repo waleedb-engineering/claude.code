@@ -284,7 +284,10 @@ def export_zip(job_id: str):
     caption_fallback_count = 0
     reframe_mode = job.reframe_mode
     reframe_fallback_count = 0
+    content_generator = None
+    content_fallback_count = 0
     clips_json_path = os.path.join(job.job_dir, "clips.json")
+    cj: dict | None = None
     if os.path.exists(clips_json_path):
         try:
             with open(clips_json_path, "r", encoding="utf-8") as fh:
@@ -298,8 +301,10 @@ def export_zip(job_id: str):
             caption_fallback_count = int(cj.get("caption_fallback_count", 0))
             reframe_mode = cj.get("reframe_mode", reframe_mode)
             reframe_fallback_count = int(cj.get("reframe_fallback_count", 0))
+            content_generator = cj.get("content_generator")
+            content_fallback_count = int(cj.get("content_fallback_count", 0))
         except (OSError, ValueError):
-            pass
+            cj = None
 
     now = datetime.datetime.now(datetime.timezone.utc).isoformat()
     metadata = {
@@ -319,6 +324,8 @@ def export_zip(job_id: str):
         "reframe_mode": reframe_mode,
         "reframe_fallback_count": reframe_fallback_count,
         "reframe_note": "Reframe/Gesichtserkennung läuft lokal, ohne Cloud.",
+        "content_generator": content_generator,
+        "content_fallback_count": content_fallback_count,
         "disclaimer": (
             "Der Performance-Potential-Score ist eine Wahrscheinlichkeits-"
             "Einschätzung und keine Garantie für Reichweite oder Viralität."
@@ -335,6 +342,38 @@ def export_zip(job_id: str):
             if os.path.exists(p):
                 zf.write(p, arcname=optional)
         zf.writestr("metadata.json", json.dumps(metadata, ensure_ascii=False, indent=2))
+
+        # content_packages.json: publizierfertige Texte je Clip (Begleitdatei)
+        if cj is not None:
+            packages = []
+            for i, c in enumerate(cj.get("clips") or [], start=1):
+                md = c.get("metadata") or {}
+                title = None
+                for key in ("tiktok", "reels", "shorts"):
+                    t = (md.get(key) or {}).get("title")
+                    if t:
+                        title = t
+                        break
+                content_package = c.get("content_package")
+                if not title and content_package:
+                    title = (content_package.get("youtube_shorts") or {}).get("title")
+                if not title:
+                    title = f"Clip {i}"
+                packages.append({
+                    "clip_index": i,
+                    "title": title,
+                    "transcript_excerpt": (c.get("text") or "")[:200],
+                    "content_package": content_package,
+                })
+            content_packages_doc = {
+                "job_id": job.id,
+                "export_created_at": now,
+                "clips": packages,
+            }
+            zf.writestr(
+                "content_packages.json",
+                json.dumps(content_packages_doc, ensure_ascii=False, indent=2),
+            )
     buf.seek(0)
 
     filename = f"clipforge_{job.id}_clips.zip"

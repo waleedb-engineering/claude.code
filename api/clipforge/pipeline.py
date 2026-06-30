@@ -16,6 +16,7 @@ from dataclasses import dataclass, field
 from typing import Callable
 
 from .config import Settings, get_settings
+from .content import generate_content_package
 from .models import ScoredClip, Transcript
 from .render import render_clip
 from .scoring import score_clips
@@ -87,6 +88,19 @@ def run_pipeline(
     # Top-N auswählen
     top = scored[: max(0, top_n)]
 
+    # 3b) Content-Pakete (Text-only, unabhängig vom Rendering)
+    content_mode = "Claude" if settings.llm_available else "Regelbasiert"
+    progress(f"Erzeuge Content-Pakete ({content_mode}) …")
+    content_llm_used = 0
+    for clip in top:
+        package, used_llm = generate_content_package(clip, settings, language=transcript.language)
+        clip.content_package = package
+        if used_llm:
+            content_llm_used += 1
+    content_fallback_count = (
+        (len(top) - content_llm_used) if settings.llm_available else 0
+    )
+
     # 4) Rendering
     rendered: list[str] = []
     if render and top:
@@ -140,6 +154,8 @@ def run_pipeline(
         "caption_fallback_count": caption_fallback_count,
         "reframe_mode": reframe_mode,
         "reframe_fallback_count": reframe_fallback_count,
+        "content_generator": content_mode,
+        "content_fallback_count": content_fallback_count,
         "disclaimer": (
             "Der Performance-Potential-Score ist eine Wahrscheinlichkeits-"
             "Einschätzung auf Basis messbarer Signale und KEINE Garantie für "

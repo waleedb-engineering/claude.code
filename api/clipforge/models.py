@@ -137,6 +137,7 @@ class ScoredClip:
     silence_info: dict[str, Any] | None = None   # Schnitt-Metriken (nach Render)
     caption_info: dict[str, Any] | None = None   # Caption-Metriken (nach Render)
     reframe_info: dict[str, Any] | None = None   # Reframe-Metriken (nach Render)
+    content_package: dict[str, Any] | None = None  # Plattform-Texte (Content-Paket)
 
     @property
     def duration(self) -> float:

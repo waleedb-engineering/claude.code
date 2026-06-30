@@ -37,6 +37,8 @@ npm run dev      # http://127.0.0.1:3000
 | Schritt 3 | **FastAPI-Layer** (Upload, Job-Status, Preview, Download, ZIP) | ✅ fertig & verifiziert |
 | Schritt 4 | **Next.js + Tailwind Frontend** | ✅ fertig & verifiziert |
 | Schritt 5 | **Schnelle Schnitte** (Silence-Removal) | ✅ fertig & verifiziert |
+| Schritt 6–9 | **Karaoke-Captions · Smart-Reframe · Audio-Smoothing** | ✅ fertig & verifiziert |
+| Schritt 10 | **Content-Package-Generator** (TikTok / Reels / Shorts-Texte) | ✅ fertig & verifiziert |
 | später | Face-Tracking-Reframe, echtes A/B-Tracking, Direkt-Posten | 🔭 später |
 
 ### Was schon echt funktioniert
@@ -53,8 +55,13 @@ npm run dev      # http://127.0.0.1:3000
 - **Silence-Removal** („schnelle Schnitte"): entfernt stille Pausen synchron in
   Video/Audio und **mappt die Untertitel-Timings korrekt mit** — verifiziert
 - **Web-App + API**: Upload, Live-Status, `<video>`-Vorschau, Einzel- & ZIP-Download
-- **Plattform-Metadaten** (Titel/Beschreibung/Hashtags) + **Hook-Varianten**
-  (nur mit gesetztem `ANTHROPIC_API_KEY`)
+- **Content-Package-Generator**: für jeden exportierten Clip werden automatisch
+  publizierfertige Texte erzeugt — Primary Hook, 5 Hook-Varianten, YouTube-Shorts-
+  Titel/-Beschreibung, TikTok- & Instagram-Reels-Caption + Hashtags + Pinned Comment,
+  Platform-Empfehlung, 3 A/B/C-Varianten. **Funktioniert ohne API-Key** (regelbasiert,
+  DE+EN) — mit gesetztem `ANTHROPIC_API_KEY` optional durch Claude verbessert.
+  - ZIP enthält zusätzlich `content_packages.json` mit allen Texten je Clip
+  - Frontend: aufklappbares „📦 Content-Paket"-Panel mit Copy-Buttons pro Text
 
 ### Klar als TODO gekennzeichnet (noch nicht echt)
 - Reframe ist **statischer** Smart-Crop (ein Fokuspunkt pro Clip) — **kein
@@ -75,6 +82,7 @@ api/
     transcribe.py    # faster-whisper + JSON-Transkript-Loader
     segmenter.py     # Transkript -> Kandidaten-Clips
     scoring.py       # Heuristik + Claude-Scoring (Kern-IP)
+    content.py       # Content-Package-Generator (regelbasiert + optional Claude)
     captions.py      # Wort-Timestamps -> ASS-Untertitel
     render.py        # ffmpeg: 9:16-Crop + Untertitel einbrennen
     pipeline.py      # Orchestrierung
@@ -167,7 +175,7 @@ python -m clipforge.cli mein_video.mp4 --transcript transkript.json --reframe-mo
 
 Ergebnis im `--out`-Verzeichnis:
 - `clip_01_score81.mp4 …` — fertige 9:16-Clips mit Untertiteln
-- `clips.json` — Scores, Aufschlüsselung, Metadaten, Hook-Varianten
+- `clips.json` — Scores, Aufschlüsselung, Metriken + `content_package` je Clip
 - `transcript.json` — das verwendete Transkript
 
 ---
@@ -200,6 +208,6 @@ Danach liegen abspielbare 9:16-MP4s in `testdata/out/`.
 | `CLIPFORGE_TARGET_CLIP_SECONDS` | `30` | Ziel-Cliplänge |
 | `CLIPFORGE_MIN_CLIP_SECONDS` / `_MAX_` | `15` / `60` | Längen-Grenzen |
 | `CLIPFORGE_OUT_WIDTH` / `_HEIGHT` | `1080` / `1920` | Ausgabeauflösung (9:16) |
-| `ANTHROPIC_API_KEY` | – | aktiviert Claude-Scoring + Metadaten |
-| `CLIPFORGE_LLM_MODEL` | `claude-sonnet-4-6` | Modell für Scoring |
-| `CLIPFORGE_USE_LLM` | `auto` | `off` erzwingt reine Heuristik |
+| `ANTHROPIC_API_KEY` | – | aktiviert Claude-Scoring + Content-Paket-Verbesserung (optional) |
+| `CLIPFORGE_LLM_MODEL` | `claude-sonnet-4-6` | Modell für Scoring + Content-Pakete |
+| `CLIPFORGE_USE_LLM` | `auto` | `off` erzwingt reine Heuristik + regelbasierte Pakete |

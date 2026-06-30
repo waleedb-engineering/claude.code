@@ -77,8 +77,15 @@ App öffnen: <http://127.0.0.1:3000>
    inkl. „auf Gesicht ausgerichtet" bzw. Center-Fallback-Hinweis). Die
    Statuszeile zeigt erkannte Clips, exportierte MP4s, Downloads-Status,
    „Stille-Schnitt", „Captions" und „Bildausrichtung".
+   Jede Karte enthält außerdem ein **aufklappbares „📦 Content-Paket"** mit
+   fertig formulierten Plattform-Texten: Primary Hook, 5 Hook-Varianten,
+   YouTube-Shorts-Titel/-Beschreibung, TikTok & Instagram-Reels-Caption +
+   Hashtags + Pinned Comment, Platform-Empfehlung, 3 Varianten A/B/C. Alle
+   Textfelder haben einen **„Kopieren"-Button**; pro Plattform gibt es
+   „Alles kopieren". Funktioniert ohne API-Key (regelbasiert, DE+EN).
 5. Clip direkt im Player **abspielen**, einzeln per **MP4 herunterladen**, oder
-   **Alle Clips als ZIP** (enthält MP4s + clips.json/transcript.json/metadata.json).
+   **Alle Clips als ZIP** (enthält MP4s + clips.json/transcript.json/
+   metadata.json/**content_packages.json**).
 
 > Echtes Video **ohne** angehängtes Transkript: Die Pipeline transkribiert dann
 > lokal mit faster-whisper. Beim ersten Lauf wird das Modell geladen (~140 MB),

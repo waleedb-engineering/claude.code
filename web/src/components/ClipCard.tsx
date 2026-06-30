@@ -2,6 +2,7 @@ import type { ScoredClipDict } from "@/lib/types";
 import { clipDownloadUrl, clipPreviewUrl } from "@/lib/api";
 import { clipTitle, fmtTime, fmtDuration } from "@/lib/format";
 import ScoreRing from "./ScoreRing";
+import ContentPackagePanel from "./ContentPackagePanel";
 
 const BREAKDOWN_LABELS: { key: keyof BreakdownVals; label: string }[] = [
   { key: "hook", label: "Hook" },
@@ -182,6 +183,8 @@ export default function ClipCard({
           {clip.text}
         </p>
       </div>
+
+      {clip.content_package && <ContentPackagePanel pkg={clip.content_package} />}
 
       <div className="mt-auto flex items-center gap-2 pt-1">
         {downloadable ? (

@@ -117,6 +117,43 @@ export interface ReframeInfo {
   smoothing_applied: boolean;
 }
 
+export interface PlatformText {
+  caption: string;
+  hashtags: string[];
+  pinned_comment: string;
+}
+
+export interface YoutubeShortsText {
+  title: string;
+  description: string;
+  hashtags: string[];
+}
+
+export interface ContentVariant {
+  name: string;
+  hook: string;
+  caption: string;
+  hashtags: string[];
+}
+
+export interface PlatformRecommendation {
+  best_platform: string;
+  reason: string;
+}
+
+export interface ContentPackage {
+  primary_hook: string;
+  hook_variants: Record<string, string>;
+  youtube_shorts: YoutubeShortsText;
+  tiktok: PlatformText;
+  instagram_reels: PlatformText;
+  platform_recommendation: PlatformRecommendation;
+  variant_a: ContentVariant;
+  variant_b: ContentVariant;
+  variant_c: ContentVariant;
+  safety_note: Record<string, string>;
+}
+
 // Entspricht ScoredClip.to_dict() aus dem Kern.
 export interface ScoredClipDict {
   start: number;
@@ -133,6 +170,7 @@ export interface ScoredClipDict {
   silence_info?: SilenceInfo | null;
   caption_info?: CaptionInfo | null;
   reframe_info?: ReframeInfo | null;
+  content_package?: ContentPackage | null;
 }
 
 export interface ClipsJson {

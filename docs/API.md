@@ -75,9 +75,11 @@ Hook-Varianten; ohne Key läuft reine Heuristik.
 ### `exports.zip`
 
 Enthält alle vorhandenen `clip_*.mp4`, dazu — falls vorhanden — `clips.json`,
-`transcript.json` und immer eine generierte `metadata.json`:
+`transcript.json`, immer eine generierte `metadata.json` und (sofern Clips
+analysiert wurden) `content_packages.json`:
 
 ```json
+// metadata.json
 {
   "job_id": "…", "source_filename": "…",
   "export_created_at": "…", "exported_at": "…",
@@ -85,7 +87,25 @@ Enthält alle vorhandenen `clip_*.mp4`, dazu — falls vorhanden — `clips.json
   "remove_silence": true,
   "audio_smoothing": true,
   "total_removed_silence_seconds": 5.4,
+  "content_generator": "Regelbasiert",
+  "content_fallback_count": 0,
   "disclaimer": "… keine Garantie für Reichweite oder Viralität."
+}
+```
+
+```json
+// content_packages.json — publizierfertige Texte je Clip
+{
+  "job_id": "…",
+  "export_created_at": "…",
+  "clips": [
+    {
+      "clip_index": 1,
+      "title": "Warum scheitern die meisten Leute?",
+      "transcript_excerpt": "…",
+      "content_package": { /* siehe unten */ }
+    }
+  ]
 }
 ```
 
@@ -129,8 +149,46 @@ Reframe-Metriken pro Clip (`clips[i].reframe_info`):
 ```
 
 Die ZIP-`metadata.json` enthält zusätzlich `caption_mode`, `caption_style`,
-`caption_fallback_count`, `reframe_mode`, `reframe_fallback_count` und
-`reframe_note` (Hinweis: Reframe läuft lokal, ohne Cloud).
+`caption_fallback_count`, `reframe_mode`, `reframe_fallback_count`,
+`reframe_note` (Hinweis: Reframe läuft lokal, ohne Cloud), `content_generator`
+(`"Regelbasiert"` oder `"Claude"`) und `content_fallback_count`.
+
+### Content-Package pro Clip in `clips.json`
+
+Jeder Clip enthält ein `content_package`-Feld mit publizierfertigem Text:
+
+```json
+"content_package": {
+  "primary_hook": "…",
+  "hook_variants": {
+    "provokant": "…", "neugierig": "…", "emotional": "…",
+    "edukativ": "…", "direkt": "…"
+  },
+  "youtube_shorts": {
+    "title": "…", "description": "…", "hashtags": ["#shorts", "…"]
+  },
+  "tiktok": {
+    "caption": "…", "hashtags": ["…"], "pinned_comment": "…"
+  },
+  "instagram_reels": {
+    "caption": "…", "hashtags": ["…"], "pinned_comment": "…"
+  },
+  "platform_recommendation": {
+    "best_platform": "TikTok", "reason": "…"
+  },
+  "variant_a": { "name": "Aggressiver Hook", "hook": "…", "caption": "…", "hashtags": ["…"] },
+  "variant_b": { "name": "Emotional", "hook": "…", "caption": "…", "hashtags": ["…"] },
+  "variant_c": { "name": "Edukativ", "hook": "…", "caption": "…", "hashtags": ["…"] },
+  "safety_note": {
+    "virality_guarantee": "Kein Clip garantiert Viralität …",
+    "score_disclaimer": "Der Score ist eine Einschätzung …"
+  }
+}
+```
+
+`content_package` ist immer vorhanden (ab Pipeline-Version 10), auch ohne
+`ANTHROPIC_API_KEY` — dann regelbasiert generiert (`content_generator =
+"Regelbasiert"`). Ältere Jobs-Ordner ohne dieses Feld liefern `null`.
 
 ### `POST /api/jobs` — Felder (multipart/form-data)
 
