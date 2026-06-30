@@ -5,3 +5,6 @@ python-multipart==0.0.20
 anthropic>=0.40.0
 faster-whisper>=1.0.0
 pydantic>=2.0.0
+# Smart-Reframe: lokale Gesichtserkennung (OpenCV Haar-Cascade), headless ohne
+# GUI-/System-GL-Abhängigkeiten. Optional: fehlt es, fällt Reframe auf Center.
+opencv-python-headless>=4.8.0

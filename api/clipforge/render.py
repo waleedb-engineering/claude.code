@@ -20,8 +20,9 @@ from typing import Callable
 
 from .captions import make_captions
 from .config import Settings
-from .ffmpeg_utils import detect_silences, ensure_ffmpeg
+from .ffmpeg_utils import detect_silences, ensure_ffmpeg, probe
 from .models import ScoredClip
+from .reframe import plan_reframe
 from .silence import (
     audio_smoothing_filter,
     keep_intervals,
@@ -94,10 +95,10 @@ def _render_plain(
     out_path: str,
     settings: Settings,
     ass_path: str,
+    crop_filter: str,
 ) -> None:
-    """Originaler Single-Pass-Render (Captions werden als ass_path übergeben)."""
-    out_w, out_h = settings.output_width, settings.output_height
-    vf = f"{_crop_filter(out_w, out_h)},ass='{_escape_ass_path(ass_path)}'"
+    """Originaler Single-Pass-Render (Captions + Crop werden übergeben)."""
+    vf = f"{crop_filter},ass='{_escape_ass_path(ass_path)}'"
     cmd = [
         "ffmpeg", "-y",
         "-ss", f"{clip.start:.3f}",
@@ -119,16 +120,16 @@ def _render_with_silence(
     settings: Settings,
     keeps,
     ass_path: str,
+    crop_filter: str,
 ) -> None:
     """Render mit entfernten Pausen (harte Schnitte). Captions bereits re-gemappt."""
-    out_w, out_h = settings.output_width, settings.output_height
     expr = select_expr(keeps)
     # select/setpts staucht Video, aselect/asetpts staucht Audio identisch
     # -> Bild und Ton bleiben synchron. Einfachanführungszeichen schützen
     # die Kommas im between()-Ausdruck im Filtergraph.
     vf = (
         f"select='{expr}',setpts=N/FRAME_RATE/TB,"
-        f"{_crop_filter(out_w, out_h)},ass='{_escape_ass_path(ass_path)}'"
+        f"{crop_filter},ass='{_escape_ass_path(ass_path)}'"
     )
     af = f"aselect='{expr}',asetpts=N/SR/TB"
     cmd = [
@@ -153,6 +154,7 @@ def _render_with_silence_smoothed(
     settings: Settings,
     keeps,
     ass_path: str,
+    crop_filter: str,
 ) -> None:
     """Wie _render_with_silence, aber mit kurzen Audio-Fades an den Schnitten.
 
@@ -160,11 +162,10 @@ def _render_with_silence_smoothed(
     Fade-in/-out, dann concat. Gesamtdauer bleibt = Summe der Keep-Längen →
     A/V und Captions bleiben synchron.
     """
-    out_w, out_h = settings.output_width, settings.output_height
     expr = select_expr(keeps)
     v_chain = (
         f"[0:v]select='{expr}',setpts=N/FRAME_RATE/TB,"
-        f"{_crop_filter(out_w, out_h)},ass='{_escape_ass_path(ass_path)}'[v]"
+        f"{crop_filter},ass='{_escape_ass_path(ass_path)}'[v]"
     )
     a_chain = audio_smoothing_filter(keeps, fade=0.015)
     filter_complex = f"{v_chain};{a_chain}"
@@ -200,6 +201,7 @@ def render_clip(
     audio_smoothing: bool = True,
     caption_mode: str = "karaoke",
     caption_style: str = "high_energy",
+    reframe_mode: str = "smart",
     progress: LogFn | None = None,
 ) -> RenderInfo:
     """Rendert einen einzelnen Clip. Gibt RenderInfo zurück.
@@ -210,13 +212,44 @@ def render_clip(
     Silence-Render und zuletzt auf den normalen Render zurückgefallen.
     `caption_mode` (standard|karaoke) und `caption_style` (clean|high_energy)
     steuern die Untertitel; ohne Wort-Timestamps fällt Karaoke auf Standard
-    zurück. Die Caption-Infos landen in clip.caption_info.
+    zurück. `reframe_mode` (center|smart|face) steuert den 9:16-Ausschnitt;
+    ohne erkanntes Gesicht wird mittig gecroppt. Infos in clip.caption_info /
+    clip.reframe_info.
     """
     ensure_ffmpeg()
     os.makedirs(os.path.dirname(os.path.abspath(out_path)), exist_ok=True)
     log = progress or (lambda _m: None)
     out_w, out_h = settings.output_width, settings.output_height
     duration = clip.end - clip.start
+
+    # --- Reframe planen (einmal pro Clip; nie ein harter Fehler) ---
+    try:
+        media = probe(video_path)
+        crop_filter, reframe_info = plan_reframe(
+            video_path, clip.start, clip.end,
+            media.width, media.height, out_w, out_h, reframe_mode,
+        )
+    except Exception as exc:  # noqa: BLE001 — Reframe darf Export nie blocken
+        from .reframe import center_crop_filter
+        crop_filter = center_crop_filter(out_w, out_h)
+        reframe_info = {
+            "requested_mode": reframe_mode, "applied_mode": "center",
+            "fallback": True, "fallback_reason": f"Reframe-Fehler: {type(exc).__name__}",
+            "detection_method": None, "frames_analyzed": 0,
+            "faces_detected_count": 0, "focus_x": None, "crop_x": None,
+            "crop_strategy": "center", "smoothing_applied": False,
+        }
+    clip.reframe_info = reframe_info
+    _rf = reframe_info
+    msg = f"  Reframe: {_rf['applied_mode']} (angefragt {_rf['requested_mode']})"
+    if _rf.get("crop_strategy") == "static_smart":
+        msg += (
+            f", Fokus x={_rf['focus_x']}, {_rf['faces_detected_count']} Gesicht(er) "
+            f"in {_rf['frames_analyzed']} Frames"
+        )
+    if _rf["fallback"]:
+        msg += f" — Fallback: {_rf['fallback_reason']}"
+    log(msg)
 
     def _caps(words, cs: float, ce: float):
         return make_captions(
@@ -287,7 +320,8 @@ def render_clip(
             if audio_smoothing:
                 try:
                     _render_with_silence_smoothed(
-                        video_path, clip, out_path, settings, keeps, ass_path
+                        video_path, clip, out_path, settings, keeps, ass_path,
+                        crop_filter,
                     )
                     info.applied = True
                     info.audio_smoothing = True
@@ -303,7 +337,9 @@ def render_clip(
                     )
 
             # Stufe 2: einfacher Silence-Render (harte Schnitte)
-            _render_with_silence(video_path, clip, out_path, settings, keeps, ass_path)
+            _render_with_silence(
+                video_path, clip, out_path, settings, keeps, ass_path, crop_filter
+            )
             info.applied = True
             info.audio_smoothing = False
             clip.output_path = out_path
@@ -327,7 +363,7 @@ def render_clip(
     _log_caps(cap_info)
     ass_path = _write_ass_tmp(ass_text)
     try:
-        _render_plain(video_path, clip, out_path, settings, ass_path)
+        _render_plain(video_path, clip, out_path, settings, ass_path, crop_filter)
     finally:
         _safe_unlink(ass_path)
     clip.output_path = out_path

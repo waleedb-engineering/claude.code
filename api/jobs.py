@@ -46,6 +46,7 @@ class Job:
     remove_silence: bool = True
     caption_mode: str = "karaoke"
     caption_style: str = "high_energy"
+    reframe_mode: str = "smart"
     progress: list[str] = field(default_factory=list)  # dient auch als Log
     error: str | None = None
     result: dict | None = None
@@ -84,6 +85,7 @@ class JobRegistry:
         remove_silence: bool = True,
         caption_mode: str = "karaoke",
         caption_style: str = "high_energy",
+        reframe_mode: str = "smart",
     ) -> Job:
         job_id = uuid.uuid4().hex[:12]
         job_dir = os.path.join(self.base_dir, job_id)
@@ -97,6 +99,7 @@ class JobRegistry:
             remove_silence=remove_silence,
             caption_mode=caption_mode,
             caption_style=caption_style,
+            reframe_mode=reframe_mode,
             created_at=_now(),
             updated_at=_now(),
         )
@@ -172,6 +175,7 @@ class JobRegistry:
                 remove_silence=job.remove_silence,
                 caption_mode=job.caption_mode,
                 caption_style=job.caption_style,
+                reframe_mode=job.reframe_mode,
                 progress=progress,
             )
         except Exception as exc:  # noqa: BLE001 — Pipeline-Fehler sauber melden

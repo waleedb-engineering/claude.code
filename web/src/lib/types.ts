@@ -55,6 +55,7 @@ export interface Job {
   remove_silence?: boolean;
   caption_mode?: string;
   caption_style?: string;
+  reframe_mode?: string;
   progress: string[];
   error: string | null;
   result: JobResult | null;
@@ -102,6 +103,20 @@ export interface CaptionInfo {
   caption_blocks_count: number;
 }
 
+export interface ReframeInfo {
+  requested_mode: string;
+  applied_mode: string;
+  fallback: boolean;
+  fallback_reason: string | null;
+  detection_method: string | null;
+  frames_analyzed: number;
+  faces_detected_count: number;
+  focus_x: number | null;
+  crop_x: number | null;
+  crop_strategy: string;
+  smoothing_applied: boolean;
+}
+
 // Entspricht ScoredClip.to_dict() aus dem Kern.
 export interface ScoredClipDict {
   start: number;
@@ -117,6 +132,7 @@ export interface ScoredClipDict {
   output_path: string | null;
   silence_info?: SilenceInfo | null;
   caption_info?: CaptionInfo | null;
+  reframe_info?: ReframeInfo | null;
 }
 
 export interface ClipsJson {

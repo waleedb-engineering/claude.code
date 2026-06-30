@@ -118,6 +118,7 @@ async def create_job(
     remove_silence: bool = Form(default=True),
     caption_mode: str = Form(default="karaoke"),
     caption_style: str = Form(default="high_energy"),
+    reframe_mode: str = Form(default="smart"),
 ) -> dict:
     """Lädt ein Video hoch, legt einen Job an und startet die Analyse im Hintergrund.
 
@@ -144,6 +145,7 @@ async def create_job(
         remove_silence=remove_silence,
         caption_mode=caption_mode,
         caption_style=caption_style,
+        reframe_mode=reframe_mode,
     )
 
     # Upload speichern: jobs/<id>/input.<ext>
@@ -280,6 +282,8 @@ def export_zip(job_id: str):
     caption_mode = job.caption_mode
     caption_style = job.caption_style
     caption_fallback_count = 0
+    reframe_mode = job.reframe_mode
+    reframe_fallback_count = 0
     clips_json_path = os.path.join(job.job_dir, "clips.json")
     if os.path.exists(clips_json_path):
         try:
@@ -292,6 +296,8 @@ def export_zip(job_id: str):
             caption_mode = cj.get("caption_mode", caption_mode)
             caption_style = cj.get("caption_style", caption_style)
             caption_fallback_count = int(cj.get("caption_fallback_count", 0))
+            reframe_mode = cj.get("reframe_mode", reframe_mode)
+            reframe_fallback_count = int(cj.get("reframe_fallback_count", 0))
         except (OSError, ValueError):
             pass
 
@@ -310,6 +316,9 @@ def export_zip(job_id: str):
         "caption_mode": caption_mode,
         "caption_style": caption_style,
         "caption_fallback_count": caption_fallback_count,
+        "reframe_mode": reframe_mode,
+        "reframe_fallback_count": reframe_fallback_count,
+        "reframe_note": "Reframe/Gesichtserkennung läuft lokal, ohne Cloud.",
         "disclaimer": (
             "Der Performance-Potential-Score ist eine Wahrscheinlichkeits-"
             "Einschätzung und keine Garantie für Reichweite oder Viralität."

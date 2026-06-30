@@ -136,6 +136,7 @@ class ScoredClip:
     output_path: str | None = None               # gesetzt nach dem Rendering
     silence_info: dict[str, Any] | None = None   # Schnitt-Metriken (nach Render)
     caption_info: dict[str, Any] | None = None   # Caption-Metriken (nach Render)
+    reframe_info: dict[str, Any] | None = None   # Reframe-Metriken (nach Render)
 
     @property
     def duration(self) -> float:

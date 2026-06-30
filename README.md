@@ -48,6 +48,8 @@ npm run dev      # http://127.0.0.1:3000
 - **Wortgenaue Karaoke-Captions** (ASS): aktuelles Wort hervorgehoben, 2 Styles
   (`clean`/`high_energy`), automatischer Umbruch in der Safe Area, Fallback auf
   Standard ohne Wort-Timestamps — verifiziert
+- **Smart 9:16-Reframe**: richtet den Ausschnitt lokal (OpenCV) auf das Gesicht
+  aus (Smart static crop v1), sauberer Center-Fallback — verifiziert
 - **Silence-Removal** („schnelle Schnitte"): entfernt stille Pausen synchron in
   Video/Audio und **mappt die Untertitel-Timings korrekt mit** — verifiziert
 - **Web-App + API**: Upload, Live-Status, `<video>`-Vorschau, Einzel- & ZIP-Download
@@ -55,7 +57,8 @@ npm run dev      # http://127.0.0.1:3000
   (nur mit gesetztem `ANTHROPIC_API_KEY`)
 
 ### Klar als TODO gekennzeichnet (noch nicht echt)
-- Reframe = **Center-Crop** (kein Speaker/Face-Tracking) — `render.py`
+- Reframe ist **statischer** Smart-Crop (ein Fokuspunkt pro Clip) — **kein
+  dynamisches Per-Frame-Tracking** (bewusste, stabile MVP-Wahl) — `reframe.py`
 - **A/B-Performance-Messung** erzeugt Varianten, misst aber (noch) keine echten
   Plattform-Views — dafür bräuchte es Plattform-APIs
 
@@ -130,7 +133,18 @@ python -m clipforge.cli mein_video.mp4 --transcript transkript.json \
        --caption-mode karaoke --caption-style high_energy
 python -m clipforge.cli mein_video.mp4 --transcript transkript.json \
        --caption-mode standard --caption-style clean
+
+# Bildausrichtung wählen (Default: smart)
+python -m clipforge.cli mein_video.mp4 --transcript transkript.json --reframe-mode smart
+python -m clipforge.cli mein_video.mp4 --transcript transkript.json --reframe-mode center
 ```
+
+> **Smart-Reframe (`--reframe-mode smart|face|center`, Default `smart`):**
+> richtet den 9:16-Ausschnitt **lokal** (OpenCV Haar-Cascade, keine Cloud) auf
+> das erkannte Gesicht aus — Sampling über den Clip, Median-Fokuspunkt, fester
+> Crop-Offset (**Smart static crop v1**, robust statt wacklig). Ohne erkanntes
+> Gesicht (oder ohne OpenCV) → automatischer **Center-Fallback**, der Export
+> bricht nie ab. Metriken pro Clip in `clips.json` unter `reframe_info`.
 
 > **Untertitel:** `--caption-mode karaoke` hebt das aktuell gesprochene Wort
 > wortgenau hervor (Default; nutzt die Wort-Timestamps, auch nach

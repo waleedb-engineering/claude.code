@@ -155,6 +155,16 @@ export default function JobDetailPage() {
                   job.caption_mode === "karaoke" ? "Wortgenau" : "Standard"
                 }
               />
+              <Stat
+                label="Bildausrichtung"
+                value={
+                  job.reframe_mode === "center"
+                    ? "Center"
+                    : job.reframe_mode === "face"
+                      ? "Face"
+                      : "Smart"
+                }
+              />
             </div>
             {job.files?.exports_ready && (
               <a

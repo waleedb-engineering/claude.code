@@ -138,6 +138,30 @@ export default function ClipCard({
         </div>
       )}
 
+      {clip.reframe_info && (
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-neutral-400">
+          <span className="rounded-md bg-neutral-800 px-1.5 py-0.5 text-neutral-300">
+            Bild:{" "}
+            {clip.reframe_info.applied_mode === "center"
+              ? "Center"
+              : clip.reframe_info.applied_mode === "face"
+                ? "Face"
+                : "Smart"}
+          </span>
+          {clip.reframe_info.crop_strategy === "static_smart" && (
+            <span className="text-emerald-400">
+              auf Gesicht ausgerichtet ({clip.reframe_info.faces_detected_count})
+            </span>
+          )}
+          {clip.reframe_info.fallback &&
+            clip.reframe_info.requested_mode !== "center" && (
+              <span className="text-amber-400">
+                ⚠ {clip.reframe_info.fallback_reason ?? "Center-Fallback"}
+              </span>
+            )}
+        </div>
+      )}
+
       <div className="space-y-1.5">
         {BREAKDOWN_LABELS.map(({ key, label }) => (
           <Bar key={key} label={label} value={clip.breakdown[key]} />

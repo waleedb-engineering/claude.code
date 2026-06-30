@@ -70,6 +70,7 @@ export interface CreateJobInput {
   removeSilence?: boolean;
   captionMode?: string;
   captionStyle?: string;
+  reframeMode?: string;
 }
 
 export async function createJob({
@@ -79,6 +80,7 @@ export async function createJob({
   removeSilence = true,
   captionMode = "karaoke",
   captionStyle = "high_energy",
+  reframeMode = "smart",
 }: CreateJobInput): Promise<{ job_id: string; status: string }> {
   const form = new FormData();
   form.append("file", file);
@@ -86,6 +88,7 @@ export async function createJob({
   form.append("remove_silence", String(removeSilence));
   form.append("caption_mode", captionMode);
   form.append("caption_style", captionStyle);
+  form.append("reframe_mode", reframeMode);
   if (transcript) form.append("transcript", transcript);
 
   let res: Response;

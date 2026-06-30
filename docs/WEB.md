@@ -50,7 +50,7 @@ App öffnen: <http://127.0.0.1:3000>
 | Pfad | Inhalt |
 |---|---|
 | `/` | Landing mit „Video hochladen" |
-| `/upload` | Drop-Zone, Top-Clip-Anzahl, **Toggle „Stille Pausen entfernen"**, **Untertitel-Modus (Standard/Karaoke) + Caption-Style (Clean/High Energy)**, optionales Transkript-JSON |
+| `/upload` | Drop-Zone, Top-Clip-Anzahl, **Toggle „Stille Pausen entfernen"**, **Untertitel-Modus (Standard/Karaoke) + Caption-Style (Clean/High Energy)**, **Bildausrichtung (Smart/Face/Center)**, optionales Transkript-JSON |
 | `/jobs` | Übersicht aller Jobs mit Live-Status |
 | `/jobs/[jobId]` | Status + Progress/Logs, danach Clip-Karten + Downloads |
 
@@ -73,8 +73,10 @@ App öffnen: <http://127.0.0.1:3000>
    **Original- → Final-Dauer, entfernte Stille und „Schnitt-Optimierung
    aktiv/inaktiv"** (plus Warnhinweis bei Fallback) sowie den verwendeten
    **Caption-Modus + -Style** (mit Fallback-Hinweis, falls keine Wort-Timestamps
-   vorhanden waren). Die Statuszeile zeigt erkannte Clips, exportierte MP4s,
-   Downloads-Status, „Stille-Schnitt" und „Captions".
+   vorhanden waren) sowie die **Bildausrichtung** („Bild: Smart/Center/Face",
+   inkl. „auf Gesicht ausgerichtet" bzw. Center-Fallback-Hinweis). Die
+   Statuszeile zeigt erkannte Clips, exportierte MP4s, Downloads-Status,
+   „Stille-Schnitt", „Captions" und „Bildausrichtung".
 5. Clip direkt im Player **abspielen**, einzeln per **MP4 herunterladen**, oder
    **Alle Clips als ZIP** (enthält MP4s + clips.json/transcript.json/metadata.json).
 

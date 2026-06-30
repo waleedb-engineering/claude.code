@@ -18,6 +18,7 @@ export default function UploadPage() {
   const [removeSilence, setRemoveSilence] = useState(true);
   const [captionMode, setCaptionMode] = useState("karaoke");
   const [captionStyle, setCaptionStyle] = useState("high_energy");
+  const [reframeMode, setReframeMode] = useState("smart");
   const [dragging, setDragging] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -42,6 +43,7 @@ export default function UploadPage() {
         removeSilence,
         captionMode,
         captionStyle,
+        reframeMode,
       });
       router.push(`/jobs/${job_id}`);
     } catch (e) {
@@ -208,6 +210,26 @@ export default function UploadPage() {
             </select>
           </label>
         </div>
+      </div>
+
+      {/* Bildausrichtung / Reframe */}
+      <div className="rounded-2xl border border-neutral-800 bg-neutral-900/40 p-5">
+        <label className="block">
+          <span className="font-medium text-neutral-100">Bildausrichtung</span>
+          <p className="mt-1 text-sm text-neutral-400">
+            Smart versucht den Ausschnitt auf Gesicht/Sprecher auszurichten. Wenn
+            nichts erkannt wird, wird automatisch mittig gecroppt.
+          </p>
+          <select
+            value={reframeMode}
+            onChange={(e) => setReframeMode(e.target.value)}
+            className="mt-3 w-full rounded-lg border border-neutral-700 bg-neutral-950 px-3 py-2 text-sm text-neutral-100 outline-none focus:border-indigo-500 sm:w-1/2"
+          >
+            <option value="smart">Automatisch / Smart</option>
+            <option value="face">Gesicht / Face</option>
+            <option value="center">Mitte / Center</option>
+          </select>
+        </label>
       </div>
 
       {error && (

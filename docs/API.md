@@ -115,8 +115,22 @@ Caption-Metriken pro Clip (`clips[i].caption_info`):
 }
 ```
 
-Die ZIP-`metadata.json` enthält zusätzlich `caption_mode`, `caption_style`
-und `caption_fallback_count`.
+Reframe-Metriken pro Clip (`clips[i].reframe_info`):
+
+```json
+"reframe_info": {
+  "requested_mode": "smart", "applied_mode": "smart",
+  "fallback": false, "fallback_reason": null,
+  "detection_method": "opencv_haar_frontalface",
+  "frames_analyzed": 26, "faces_detected_count": 26,
+  "focus_x": 0.2766, "crop_x": 404,
+  "crop_strategy": "static_smart", "smoothing_applied": true
+}
+```
+
+Die ZIP-`metadata.json` enthält zusätzlich `caption_mode`, `caption_style`,
+`caption_fallback_count`, `reframe_mode`, `reframe_fallback_count` und
+`reframe_note` (Hinweis: Reframe läuft lokal, ohne Cloud).
 
 ### `POST /api/jobs` — Felder (multipart/form-data)
 
@@ -127,6 +141,7 @@ und `caption_fallback_count`.
 | `remove_silence` | bool | nein | `true` | Stille Pausen automatisch entfernen (schnellere, dichtere Clips) |
 | `caption_mode` | string | nein | `karaoke` | `karaoke` (wortgenaue Hervorhebung) oder `standard` |
 | `caption_style` | string | nein | `high_energy` | `high_energy` oder `clean` |
+| `reframe_mode` | string | nein | `smart` | `smart`/`face` (auf Gesicht ausrichten) oder `center` |
 | `transcript` | Datei | nein | – | Vorhandenes Transkript-JSON; überspringt Whisper (spiegelt CLI-Flag `--transcript`, ideal für schnelle Tests) |
 
 Der gewählte `remove_silence`-Wert ist im Job-Status sichtbar (Feld

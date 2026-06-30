@@ -69,6 +69,13 @@ def build_parser() -> argparse.ArgumentParser:
         default="high_energy",
         help="Caption-Style: 'clean' (schlicht) oder 'high_energy' (Default).",
     )
+    p.add_argument(
+        "--reframe-mode",
+        choices=("center", "smart", "face"),
+        default="smart",
+        help="9:16-Ausschnitt: 'center' (mittig), 'smart'/'face' (auf Gesicht "
+        "ausrichten, Default; Fallback auf center ohne Erkennung).",
+    )
     return p
 
 
@@ -94,6 +101,7 @@ def main(argv: list[str] | None = None) -> int:
             audio_smoothing=not args.no_audio_smoothing,
             caption_mode=args.caption_mode,
             caption_style=args.caption_style,
+            reframe_mode=args.reframe_mode,
             progress=_progress,
         )
     except FileNotFoundError as exc:
