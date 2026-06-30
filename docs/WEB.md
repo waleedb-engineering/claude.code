@@ -65,9 +65,12 @@ App öffnen: <http://127.0.0.1:3000>
    - Video: `api/testdata/sample.mp4`
    - Transkript: `api/testdata/transcript.json`
 3. **Analyse starten** → Weiterleitung zur Job-Seite; Fortschritt erscheint live.
-4. Nach „Fertig" erscheinen die Clip-Karten mit Score, Aufschlüsselung,
-   Begründung und Transkript-Ausschnitt.
-5. **MP4 herunterladen** lädt den fertigen 9:16-Clip.
+4. Nach „Fertig" erscheinen die Clip-Karten mit **eingebetteter `<video>`-
+   Vorschau**, Score, Aufschlüsselung, Begründung und Transkript-Ausschnitt.
+   Die Statuszeile zeigt erkannte Clips, exportierte MP4s und ob Downloads
+   bereit sind.
+5. Clip direkt im Player **abspielen**, einzeln per **MP4 herunterladen**, oder
+   **Alle Clips als ZIP** (enthält MP4s + clips.json/transcript.json/metadata.json).
 
 > Echtes Video **ohne** angehängtes Transkript: Die Pipeline transkribiert dann
 > lokal mit faster-whisper. Beim ersten Lauf wird das Modell geladen (~140 MB),

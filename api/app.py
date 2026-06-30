@@ -12,9 +12,14 @@ oder vom Repo-Root:
 
 from __future__ import annotations
 
+import datetime
+import glob
+import io
+import json
 import os
 import shutil
 import sys
+import zipfile
 
 # Eigenen Ordner auf den Pfad legen, damit `import clipforge` / `import jobs`
 # unabhängig vom Startverzeichnis funktioniert.
@@ -22,10 +27,10 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 
 from clipforge.ffmpeg_utils import FFmpegNotFound, ensure_ffmpeg
-from jobs import JobRegistry
+from jobs import Job, JobRegistry
 
 # Erlaubte Video-Endungen (Fehlerfall: ungültiger Dateityp)
 ALLOWED_EXT = {".mp4", ".mov", ".mkv", ".webm", ".avi", ".m4v"}
@@ -57,6 +62,24 @@ def _require_job(job_id: str):
     if job is None:
         raise HTTPException(status_code=404, detail="Job nicht gefunden.")
     return job
+
+
+def _mp4_paths(job: Job) -> list[str]:
+    """Alle gerenderten Clip-MP4s im Job-Ordner (sortiert)."""
+    return sorted(glob.glob(os.path.join(job.job_dir, "clip_*.mp4")))
+
+
+def _files_summary(job: Job) -> dict:
+    """Übersicht über die im Job-Ordner vorhandenen Ergebnis-Dateien."""
+    mp4s = _mp4_paths(job)
+    result = job.result or {}
+    return {
+        "clip_count": result.get("clip_count", 0),
+        "mp4_count": len(mp4s),
+        "has_transcript": os.path.exists(os.path.join(job.job_dir, "transcript.json")),
+        "has_clips_json": os.path.exists(os.path.join(job.job_dir, "clips.json")),
+        "exports_ready": len(mp4s) > 0,
+    }
 
 
 # --------------------------------------------------------------------------
@@ -145,9 +168,15 @@ def list_jobs() -> dict:
 
 @app.get("/api/jobs/{job_id}")
 def get_job(job_id: str) -> dict:
-    """Voller Status: Zustand, Progress/Logs, Fehler, Ergebnisübersicht."""
+    """Voller Status: Zustand, Progress/Logs, Fehler, Ergebnisübersicht.
+
+    Zusätzlich `files`: Anzahl erkannter Clips, Anzahl MP4-Exporte, und ob
+    transcript.json / clips.json vorhanden sind.
+    """
     job = _require_job(job_id)
-    return job.to_dict()
+    data = job.to_dict()
+    data["files"] = _files_summary(job)
+    return data
 
 
 @app.get("/api/jobs/{job_id}/transcript")
@@ -176,10 +205,8 @@ def get_clips(job_id: str):
     return FileResponse(path, media_type="application/json", filename="clips.json")
 
 
-@app.get("/api/jobs/{job_id}/clips/{clip_index}/download")
-def download_clip(job_id: str, clip_index: int):
-    """Lädt den gerenderten Clip <clip_index> (1-basiert) als MP4."""
-    job = _require_job(job_id)
+def _resolve_clip_path(job: Job, clip_index: int) -> tuple[str, str]:
+    """Liefert (absoluter_pfad, dateiname) des Clips oder wirft 404."""
     result = job.result or {}
     clips = result.get("clips") or []
     if not clips:
@@ -200,7 +227,82 @@ def download_clip(job_id: str, clip_index: int):
         raise HTTPException(
             status_code=404, detail="Exportdatei fehlt auf dem Datenträger."
         )
+    return path, output_file
+
+
+@app.get("/api/jobs/{job_id}/clips/{clip_index}/download")
+def download_clip(job_id: str, clip_index: int):
+    """Lädt den gerenderten Clip <clip_index> (1-basiert) als MP4 (Attachment)."""
+    job = _require_job(job_id)
+    path, output_file = _resolve_clip_path(job, clip_index)
+    # filename= -> Content-Disposition: attachment (erzwingt Download)
     return FileResponse(path, media_type="video/mp4", filename=output_file)
+
+
+@app.get("/api/jobs/{job_id}/clips/{clip_index}/preview")
+def preview_clip(job_id: str, clip_index: int):
+    """Streamt den Clip browserfähig (inline, mit Range-Support fürs Abspielen).
+
+    Ohne `filename=` setzt Starlette keine attachment-Disposition -> der Browser
+    spielt das Video inline ab. FileResponse beantwortet Range-Requests (206),
+    was Seeking in der <video>-Vorschau ermöglicht.
+    """
+    job = _require_job(job_id)
+    path, _ = _resolve_clip_path(job, clip_index)
+    return FileResponse(path, media_type="video/mp4")
+
+
+@app.get("/api/jobs/{job_id}/exports.zip")
+def export_zip(job_id: str):
+    """Bündelt alle vorhandenen MP4-Clips (+ clips.json/transcript.json/meta) als ZIP."""
+    job = _require_job(job_id)
+    mp4s = _mp4_paths(job)
+    if not mp4s:
+        raise HTTPException(
+            status_code=404,
+            detail="Keine exportierten Clips vorhanden (Job nicht fertig oder leeres Ergebnis).",
+        )
+
+    scorer = None
+    clips_json_path = os.path.join(job.job_dir, "clips.json")
+    if os.path.exists(clips_json_path):
+        try:
+            with open(clips_json_path, "r", encoding="utf-8") as fh:
+                scorer = json.load(fh).get("scorer")
+        except (OSError, ValueError):
+            scorer = None
+
+    metadata = {
+        "job_id": job.id,
+        "source_filename": job.filename,
+        "exported_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+        "clip_count": (job.result or {}).get("clip_count", len(mp4s)),
+        "mp4_count": len(mp4s),
+        "scorer": scorer,
+        "disclaimer": (
+            "Der Performance-Potential-Score ist eine Wahrscheinlichkeits-"
+            "Einschätzung und keine Garantie für Reichweite oder Viralität."
+        ),
+    }
+
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        for path in mp4s:
+            zf.write(path, arcname=os.path.basename(path))
+        # optionale Begleitdateien
+        for optional in ("clips.json", "transcript.json"):
+            p = os.path.join(job.job_dir, optional)
+            if os.path.exists(p):
+                zf.write(p, arcname=optional)
+        zf.writestr("metadata.json", json.dumps(metadata, ensure_ascii=False, indent=2))
+    buf.seek(0)
+
+    filename = f"clipforge_{job.id}_clips.zip"
+    return StreamingResponse(
+        buf,
+        media_type="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 @app.get("/api/jobs/{job_id}/files")

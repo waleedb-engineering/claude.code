@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
-import { getClips, getJob } from "@/lib/api";
+import { exportsZipUrl, getClips, getJob } from "@/lib/api";
 import type { ClipsJson, Job } from "@/lib/types";
 import StatusBadge from "@/components/StatusBadge";
 import Spinner from "@/components/Spinner";
@@ -126,14 +126,48 @@ export default function JobDetailPage() {
             </div>
           )}
 
-          <div className="flex flex-wrap items-center gap-4 rounded-2xl border border-neutral-800 bg-neutral-900/40 px-5 py-4 text-sm">
-            <Stat label="Clips" value={String(result?.clip_count ?? 0)} />
-            <Stat label="Gerendert" value={String(result?.rendered_count ?? 0)} />
-            <Stat label="Sprache" value={result?.language ?? "—"} />
-            <Stat
-              label="Quell-Länge"
-              value={result ? `${Math.round(result.duration)}s` : "—"}
-            />
+          <div className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-neutral-800 bg-neutral-900/40 px-5 py-4 text-sm">
+            <div className="flex flex-wrap items-center gap-5">
+              <Stat
+                label="Clips erkannt"
+                value={String(job.files?.clip_count ?? result?.clip_count ?? 0)}
+              />
+              <Stat
+                label="Exportiert"
+                value={String(job.files?.mp4_count ?? result?.rendered_count ?? 0)}
+              />
+              <Stat label="Sprache" value={result?.language ?? "—"} />
+              <Stat
+                label="Quell-Länge"
+                value={result ? `${Math.round(result.duration)}s` : "—"}
+              />
+              <Stat
+                label="Downloads"
+                value={job.files?.exports_ready ? "bereit" : "—"}
+              />
+            </div>
+            {job.files?.exports_ready && (
+              <a
+                href={exportsZipUrl(jobId)}
+                className="inline-flex items-center gap-2 rounded-lg bg-white px-3.5 py-2 text-sm font-medium text-neutral-900 transition hover:bg-neutral-200"
+                download
+              >
+                <svg
+                  className="h-4 w-4"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                >
+                  <path
+                    d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+                Alle Clips als ZIP
+              </a>
+            )}
           </div>
 
           <details className="rounded-2xl border border-neutral-800 bg-neutral-900/40">

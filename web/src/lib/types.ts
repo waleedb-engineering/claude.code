@@ -34,6 +34,14 @@ export interface JobResult {
   warning?: string;
 }
 
+export interface JobFiles {
+  clip_count: number;
+  mp4_count: number;
+  has_transcript: boolean;
+  has_clips_json: boolean;
+  exports_ready: boolean;
+}
+
 export interface Job {
   id: string;
   status: JobStatus;
@@ -47,6 +55,7 @@ export interface Job {
   progress: string[];
   error: string | null;
   result: JobResult | null;
+  files?: JobFiles;
 }
 
 export interface ScoreBreakdown {

@@ -1,5 +1,5 @@
 import type { ScoredClipDict } from "@/lib/types";
-import { clipDownloadUrl } from "@/lib/api";
+import { clipDownloadUrl, clipPreviewUrl } from "@/lib/api";
 import { clipTitle, fmtTime, fmtDuration } from "@/lib/format";
 import ScoreRing from "./ScoreRing";
 
@@ -70,6 +70,18 @@ export default function ClipCard({
           </div>
         </div>
       </div>
+
+      {downloadable && (
+        <div className="overflow-hidden rounded-xl border border-neutral-800 bg-black">
+          <video
+            controls
+            preload="metadata"
+            playsInline
+            src={clipPreviewUrl(jobId, index)}
+            className="mx-auto max-h-80 w-auto"
+          />
+        </div>
+      )}
 
       <div className="space-y-1.5">
         {BREAKDOWN_LABELS.map(({ key, label }) => (

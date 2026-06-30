@@ -46,11 +46,38 @@ Hook-Varianten; ohne Key läuft reine Heuristik.
 | `GET` | `/health` | Backend- & FFmpeg-Status |
 | `POST` | `/api/jobs` | Video hochladen, Job starten → `job_id` |
 | `GET` | `/api/jobs` | Alle Jobs (Kurzstatus) |
-| `GET` | `/api/jobs/{job_id}` | Voller Status: Progress, Logs, Fehler, Ergebnis |
+| `GET` | `/api/jobs/{job_id}` | Voller Status: Progress, Logs, Fehler, Ergebnis, `files`-Übersicht |
 | `GET` | `/api/jobs/{job_id}/transcript` | `transcript.json` (falls vorhanden) |
 | `GET` | `/api/jobs/{job_id}/clips` | `clips.json` (falls vorhanden) |
-| `GET` | `/api/jobs/{job_id}/clips/{clip_index}/download` | Gerenderten Clip als MP4 (1-basiert) |
+| `GET` | `/api/jobs/{job_id}/clips/{clip_index}/download` | Gerenderten Clip als MP4 (Attachment, 1-basiert) |
+| `GET` | `/api/jobs/{job_id}/clips/{clip_index}/preview` | Clip inline streamen (video/mp4, Range/206 → Seeking) |
+| `GET` | `/api/jobs/{job_id}/exports.zip` | Alle MP4-Clips + clips.json/transcript.json/metadata.json als ZIP |
 | `GET` | `/api/jobs/{job_id}/files` | Alle Dateien im Job-Ordner |
+
+### `files`-Übersicht in `GET /api/jobs/{job_id}`
+
+```json
+"files": {
+  "clip_count": 2,          // erkannte/bewertete Clips
+  "mp4_count": 2,           // tatsächlich gerenderte MP4-Exporte
+  "has_transcript": true,   // transcript.json vorhanden
+  "has_clips_json": true,   // clips.json vorhanden
+  "exports_ready": true     // mp4_count > 0 (ZIP/Downloads verfügbar)
+}
+```
+
+### `preview` vs. `download`
+
+- **preview**: ohne `Content-Disposition: attachment` → Browser spielt inline
+  ab; unterstützt `Range`-Requests (HTTP 206) fürs Seeken in `<video>`.
+- **download**: mit `attachment; filename=…` → erzwingt Speichern.
+
+### `exports.zip`
+
+Enthält alle vorhandenen `clip_*.mp4`, dazu — falls vorhanden — `clips.json`,
+`transcript.json` und immer eine generierte `metadata.json`
+(`job_id`, `source_filename`, `exported_at`, `clip_count`, `mp4_count`,
+`scorer`, `disclaimer`). Ohne gerenderte Clips → `404`.
 
 ### `POST /api/jobs` — Felder (multipart/form-data)
 

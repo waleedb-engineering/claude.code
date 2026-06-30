@@ -96,4 +96,12 @@ export function clipDownloadUrl(jobId: string, clipIndex: number): string {
   return `${API_BASE}/api/jobs/${jobId}/clips/${clipIndex}/download`;
 }
 
+export function clipPreviewUrl(jobId: string, clipIndex: number): string {
+  return `${API_BASE}/api/jobs/${jobId}/clips/${clipIndex}/preview`;
+}
+
+export function exportsZipUrl(jobId: string): string {
+  return `${API_BASE}/api/jobs/${jobId}/exports.zip`;
+}
+
 export { ApiError };
