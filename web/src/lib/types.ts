@@ -79,6 +79,17 @@ export interface HookVariant {
   text: string;
 }
 
+export interface SilenceInfo {
+  remove_silence: boolean;
+  n_silences: number;
+  removed_seconds: number;
+  original_duration: number;
+  final_duration: number;
+  applied: boolean;
+  audio_smoothing: boolean;
+  fallback: boolean;
+}
+
 // Entspricht ScoredClip.to_dict() aus dem Kern.
 export interface ScoredClipDict {
   start: number;
@@ -92,6 +103,7 @@ export interface ScoredClipDict {
   hook_variants: HookVariant[];
   scorer: string;
   output_path: string | null;
+  silence_info?: SilenceInfo | null;
 }
 
 export interface ClipsJson {

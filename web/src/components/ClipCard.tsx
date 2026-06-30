@@ -83,6 +83,40 @@ export default function ClipCard({
         </div>
       )}
 
+      {clip.silence_info?.applied && (
+        <div className="rounded-lg border border-neutral-800 bg-neutral-800/30 px-3 py-2 text-xs">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-neutral-400">
+            <span>
+              Original{" "}
+              <span className="text-neutral-200">
+                {fmtDuration(clip.silence_info.original_duration)}
+              </span>
+            </span>
+            <span className="text-neutral-600">→</span>
+            <span>
+              Final{" "}
+              <span className="text-neutral-200">
+                {fmtDuration(clip.silence_info.final_duration)}
+              </span>
+            </span>
+            <span className="text-neutral-600">·</span>
+            <span className="text-emerald-400">
+              −{clip.silence_info.removed_seconds.toFixed(1)}s Stille
+            </span>
+            <span className="text-neutral-600">·</span>
+            <span>
+              Schnitt-Optimierung{" "}
+              {clip.silence_info.audio_smoothing ? "aktiv" : "inaktiv"}
+            </span>
+          </div>
+          {clip.silence_info.fallback && (
+            <p className="mt-1 text-amber-400">
+              ⚠ Fallback: Silence-Removal nicht vollständig angewandt.
+            </p>
+          )}
+        </div>
+      )}
+
       <div className="space-y-1.5">
         {BREAKDOWN_LABELS.map(({ key, label }) => (
           <Bar key={key} label={label} value={clip.breakdown[key]} />

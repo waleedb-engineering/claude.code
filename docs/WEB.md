@@ -69,8 +69,10 @@ App öffnen: <http://127.0.0.1:3000>
    Fortschritt erscheint live (inkl. Anzahl entfernter Stellen und Dauer).
 4. Nach „Fertig" erscheinen die Clip-Karten mit **eingebetteter `<video>`-
    Vorschau**, Score, Aufschlüsselung, Begründung und Transkript-Ausschnitt.
-   Die Statuszeile zeigt erkannte Clips, exportierte MP4s und ob Downloads
-   bereit sind.
+   Bei aktivem Silence-Removal zeigt jede Karte zusätzlich kompakt
+   **Original- → Final-Dauer, entfernte Stille und „Schnitt-Optimierung
+   aktiv/inaktiv"** (plus Warnhinweis bei Fallback). Die Statuszeile zeigt
+   erkannte Clips, exportierte MP4s, Downloads-Status und „Stille-Schnitt".
 5. Clip direkt im Player **abspielen**, einzeln per **MP4 herunterladen**, oder
    **Alle Clips als ZIP** (enthält MP4s + clips.json/transcript.json/metadata.json).
 

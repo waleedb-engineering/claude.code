@@ -134,6 +134,7 @@ class ScoredClip:
     words: list[Word] = field(default_factory=list)
     scorer: str = "heuristic"                    # "heuristic" | "llm" | "llm+heuristic"
     output_path: str | None = None               # gesetzt nach dem Rendering
+    silence_info: dict[str, Any] | None = None   # Schnitt-Metriken (nach Render)
 
     @property
     def duration(self) -> float:

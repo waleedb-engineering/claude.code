@@ -118,13 +118,21 @@ python -m clipforge.cli mein_video.mp4 --transcript transkript.json --no-render
 
 # Mit Silence-Removal (schnelle Schnitte: entfernt stille Pausen)
 python -m clipforge.cli mein_video.mp4 --transcript transkript.json --remove-silence
+
+# Silence-Removal ohne Audio-Glättung an den Schnitten
+python -m clipforge.cli mein_video.mp4 --transcript transkript.json --remove-silence --no-audio-smoothing
 ```
 
 > **`--remove-silence`** entfernt erkannte Stille (Standard: `silencedetect`
 > bei −30 dB, ≥ 0,6 s) synchron aus Video **und** Audio und passt die
-> Untertitel-Timings entsprechend an. Ohne den Flag bleibt das Verhalten
-> unverändert. Findet die Pipeline keine sinnvollen Pausen oder schlägt der
-> Schnitt fehl, wird automatisch normal gerendert (Fallback).
+> Untertitel-Timings entsprechend an. Standardmäßig werden harte Audio-Schnitte
+> mit **sehr kurzen Fades (15 ms)** geglättet (gegen Klick-Geräusche), ohne die
+> Gesamtdauer zu verändern — abschaltbar mit `--no-audio-smoothing`. Ohne den
+> Flag bleibt das Verhalten unverändert. Findet die Pipeline keine sinnvollen
+> Pausen oder schlägt der Schnitt fehl, wird automatisch normal gerendert
+> (gestufter Fallback). Pro Clip werden die Schnitt-Metriken in `clips.json`
+> unter `silence_info` gespeichert (Original-/Final-Dauer, entfernte Stille,
+> Audio-Smoothing, Fallback).
 
 Ergebnis im `--out`-Verzeichnis:
 - `clip_01_score81.mp4 …` — fertige 9:16-Clips mit Untertiteln

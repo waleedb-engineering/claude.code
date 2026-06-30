@@ -50,6 +50,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="Stille Pausen automatisch entfernen (schnellere, dichtere Clips). "
         "Ohne dieses Flag bleibt das normale Verhalten erhalten.",
     )
+    p.add_argument(
+        "--no-audio-smoothing",
+        action="store_true",
+        help="Audio-Glättung (kurze Fades an Schnitten) deaktivieren. "
+        "Nur relevant zusammen mit --remove-silence.",
+    )
     return p
 
 
@@ -72,6 +78,7 @@ def main(argv: list[str] | None = None) -> int:
             top_n=args.top,
             render=not args.no_render,
             remove_silence=args.remove_silence,
+            audio_smoothing=not args.no_audio_smoothing,
             progress=_progress,
         )
     except FileNotFoundError as exc:

@@ -9,6 +9,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from clipforge.models import Word
 from clipforge.silence import (
+    audio_smoothing_filter,
     keep_intervals,
     kept_seconds,
     remap_time,
@@ -72,6 +73,31 @@ def test_select_expr_format():
     expr = select_expr([(0.0, 4.0), (6.0, 10.0)])
     assert expr == "between(t,0.000,4.000)+between(t,6.000,10.000)"
     assert select_expr([]) == "1"
+
+
+def test_audio_smoothing_filter_multi_segment():
+    keeps = [(0.0, 4.0), (6.0, 10.0)]
+    f = audio_smoothing_filter(keeps, fade=0.015)
+    # zwei getrimmte Segmente + concat zu [a]
+    assert f.count("atrim=") == 2
+    assert "afade=t=in" in f and "afade=t=out" in f
+    assert "concat=n=2:v=0:a=1[a]" in f
+    # Trim-Grenzen entsprechen den Keep-Intervallen (Dauer bleibt erhalten)
+    assert "atrim=0.000:4.000" in f and "atrim=6.000:10.000" in f
+
+
+def test_audio_smoothing_filter_single_segment():
+    f = audio_smoothing_filter([(0.0, 5.0)], fade=0.015)
+    assert "concat" not in f          # ein Segment -> direkt [a]
+    assert f.endswith("[a]")
+    assert "atrim=0.000:5.000" in f
+
+
+def test_audio_smoothing_tiny_segment_skips_fade():
+    # Sehr kurzes Segment (< 8 ms) -> keine Fades, aber gültiger Trim.
+    f = audio_smoothing_filter([(0.0, 0.004)], fade=0.015)
+    assert "atrim=0.000:0.004" in f
+    assert "afade" not in f
 
 
 def _run_all():

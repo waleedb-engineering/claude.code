@@ -100,3 +100,37 @@ def select_expr(keeps: list[Interval]) -> str:
     """FFmpeg-Ausdruck für select/aselect: behalte nur die Keep-Intervalle."""
     parts = [f"between(t,{a:.3f},{b:.3f})" for a, b in keeps]
     return "+".join(parts) if parts else "1"
+
+
+def audio_smoothing_filter(keeps: list[Interval], fade: float = 0.015) -> str:
+    """Baut die Audio-Seite eines filter_complex mit kurzen Fades je Segment.
+
+    Jedes Keep-Intervall wird einzeln aus `[0:a]` getrimmt, auf 0 zurückgesetzt
+    und mit einem sehr kurzen Fade-in/-out (Default 15 ms) an seinen Rändern
+    versehen; danach werden alle Segmente per `concat` aneinandergehängt → `[a]`.
+
+    Wichtig: Die Fades liegen INNERHALB der behaltenen Samples — die
+    Gesamtdauer (Summe der Keep-Längen) bleibt identisch zum Video-`select`,
+    daher kein A/V- oder Caption-Versatz. Die kurzen Pegel-Dips an den Nähten
+    entschärfen hörbare Klick-Geräusche an harten Schnitten.
+    """
+    parts: list[str] = []
+    labels: list[str] = []
+    n = len(keeps)
+    for i, (a, b) in enumerate(keeps):
+        length = max(0.0, b - a)
+        d = min(fade, length / 4.0)
+        out_lbl = "[a]" if n == 1 else f"[as{i}]"
+        chain = f"[0:a]atrim={a:.3f}:{b:.3f},asetpts=PTS-STARTPTS"
+        if d > 0.002:
+            chain += (
+                f",afade=t=in:st=0:d={d:.3f}"
+                f",afade=t=out:st={max(0.0, length - d):.3f}:d={d:.3f}"
+            )
+        chain += out_lbl
+        parts.append(chain)
+        labels.append(out_lbl)
+    if n == 1:
+        return parts[0]
+    concat = "".join(labels) + f"concat=n={n}:v=0:a=1[a]"
+    return ";".join(parts + [concat])

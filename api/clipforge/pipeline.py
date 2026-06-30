@@ -50,6 +50,7 @@ def run_pipeline(
     top_n: int = 5,
     render: bool = True,
     remove_silence: bool = False,
+    audio_smoothing: bool = True,
     progress: ProgressFn = _noop,
 ) -> PipelineResult:
     settings = settings or get_settings()
@@ -102,6 +103,7 @@ def run_pipeline(
                     out_path,
                     settings,
                     remove_silence=remove_silence,
+                    audio_smoothing=audio_smoothing,
                     progress=progress,
                 )
                 rendered.append(out_path)
@@ -109,10 +111,16 @@ def run_pipeline(
                 progress(f"  ⚠ Rendering fehlgeschlagen: {exc}")
 
     # 5) clips.json
+    total_removed = round(
+        sum((c.silence_info or {}).get("removed_seconds", 0.0) for c in top), 2
+    )
+    any_smoothing = any((c.silence_info or {}).get("audio_smoothing") for c in top)
     clips_json = {
         "source": os.path.abspath(video_path),
         "scorer": scorer,
         "remove_silence": remove_silence,
+        "audio_smoothing": any_smoothing,
+        "total_removed_silence_seconds": total_removed,
         "disclaimer": (
             "Der Performance-Potential-Score ist eine Wahrscheinlichkeits-"
             "Einschätzung auf Basis messbarer Signale und KEINE Garantie für "

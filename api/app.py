@@ -264,22 +264,35 @@ def export_zip(job_id: str):
             detail="Keine exportierten Clips vorhanden (Job nicht fertig oder leeres Ergebnis).",
         )
 
+    # Schnitt-/Scorer-Infos aus clips.json lesen (falls vorhanden)
     scorer = None
+    remove_silence = job.remove_silence
+    audio_smoothing = False
+    total_removed = 0.0
     clips_json_path = os.path.join(job.job_dir, "clips.json")
     if os.path.exists(clips_json_path):
         try:
             with open(clips_json_path, "r", encoding="utf-8") as fh:
-                scorer = json.load(fh).get("scorer")
+                cj = json.load(fh)
+            scorer = cj.get("scorer")
+            remove_silence = cj.get("remove_silence", remove_silence)
+            audio_smoothing = bool(cj.get("audio_smoothing", False))
+            total_removed = float(cj.get("total_removed_silence_seconds", 0.0))
         except (OSError, ValueError):
-            scorer = None
+            pass
 
+    now = datetime.datetime.now(datetime.timezone.utc).isoformat()
     metadata = {
         "job_id": job.id,
         "source_filename": job.filename,
-        "exported_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+        "export_created_at": now,
+        "exported_at": now,  # rückwärtskompatibel
         "clip_count": (job.result or {}).get("clip_count", len(mp4s)),
         "mp4_count": len(mp4s),
         "scorer": scorer,
+        "remove_silence": remove_silence,
+        "audio_smoothing": audio_smoothing,
+        "total_removed_silence_seconds": round(total_removed, 2),
         "disclaimer": (
             "Der Performance-Potential-Score ist eine Wahrscheinlichkeits-"
             "Einschätzung und keine Garantie für Reichweite oder Viralität."

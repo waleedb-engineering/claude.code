@@ -75,9 +75,34 @@ Hook-Varianten; ohne Key läuft reine Heuristik.
 ### `exports.zip`
 
 Enthält alle vorhandenen `clip_*.mp4`, dazu — falls vorhanden — `clips.json`,
-`transcript.json` und immer eine generierte `metadata.json`
-(`job_id`, `source_filename`, `exported_at`, `clip_count`, `mp4_count`,
-`scorer`, `disclaimer`). Ohne gerenderte Clips → `404`.
+`transcript.json` und immer eine generierte `metadata.json`:
+
+```json
+{
+  "job_id": "…", "source_filename": "…",
+  "export_created_at": "…", "exported_at": "…",
+  "clip_count": 2, "mp4_count": 2, "scorer": "Heuristik",
+  "remove_silence": true,
+  "audio_smoothing": true,
+  "total_removed_silence_seconds": 5.4,
+  "disclaimer": "… keine Garantie für Reichweite oder Viralität."
+}
+```
+
+Ohne gerenderte Clips → `404`.
+
+### Schnitt-Metriken in `clips.json`
+
+Top-Level: `remove_silence`, `audio_smoothing`, `total_removed_silence_seconds`.
+Pro Clip (`clips[i].silence_info`):
+
+```json
+"silence_info": {
+  "remove_silence": true, "n_silences": 3, "removed_seconds": 5.4,
+  "original_duration": 18.0, "final_duration": 12.6,
+  "applied": true, "audio_smoothing": true, "fallback": false
+}
+```
 
 ### `POST /api/jobs` — Felder (multipart/form-data)
 
