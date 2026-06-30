@@ -9,6 +9,7 @@ venv/
 api/testdata/out/
 api/testdata/*.mp4
 api/testdata/*.wav
+api/jobs/
 clipforge_out/
 *.mp4
 !.gitkeep

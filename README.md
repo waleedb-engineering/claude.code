@@ -5,6 +5,8 @@ TikTok, Instagram Reels und YouTube Shorts erzeugt.
 
 📄 **Produktdefinition:** [`docs/PRODUCT.md`](docs/PRODUCT.md) — Problem, Lösung,
 MVP-Scope, Architektur, Risiken und Akzeptanzkriterien.
+🌐 **Web-Plan:** [`docs/WEB_PLAN.md`](docs/WEB_PLAN.md) · **HTTP-API:**
+[`docs/API.md`](docs/API.md) — FastAPI-Bridge über dem Pipeline-Kern.
 
 > **Ehrlicher Hinweis:** ClipForge garantiert **keine** Viralität. Es
 > **maximiert die Wahrscheinlichkeit** für starke Performance durch messbare
