@@ -1,7 +1,10 @@
-# ClipForge
+# ClipForge AI
 
 KI-gestütztes Tool, das aus **langen Videos automatisch starke Kurzclips** für
 TikTok, Instagram Reels und YouTube Shorts erzeugt.
+
+📄 **Produktdefinition:** [`docs/PRODUCT.md`](docs/PRODUCT.md) — Problem, Lösung,
+MVP-Scope, Architektur, Risiken und Akzeptanzkriterien.
 
 > **Ehrlicher Hinweis:** ClipForge garantiert **keine** Viralität. Es
 > **maximiert die Wahrscheinlichkeit** für starke Performance durch messbare
