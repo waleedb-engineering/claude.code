@@ -18,6 +18,14 @@ const MAP: Record<JobStatus, { label: string; cls: string }> = {
     label: "Fehlgeschlagen",
     cls: "bg-rose-500/10 text-rose-300 border-rose-500/30",
   },
+  interrupted: {
+    label: "Unterbrochen",
+    cls: "bg-amber-500/10 text-amber-300 border-amber-500/30",
+  },
+  incomplete: {
+    label: "Unvollständig",
+    cls: "bg-amber-500/10 text-amber-300 border-amber-500/30",
+  },
 };
 
 export default function StatusBadge({ status }: { status: JobStatus }) {

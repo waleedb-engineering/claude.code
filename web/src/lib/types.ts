@@ -2,7 +2,13 @@
 // Quelle der Wahrheit bleibt das Backend (api/jobs.py, api/clipforge/models.py).
 // Hier wird KEINE Logik dupliziert — nur Formen für die Anzeige.
 
-export type JobStatus = "queued" | "processing" | "completed" | "failed";
+export type JobStatus =
+  | "queued"
+  | "processing"
+  | "completed"
+  | "failed"
+  | "interrupted"
+  | "incomplete";
 
 export interface JobSummary {
   id: string;
@@ -12,6 +18,9 @@ export interface JobSummary {
   updated_at: string;
   clip_count: number | null;
   error: string | null;
+  restored?: boolean;
+  interrupted?: boolean;
+  restore_warning?: string | null;
 }
 
 export interface ResultClip {
@@ -40,6 +49,9 @@ export interface JobFiles {
   has_transcript: boolean;
   has_clips_json: boolean;
   exports_ready: boolean;
+  input_file_exists?: boolean;
+  transcript_exists?: boolean;
+  clips_json_exists?: boolean;
   auto_export_count?: number;
   manual_export_count?: number;
   total_export_count?: number;
@@ -65,6 +77,10 @@ export interface Job {
   error: string | null;
   result: JobResult | null;
   files?: JobFiles;
+  restored?: boolean;
+  restored_at?: string | null;
+  interrupted?: boolean;
+  restore_warning?: string | null;
 }
 
 export interface ScoreBreakdown {

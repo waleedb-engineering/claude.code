@@ -120,10 +120,20 @@ App öffnen: <http://127.0.0.1:3000>
 - **Empty:** „Noch keine Jobs" bzw. Hinweis bei leerem Ergebnis (0 Clips).
 - **Error:** Verständliche Meldung bei Backend-Ausfall, ungültigem Dateityp,
   fehlgeschlagener Analyse (`job.error`) oder nicht gefundenem Job.
+- **Wiederhergestellt (Restore):** Jobs überleben einen FastAPI-Neustart. Sie
+  werden aus `jobs/` neu geladen und in Liste + Detailseite mit dem Hinweis
+  **„↻ Aus lokalem Speicher wiederhergestellt"** markiert. Voll nutzbar bleiben
+  Clips, Previews/Downloads, manuelle Exporte und beide ZIPs — ohne erneute
+  Analyse.
+- **Unterbrochen / Unvollständig:** War ein Job beim Neustart aktiv, wird er als
+  **„Unterbrochen"** (`interrupted`) angezeigt — mit klarer Erklärung und
+  **ohne** irreführende Download-Buttons. Fehlen einem fertigen Job die
+  Ergebnis-Dateien, erscheint **„Unvollständig"** (`incomplete`) mit Warnhinweis.
 
 ---
 
 ## Nicht enthalten (bewusst)
 
 ❌ Accounts · ❌ Billing · ❌ Cloud · ❌ Face-Tracking · ❌ Direkt-Posten auf
-TikTok/Instagram/YouTube · ❌ neue Backend-Logik · ❌ Datenbank.
+TikTok/Instagram/YouTube · ❌ neue Backend-Logik · ❌ Datenbank ·
+❌ Cloud-Persistenz · ❌ automatische Wiederaufnahme laufender Renders nach Crash.

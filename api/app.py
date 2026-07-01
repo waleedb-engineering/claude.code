@@ -60,6 +60,18 @@ app.add_middleware(
 
 registry = JobRegistry(JOBS_DIR)
 
+# Persistente Jobs nach (Neu-)Start aus jobs/ wiederherstellen. Robust:
+# kaputte Ordner werden übersprungen, Warnungen werden geloggt. Es wird nie
+# ein Job automatisch fortgesetzt.
+_restore_warnings = registry.restore()
+if _restore_warnings:
+    print(f"[clipforge] Job-Restore: {len(_restore_warnings)} Hinweis(e):")
+    for _w in _restore_warnings:
+        print(f"[clipforge]   - {_w}")
+_restored_count = len(registry.list())
+if _restored_count:
+    print(f"[clipforge] {_restored_count} Job(s) aus {JOBS_DIR} wiederhergestellt.")
+
 
 # --------------------------------------------------------------------------
 # Helfer
@@ -75,6 +87,14 @@ def _require_job(job_id: str):
 def _mp4_paths(job: Job) -> list[str]:
     """Alle automatisch gerenderten Clip-MP4s im Job-Ordner (sortiert)."""
     return sorted(glob.glob(os.path.join(job.job_dir, "clip_*.mp4")))
+
+
+def _find_input_file(job: Job) -> str | None:
+    """Findet die hochgeladene Quelldatei (jobs/<id>/input.*), falls vorhanden."""
+    for path in sorted(glob.glob(os.path.join(job.job_dir, "input.*"))):
+        if os.path.isfile(path):
+            return path
+    return None
 
 
 def _manual_mp4_paths(job: Job) -> list[str]:
@@ -135,6 +155,10 @@ def _files_summary(job: Job) -> dict:
     return {
         "clip_count": result.get("clip_count", 0),
         "mp4_count": auto_count,
+        "input_file_exists": _find_input_file(job) is not None,
+        "transcript_exists": os.path.exists(os.path.join(job.job_dir, "transcript.json")),
+        "clips_json_exists": os.path.exists(os.path.join(job.job_dir, "clips.json")),
+        # rückwärtskompatible Aliasnamen (bestehendes Frontend nutzt diese)
         "has_transcript": os.path.exists(os.path.join(job.job_dir, "transcript.json")),
         "has_clips_json": os.path.exists(os.path.join(job.job_dir, "clips.json")),
         "exports_ready": auto_count > 0,

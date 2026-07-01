@@ -87,6 +87,11 @@ export default function JobsPage() {
                   <p className="mt-0.5 text-xs text-neutral-500">
                     {fmtDateTime(j.created_at)} · {j.id}
                   </p>
+                  {j.restored && (
+                    <p className="mt-0.5 text-[11px] text-neutral-500">
+                      ↻ Aus lokalem Speicher wiederhergestellt
+                    </p>
+                  )}
                 </div>
                 <div className="flex shrink-0 items-center gap-3">
                   {typeof j.clip_count === "number" && (

@@ -41,6 +41,7 @@ npm run dev      # http://127.0.0.1:3000
 | Schritt 10 | **Content-Package-Generator** (TikTok / Reels / Shorts-Texte) | ✅ fertig & verifiziert |
 | Schritt 11 | **Web-Clip-Editor** (Start/Ende feinjustieren + Re-Render) | ✅ fertig & verifiziert |
 | Schritt 12 | **Export-Management** (all-exports.zip + Manual-Übersicht) | ✅ fertig & verifiziert |
+| Schritt 13 | **Persistente Job-Registry** (Restore nach Server-Neustart) | ✅ fertig & verifiziert |
 | später | Face-Tracking-Reframe, echtes A/B-Tracking, Direkt-Posten | 🔭 später |
 
 ### Was schon echt funktioniert
@@ -77,6 +78,15 @@ npm run dev      # http://127.0.0.1:3000
     content_packages.json, `manual_exports.json`, metadata.json).
   Ein Bereich **„Manuelle Exporte"** listet alle Re-Renders clip-übergreifend
   mit Vorschau, Download und Link zurück zum Editor.
+- **Persistente Job-Registry**: Jobs liegen lokal unter `api/jobs/<id>/` und
+  werden beim FastAPI-Start **automatisch wiederhergestellt** — nach einem
+  Neustart sind Jobliste, Clips, Previews/Downloads, manuelle Exporte und beide
+  ZIPs sofort wieder nutzbar, **ohne erneute Analyse**. Zustände: `queued`,
+  `processing`, `completed`, `failed` sowie (nach Restore) `interrupted` (war
+  beim Neustart aktiv) und `incomplete` (Ergebnis-Dateien fehlen). Restored Jobs
+  sind in der UI als „aus lokalem Speicher wiederhergestellt" markiert; kaputte
+  Job-Ordner werden übersprungen und crashen das Backend nicht. **Keine
+  automatische Wiederaufnahme** laufender Renders — bewusst.
 
 ### Klar als TODO gekennzeichnet (noch nicht echt)
 - Reframe ist **statischer** Smart-Crop (ein Fokuspunkt pro Clip) — **kein

@@ -100,6 +100,11 @@ export default function JobDetailPage() {
             {job?.filename ?? "Job"}
           </h1>
           <p className="mt-0.5 font-mono text-xs text-neutral-500">{jobId}</p>
+          {job?.restored && (
+            <p className="mt-1 text-xs text-neutral-500">
+              ↻ Aus lokalem Speicher wiederhergestellt
+            </p>
+          )}
         </div>
         {job && <StatusBadge status={job.status} />}
       </div>
@@ -108,6 +113,23 @@ export default function JobDetailPage() {
       {error && !job && (
         <div className="rounded-xl border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-300">
           {error}
+        </div>
+      )}
+
+      {/* Wiederhergestellt: unterbrochen / unvollständig */}
+      {(job?.status === "interrupted" || job?.status === "incomplete") && (
+        <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-300">
+          <p className="font-medium">
+            {job.status === "interrupted"
+              ? "Job wurde unterbrochen"
+              : "Ergebnis unvollständig"}
+          </p>
+          <p className="mt-1 text-amber-200/80">
+            {job.restore_warning ??
+              (job.status === "interrupted"
+                ? "Dieser Job war beim Server-Neustart aktiv und wurde nicht automatisch fortgesetzt. Bitte das Video erneut hochladen."
+                : "Für diesen Job fehlen Ergebnis-Dateien (clips.json oder gerenderte Clips). Es stehen keine Downloads bereit.")}
+          </p>
         </div>
       )}
 

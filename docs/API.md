@@ -36,6 +36,29 @@ Hook-Varianten; ohne Key läuft reine Heuristik.
 | `processing` | Pipeline läuft im Hintergrund (Transkription/Scoring/Render) |
 | `completed` | Fertig — Ergebnis & Dateien verfügbar |
 | `failed` | Abgebrochen — `error` enthält die Ursache |
+| `interrupted` | War beim Server-Neustart aktiv (`processing`/`queued`) und wurde **nicht** fortgesetzt |
+| `incomplete` | Nach Restore: Ergebnis-Dateien (clips.json / MP4s) fehlen |
+
+### Persistenz & Wiederherstellung (Restore)
+
+Jobs werden lokal unter `jobs/<id>/` gespeichert (`job.json` + Dateien). Beim
+**Start** des Backends scannt die Registry `jobs/` und lädt vorhandene Jobs
+zurück (`job.json` als primäre Quelle; fehlt/defekt → Rekonstruktion aus
+`clips.json` + `clip_*.mp4` + `transcript.json`). Robust: kaputte Ordner werden
+übersprungen (kein Crash), Warnungen werden beim Start geloggt.
+
+- Ein `processing`/`queued`-Job wird nach Neustart zu `interrupted` — **außer**
+  die Ergebnis-Dateien sind bereits vollständig, dann `completed`.
+- Ein `completed`-Job ohne MP4s/`clips.json` wird zu `incomplete`.
+- Es wird **niemals** automatisch ein Job neu gestartet oder fortgesetzt.
+
+Restore-Felder in `GET /api/jobs/{id}` und `GET /api/jobs` (Summary):
+`restored` (bool), `restored_at`, `interrupted` (bool), `restore_warning`.
+`files` enthält zusätzlich `input_file_exists`, `transcript_exists`,
+`clips_json_exists` (für die Frage, ob ein Re-Render möglich ist).
+
+**Grenzen:** keine Cloud-Persistenz, keine Nutzeraccounts, keine automatische
+Wiederaufnahme laufender Renders nach Crash.
 
 ---
 
@@ -65,8 +88,11 @@ Hook-Varianten; ohne Key läuft reine Heuristik.
 "files": {
   "clip_count": 2,            // erkannte/bewertete Clips
   "mp4_count": 2,             // Auto-MP4-Exporte (== auto_export_count)
-  "has_transcript": true,     // transcript.json vorhanden
-  "has_clips_json": true,     // clips.json vorhanden
+  "input_file_exists": true,  // input.* vorhanden (Re-Render möglich?)
+  "transcript_exists": true,  // transcript.json vorhanden
+  "clips_json_exists": true,  // clips.json vorhanden
+  "has_transcript": true,     // Alias (rückwärtskompatibel)
+  "has_clips_json": true,     // Alias (rückwärtskompatibel)
   "exports_ready": true,      // auto_export_count > 0 (exports.zip verfügbar)
   "auto_export_count": 2,     // automatische Clips im Job-Root
   "manual_export_count": 1,   // manuelle Re-Renders (manual_exports/)
