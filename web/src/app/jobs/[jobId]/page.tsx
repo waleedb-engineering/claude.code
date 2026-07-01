@@ -5,6 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import {
   allExportsZipUrl,
+  cancelJob,
   deleteJob,
   exportsZipUrl,
   getClips,
@@ -111,6 +112,25 @@ export default function JobDetailPage() {
         </div>
         <div className="flex shrink-0 items-center gap-3">
           {job && <StatusBadge status={job.status} />}
+          {job && (job.status === "processing" || job.status === "queued") && (
+            <DeleteControl
+              tone="warning"
+              label={job.cancel_requested ? "Abbruch läuft …" : "Abbrechen"}
+              disabled={!!job.cancel_requested}
+              disabledHint="Abbruch bereits angefordert."
+              confirmLabel="Diesen Job wirklich abbrechen? Bereits erzeugte Dateien können erhalten bleiben."
+              confirmActionLabel="Ja, abbrechen"
+              busyLabel="Breche ab …"
+              errorFallback="Abbrechen fehlgeschlagen."
+              onConfirm={async () => {
+                await cancelJob(jobId);
+              }}
+              onDone={() => {
+                clipsLoaded.current = false;
+                void getJob(jobId).then(setJob).catch(() => {});
+              }}
+            />
+          )}
           {job && (
             <DeleteControl
               label="Job löschen"

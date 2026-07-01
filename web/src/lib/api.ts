@@ -4,6 +4,7 @@
 import type {
   BatchUploadResult,
   BulkDeleteResult,
+  ClipForgeConfig,
   ClipsJson,
   HealthResponse,
   Job,
@@ -115,6 +116,31 @@ export async function deleteManualExport(
 
 export async function getStorage(): Promise<StorageSummary> {
   return getJson<StorageSummary>("/api/storage");
+}
+
+export async function getConfig(): Promise<ClipForgeConfig> {
+  return getJson<ClipForgeConfig>("/api/config");
+}
+
+export interface CancelJobResult {
+  canceled: boolean;
+  job_id: string;
+  status: string;
+  message: string;
+}
+
+export async function cancelJob(jobId: string): Promise<CancelJobResult> {
+  let res: Response;
+  try {
+    res = await fetch(`${API_BASE}/api/jobs/${jobId}/cancel`, { method: "POST" });
+  } catch {
+    throw new ApiError(
+      `Backend nicht erreichbar unter ${API_BASE}. Läuft FastAPI auf Port 8000?`,
+      0,
+    );
+  }
+  if (!res.ok) await parseError(res);
+  return (await res.json()) as CancelJobResult;
 }
 
 export async function bulkDeleteJobs(

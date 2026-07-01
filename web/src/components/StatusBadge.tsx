@@ -26,6 +26,10 @@ const MAP: Record<JobStatus, { label: string; cls: string }> = {
     label: "Unvollständig",
     cls: "bg-amber-500/10 text-amber-300 border-amber-500/30",
   },
+  canceled: {
+    label: "Abgebrochen",
+    cls: "bg-neutral-700/30 text-neutral-300 border-neutral-600/40",
+  },
 };
 
 export default function StatusBadge({ status }: { status: JobStatus }) {

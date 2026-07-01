@@ -45,6 +45,7 @@ npm run dev      # http://127.0.0.1:3000
 | Schritt 14 | **Cleanup** (Jobs & manuelle Exporte sicher löschen) | ✅ fertig & verifiziert |
 | Schritt 15 | **Storage-Übersicht & Bulk-Cleanup** | ✅ fertig & verifiziert |
 | Schritt 16 | **Batch-Upload & Queue-Ansicht** | ✅ fertig & verifiziert |
+| Schritt 17 | **Job abbrechen (kooperativ) & Upload-Limits** | ✅ fertig & verifiziert |
 | später | Face-Tracking-Reframe, echtes A/B-Tracking, Direkt-Posten | 🔭 später |
 
 ### Was schon echt funktioniert
@@ -117,6 +118,19 @@ npm run dev      # http://127.0.0.1:3000
   Parallelität via `ThreadPoolExecutor`, konfigurierbar über
   **`CLIPFORGE_MAX_WORKERS`** (Default 2, `=1` für strikt seriell). Einzel-Upload
   (`POST /api/jobs`, inkl. Transkript) bleibt unverändert.
+- **Job abbrechen (kooperativ)**: `POST /api/jobs/{id}/cancel` bricht einen
+  `queued`/`processing`-Job ab → Status `canceled`. **Ehrlich kooperativ, kein
+  harter Prozess-Kill**: ein `queued`-Job wird sofort abgebrochen; ein laufender
+  `processing`-Job setzt ein Cancel-Flag und stoppt am **nächsten sicheren
+  Checkpoint** (vor/nach Transkription, vor/nach jedem Clip-Render) — ein bereits
+  laufender FFmpeg-Schritt läuft noch zu Ende, damit keine Datei beschädigt wird.
+  Bereits fertige MP4s bleiben liegen; `canceled`-Jobs werden restored und sind
+  löschbar. Endzustände → `409`, unbekannt → `404`.
+- **Upload-Limits**: `CLIPFORGE_MAX_UPLOAD_MB` (Default 500) und
+  `CLIPFORGE_MAX_BATCH_FILES` (Default 10). Einzel-Upload zu groß → `413`; Batch
+  mit zu vielen Dateien → `400`; eine zu große Datei im Batch wird **einzeln**
+  abgelehnt, gültige laufen weiter. `GET /api/config` liefert die Limits ans
+  Frontend (keine doppelte Pflege).
 
 ### Klar als TODO gekennzeichnet (noch nicht echt)
 - Reframe ist **statischer** Smart-Crop (ein Fokuspunkt pro Clip) — **kein
@@ -268,4 +282,6 @@ Danach liegen abspielbare 9:16-MP4s in `testdata/out/`.
 | `CLIPFORGE_LLM_MODEL` | `claude-sonnet-4-6` | Modell für Scoring + Content-Pakete |
 | `CLIPFORGE_USE_LLM` | `auto` | `off` erzwingt reine Heuristik + regelbasierte Pakete |
 | `CLIPFORGE_MAX_WORKERS` | `2` | Parallel verarbeitete Jobs (`1` = strikt seriell, stabilster Modus) |
+| `CLIPFORGE_MAX_UPLOAD_MB` | `500` | Maximale Dateigröße pro Upload |
+| `CLIPFORGE_MAX_BATCH_FILES` | `10` | Maximale Dateien pro Batch-Upload |
 | `CLIPFORGE_JOBS_DIR` | `api/jobs` | Speicherort der Job-Ordner |

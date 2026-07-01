@@ -1,10 +1,10 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { batchUpload, createJob } from "@/lib/api";
-import type { BatchUploadRow } from "@/lib/types";
+import { batchUpload, createJob, getConfig } from "@/lib/api";
+import type { BatchUploadRow, ClipForgeConfig } from "@/lib/types";
 import Spinner from "@/components/Spinner";
 import Disclaimer from "@/components/Disclaimer";
 
@@ -51,16 +51,39 @@ export default function UploadPage() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState(false);
+  const [config, setConfig] = useState<ClipForgeConfig | null>(null);
+
+  useEffect(() => {
+    getConfig().then(setConfig).catch(() => {});
+  }, []);
+
+  const maxFiles = config?.max_batch_files ?? 10;
+  const maxMb = config?.max_upload_mb ?? 500;
+
+  function isTooBig(file: File): boolean {
+    return config != null && file.size > maxMb * 1024 * 1024;
+  }
 
   function addFiles(list: FileList | null) {
     if (!list) return;
     setError(null);
     setDone(false);
-    const next = Array.from(list).map((file) => ({
+    const incoming = Array.from(list).map((file) => ({
       file,
       status: "wartet" as RowStatus,
     }));
-    setRows((prev) => [...prev, ...next]);
+    setRows((prev) => {
+      const combined = [...prev, ...incoming];
+      if (combined.length > maxFiles) {
+        setError(
+          `Maximal ${maxFiles} Dateien pro Batch. ${
+            combined.length - maxFiles
+          } wurde(n) nicht hinzugefügt.`,
+        );
+        return combined.slice(0, maxFiles);
+      }
+      return combined;
+    });
   }
 
   function removeRow(i: number) {
@@ -176,6 +199,9 @@ export default function UploadPage() {
         <p className="mt-1 text-xs text-neutral-500">
           Mehrfachauswahl möglich · MP4, MOV, MKV, WEBM, AVI, M4V
         </p>
+        <p className="mt-1 text-[11px] text-neutral-600">
+          Limit: max. {maxFiles} Dateien pro Batch · max. {maxMb} MB pro Datei
+        </p>
       </div>
 
       {/* Datei-Liste */}
@@ -207,6 +233,9 @@ export default function UploadPage() {
                   </p>
                   <p className="text-[11px] text-neutral-500">
                     {fmtSize(r.file.size)}
+                    {isTooBig(r.file) && r.status === "wartet" ? (
+                      <span className="text-amber-400"> · zu groß (max. {maxMb} MB)</span>
+                    ) : null}
                     {r.error ? ` · ${r.error}` : ""}
                   </p>
                 </div>

@@ -41,6 +41,7 @@ from clipforge.rerender import (
     rerender_clip,
 )
 from jobs import (
+    STATUS_CANCELED,
     STATUS_COMPLETED,
     STATUS_FAILED,
     STATUS_INCOMPLETE,
@@ -49,6 +50,7 @@ from jobs import (
     STATUS_QUEUED,
     Job,
     JobBusy,
+    JobNotCancelable,
     JobNotFound,
     JobRegistry,
     UnsafeJobPath,
@@ -68,6 +70,31 @@ def _max_workers() -> int:
         return max(1, int(os.environ.get("CLIPFORGE_MAX_WORKERS", "2")))
     except ValueError:
         return 2
+
+
+def _max_upload_mb() -> int:
+    try:
+        return max(1, int(os.environ.get("CLIPFORGE_MAX_UPLOAD_MB", "500")))
+    except ValueError:
+        return 500
+
+
+def _max_batch_files() -> int:
+    try:
+        return max(1, int(os.environ.get("CLIPFORGE_MAX_BATCH_FILES", "10")))
+    except ValueError:
+        return 10
+
+
+def _upload_size(file: UploadFile) -> int:
+    """Ermittelt die Upload-Größe ohne Einlesen (SpooledTemporaryFile seek)."""
+    try:
+        file.file.seek(0, os.SEEK_END)
+        size = file.file.tell()
+        file.file.seek(0)
+        return size
+    except (OSError, AttributeError):
+        return 0
 
 
 app = FastAPI(title="ClipForge AI API", version="0.1.0")
@@ -293,6 +320,18 @@ async def create_job(
             ),
         )
 
+    max_mb = _max_upload_mb()
+    size = _upload_size(file)
+    if size > max_mb * 1024 * 1024:
+        await file.close()
+        raise HTTPException(
+            status_code=413,
+            detail=(
+                f"Datei zu groß ({size / 1024 / 1024:.0f} MB). "
+                f"Maximum {max_mb} MB pro Datei."
+            ),
+        )
+
     top_n = max(1, int(top_n))
     job = registry.create(
         filename=filename,
@@ -346,6 +385,19 @@ async def create_jobs_batch(
     if not files:
         raise HTTPException(status_code=400, detail="Keine Dateien übermittelt.")
 
+    max_files = _max_batch_files()
+    if len(files) > max_files:
+        # Ganze Anfrage ablehnen: zu viele Dateien (Schutz vor Überlast).
+        for f in files:
+            await f.close()
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"Zu viele Dateien ({len(files)}). Maximum {max_files} pro Batch."
+            ),
+        )
+
+    max_bytes = _max_upload_mb() * 1024 * 1024
     top_n = max(1, int(top_n))
     results: list[dict] = []
     accepted = 0
@@ -360,6 +412,17 @@ async def create_jobs_batch(
                 "error": (
                     f"Ungültiger Dateityp '{ext or '?'}'. Erlaubt: "
                     f"{', '.join(sorted(ALLOWED_EXT))}."
+                ),
+            })
+            continue
+        size = _upload_size(file)
+        if size > max_bytes:
+            await file.close()
+            results.append({
+                "filename": filename, "accepted": False, "job_id": None,
+                "error": (
+                    f"Datei zu groß ({size / 1024 / 1024:.0f} MB). "
+                    f"Maximum {_max_upload_mb()} MB pro Datei."
                 ),
             })
             continue
@@ -394,6 +457,17 @@ async def create_jobs_batch(
     }
 
 
+@app.get("/api/config")
+def get_config() -> dict:
+    """Frontend-relevante Limits/Optionen — damit die UI keine Werte doppelt pflegt."""
+    return {
+        "max_upload_mb": _max_upload_mb(),
+        "max_batch_files": _max_batch_files(),
+        "max_workers": _max_workers(),
+        "supported_video_types": sorted(ALLOWED_EXT),
+    }
+
+
 @app.get("/api/jobs")
 def list_jobs() -> dict:
     """Listet alle Jobs mit Kurzstatus."""
@@ -411,13 +485,17 @@ def storage_summary(largest: int = 10) -> dict:
     by_status = {
         STATUS_COMPLETED: 0, STATUS_FAILED: 0, STATUS_INTERRUPTED: 0,
         STATUS_INCOMPLETE: 0, STATUS_PROCESSING: 0, STATUS_QUEUED: 0,
+        STATUS_CANCELED: 0,
     }
     total_bytes = 0
     auto_exports = 0
     manual_exports = 0
     per_job: list[dict] = []
+    # canceled ist eine EIGENE Gruppe: getrennt sichtbar, aber NICHT Teil des
+    # Standard-Bulk-Cleanups (failed/interrupted/incomplete) — damit bewusst
+    # abgebrochene Jobs nicht versehentlich gesammelt gelöscht werden.
     cleanup = {STATUS_FAILED: [], STATUS_INTERRUPTED: [], STATUS_INCOMPLETE: [],
-               "completed_without_exports": []}
+               "completed_without_exports": [], STATUS_CANCELED: []}
 
     for job in registry.list():
         try:
@@ -493,6 +571,25 @@ def delete_job(job_id: str, force: bool = False) -> dict:
         # teilweise gelöscht → klar melden statt still zu schlucken
         raise HTTPException(status_code=500, detail=result.get("error") or "Löschen fehlgeschlagen.")
     return result
+
+
+@app.post("/api/jobs/{job_id}/cancel")
+def cancel_job(job_id: str) -> dict:
+    """Bricht einen queued/processing-Job kooperativ ab.
+
+    - queued → sofort `canceled`.
+    - processing → `cancel_requested` gesetzt; die Pipeline stoppt am nächsten
+      sicheren Checkpoint (laufender Render-Schritt läuft zu Ende). Bereits
+      gerenderte Dateien bleiben erhalten.
+    - Endzustand (completed/failed/interrupted/incomplete/canceled) → `409`.
+    - Unbekannter Job → `404`.
+    """
+    try:
+        return registry.request_cancel(job_id)
+    except JobNotFound:
+        raise HTTPException(status_code=404, detail="Job nicht gefunden.")
+    except JobNotCancelable as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
 
 
 class BulkDeleteRequest(BaseModel):

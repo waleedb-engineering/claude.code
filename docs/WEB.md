@@ -55,8 +55,8 @@ App öffnen: <http://127.0.0.1:3000>
 | Pfad | Inhalt |
 |---|---|
 | `/` | Landing mit „Video hochladen" |
-| `/upload` | **Mehrfach-Upload** (Drag-and-drop, Datei-Liste mit Status je Datei), gemeinsame Optionen (Top-Clips, Caption-Style, Bildausrichtung, Stille-Toggle), optionales Transkript-JSON **nur bei genau 1 Datei** |
-| `/jobs` | **Queue-Summary** + **Storage-Widget** (Speicher, Status-Verteilung, größte Jobs, Bulk-Cleanup) + Job-Liste mit Live-Status + **Job löschen** je Karte |
+| `/upload` | **Mehrfach-Upload** (Drag-and-drop, Datei-Liste mit Status je Datei), **Upload-Limits sichtbar**, gemeinsame Optionen, optionales Transkript-JSON **nur bei genau 1 Datei** |
+| `/jobs` | **Queue-Summary** + **Storage-Widget** + Job-Liste mit Live-Status + **Abbrechen** (processing/queued) + **Job löschen** je Karte |
 | `/jobs/[jobId]` | Status + Export-Counts, Clip-Karten, ZIP-Downloads (Auto & alle), **Bearbeiten**, Bereich „Manuelle Exporte" |
 | `/jobs/[jobId]/clips/[clipIndex]/edit` | **Clip-Editor**: Start/Ende feinjustieren, Optionen wählen, neu rendern |
 
@@ -127,10 +127,23 @@ App öffnen: <http://127.0.0.1:3000>
    ohne die gültigen zu blockieren. Danach: **„Zur Queue"** und pro angenommener
    Datei **„Job öffnen"**.
 10. **Queue-Summary (`/jobs`):** kompakte Zeile „Verarbeitet gerade / Wartet /
-    Fertig / Fehlgeschlagen", abgeleitet aus der (automatisch gepollten)
-    Jobliste. Laufende Jobs zeigen einen Spinner-Badge; Details/Fortschritt auf
-    der Job-Detailseite.
-11. **Storage-Widget (oben auf `/jobs`):** zeigt lokalen Gesamtspeicher, Anzahl
+    Fertig / Fehlgeschlagen (/ Abgebrochen)", abgeleitet aus der (automatisch
+    gepollten) Jobliste. Laufende Jobs zeigen einen Spinner-Badge;
+    Details/Fortschritt auf der Job-Detailseite.
+11. **Job abbrechen (`/jobs` + Detailseite):** `processing`/`queued`-Jobs haben
+    einen **„Abbrechen"**-Button (amber) mit Inline-Bestätigung („Diesen Job
+    wirklich abbrechen? Bereits erzeugte Dateien können erhalten bleiben."). Nach
+    Klick zeigt der Button „Abbruch läuft …"; der Job wechselt **kooperativ** (am
+    nächsten sicheren Checkpoint, kann Sekunden dauern) auf **„Abgebrochen"**.
+    Danach ist der Abbrechen-Button weg, **Löschen** bleibt möglich. Für
+    `canceled`-Jobs werden **keine** Download-Buttons gezeigt (die Detailseite
+    rendert Downloads nur für `completed`).
+12. **Upload-Limits (`/upload`):** unter der Drop-Zone stehen die aktiven Limits
+    (max. Dateien/Batch · max. MB/Datei aus `GET /api/config`). Zu viele Dateien
+    → sofortige Fehlermeldung, die Liste wird auf das Maximum begrenzt; eine zu
+    große Datei wird in der Liste als „zu groß" markiert und vom Backend
+    abgelehnt (Batch: nur diese Datei; Einzel: `413`).
+13. **Storage-Widget (oben auf `/jobs`):** zeigt lokalen Gesamtspeicher, Anzahl
    Jobs, Auto-/Manuelle Exporte, die **Status-Verteilung** (Fertig, Fehlgeschlagen,
    Unterbrochen, Unvollständig, Läuft, Warteschlange) und die **größten Jobs**.
    Der Button **„Problematische Jobs aufräumen (N)"** löscht nach Inline-

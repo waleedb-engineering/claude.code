@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { deleteJob, getStorage, listJobs } from "@/lib/api";
+import { cancelJob, deleteJob, getStorage, listJobs } from "@/lib/api";
 import type { JobSummary, StorageSummary } from "@/lib/types";
 import StatusBadge from "@/components/StatusBadge";
 import Spinner from "@/components/Spinner";
@@ -42,6 +42,7 @@ export default function JobsPage() {
     queued: jl.filter((j) => j.status === "queued").length,
     completed: jl.filter((j) => j.status === "completed").length,
     failed: jl.filter((j) => j.status === "failed").length,
+    canceled: jl.filter((j) => j.status === "canceled").length,
   };
   const hasActivity = q.processing > 0 || q.queued > 0;
 
@@ -83,6 +84,12 @@ export default function JobsPage() {
             Fehlgeschlagen:{" "}
             <span className="font-semibold text-rose-400">{q.failed}</span>
           </span>
+          {q.canceled > 0 && (
+            <span className="text-neutral-400">
+              Abgebrochen:{" "}
+              <span className="font-semibold text-neutral-300">{q.canceled}</span>
+            </span>
+          )}
         </div>
       )}
 
@@ -144,6 +151,22 @@ export default function JobsPage() {
                   </span>
                 )}
                 <StatusBadge status={j.status} />
+                {(j.status === "processing" || j.status === "queued") && (
+                  <DeleteControl
+                    tone="warning"
+                    label={j.cancel_requested ? "Abbruch läuft …" : "Abbrechen"}
+                    disabled={j.cancel_requested}
+                    disabledHint="Abbruch bereits angefordert."
+                    confirmLabel="Diesen Job wirklich abbrechen? Bereits erzeugte Dateien können erhalten bleiben."
+                    confirmActionLabel="Ja, abbrechen"
+                    busyLabel="Breche ab …"
+                    errorFallback="Abbrechen fehlgeschlagen."
+                    onConfirm={async () => {
+                      await cancelJob(j.id);
+                    }}
+                    onDone={load}
+                  />
+                )}
                 <DeleteControl
                   label="Job löschen"
                   confirmLabel="Diesen Job wirklich löschen? Alle Clips, manuellen Exporte und Metadaten werden entfernt."

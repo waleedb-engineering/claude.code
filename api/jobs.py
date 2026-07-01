@@ -22,7 +22,7 @@ from dataclasses import asdict, dataclass, field
 
 from clipforge.config import get_settings
 from clipforge.ffmpeg_utils import FFmpegNotFound, ensure_ffmpeg
-from clipforge.pipeline import run_pipeline
+from clipforge.pipeline import PipelineCanceled, run_pipeline
 
 # --- Statuswerte (wie spezifiziert) ---
 STATUS_QUEUED = "queued"
@@ -32,6 +32,10 @@ STATUS_FAILED = "failed"
 # --- Zusätzliche Zustände nach Server-Neustart (Restore) ---
 STATUS_INTERRUPTED = "interrupted"   # war beim Neustart aktiv → nicht fortgesetzt
 STATUS_INCOMPLETE = "incomplete"     # Ergebnis-Dateien fehlen (unvollständig)
+STATUS_CANCELED = "canceled"         # vom Nutzer kooperativ abgebrochen
+
+# Zustände, aus denen ein Abbruch (Cancel) noch sinnvoll ist.
+CANCELABLE_STATUSES = (STATUS_QUEUED, STATUS_PROCESSING)
 
 
 class JobNotFound(Exception):
@@ -40,6 +44,10 @@ class JobNotFound(Exception):
 
 class JobBusy(Exception):
     """Job wird gerade verarbeitet — Löschen nur mit force (→ 409)."""
+
+
+class JobNotCancelable(Exception):
+    """Job ist bereits in einem Endzustand — nicht abbrechbar (→ 409)."""
 
 
 class UnsafeJobPath(Exception):
@@ -88,6 +96,10 @@ class Job:
     restored_at: str | None = None
     interrupted: bool = False
     restore_warning: str | None = None
+    # --- Cancel-Metadaten (kooperativer Abbruch) ---
+    cancel_requested: bool = False
+    canceled_at: str | None = None
+    cancel_reason: str | None = None
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -104,6 +116,8 @@ class Job:
             "restored": self.restored,
             "interrupted": self.interrupted,
             "restore_warning": self.restore_warning,
+            "cancel_requested": self.cancel_requested,
+            "canceled_at": self.canceled_at,
         }
 
     @classmethod
@@ -238,6 +252,54 @@ class JobRegistry:
             result["error"] = partial_error
         return result
 
+    # ---------- Kooperativer Abbruch (Cancel) ----------
+
+    def request_cancel(self, job_id: str, reason: str | None = None) -> dict:
+        """Setzt das Cancel-Flag eines queued/processing-Jobs.
+
+        Kooperativ: die Verarbeitung stoppt am nächsten sicheren Checkpoint
+        (ein bereits laufender FFmpeg-Schritt läuft zu Ende). Wirft JobNotFound
+        (→404) und JobNotCancelable (→409) bei Endzuständen.
+        """
+        with self._lock:
+            job = self._jobs.get(job_id)
+        if job is None:
+            raise JobNotFound(f"Job {job_id} nicht gefunden.")
+        if job.status not in CANCELABLE_STATUSES:
+            raise JobNotCancelable(
+                f"Job im Status '{job.status}' ist nicht abbrechbar."
+            )
+
+        with self._lock:
+            job.cancel_requested = True
+            job.cancel_reason = reason
+            job.updated_at = _now()
+            # queued (noch nicht vom Worker gestartet) → sofort canceled setzen.
+            if job.status == STATUS_QUEUED:
+                job.status = STATUS_CANCELED
+                job.canceled_at = _now()
+            current_status = job.status
+        self._append_progress(job, "Abbruch angefordert.")
+
+        immediate = current_status == STATUS_CANCELED
+        return {
+            "canceled": True,
+            "job_id": job_id,
+            "status": current_status,
+            "message": (
+                "Job abgebrochen (war noch nicht in Verarbeitung)."
+                if immediate else
+                "Abbruch angefordert — Job stoppt am nächsten sicheren "
+                "Checkpoint (laufender Render-Schritt läuft zu Ende)."
+            ),
+        }
+
+    def is_cancel_requested(self, job_id: str) -> bool:
+        """Thread-sicherer Cancel-Check für die Pipeline/den Worker."""
+        with self._lock:
+            job = self._jobs.get(job_id)
+            return bool(job and job.cancel_requested)
+
     # ---------- Wiederherstellung nach Server-Neustart ----------
 
     def restore(self) -> list[str]:
@@ -340,6 +402,8 @@ class JobRegistry:
                 )
         elif prior_status == STATUS_FAILED:
             job.status = STATUS_FAILED
+        elif prior_status == STATUS_CANCELED:
+            job.status = STATUS_CANCELED
         elif prior_status == STATUS_COMPLETED:
             if not (has_clips_json and has_mp4):
                 job.status = STATUS_INCOMPLETE
@@ -454,6 +518,12 @@ class JobRegistry:
         self._pool.submit(self._run, job)
 
     def _run(self, job: Job) -> None:
+        # Abbruch vor Start (Job war queued und wurde inzwischen abgebrochen).
+        if job.cancel_requested:
+            self._append_progress(job, "Abgebrochen, bevor die Verarbeitung startete.")
+            self._update(job, status=STATUS_CANCELED, canceled_at=_now())
+            return
+
         self._update(job, status=STATUS_PROCESSING)
 
         # Fehlerfall: FFmpeg fehlt
@@ -471,6 +541,9 @@ class JobRegistry:
         def progress(message: str) -> None:
             self._append_progress(job, message)
 
+        def should_cancel() -> bool:
+            return self.is_cancel_requested(job.id)
+
         # Eigentliche Arbeit: bestehender Pipeline-Kern, KEINE Duplizierung
         try:
             pr = run_pipeline(
@@ -485,7 +558,12 @@ class JobRegistry:
                 caption_style=job.caption_style,
                 reframe_mode=job.reframe_mode,
                 progress=progress,
+                should_cancel=should_cancel,
             )
+        except PipelineCanceled:
+            self._append_progress(job, "Verarbeitung am Checkpoint abgebrochen.")
+            self._update(job, status=STATUS_CANCELED, canceled_at=_now())
+            return
         except Exception as exc:  # noqa: BLE001 — Pipeline-Fehler sauber melden
             self._append_progress(job, f"FEHLER: {exc}")
             self._update(

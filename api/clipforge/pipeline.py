@@ -28,6 +28,21 @@ from .transcribe import (
 )
 
 ProgressFn = Callable[[str], None]
+CancelFn = Callable[[], bool]
+
+
+class PipelineCanceled(Exception):
+    """Wird geworfen, wenn `should_cancel()` an einem Checkpoint True liefert.
+
+    Kooperativer Abbruch: ein bereits laufender FFmpeg-Schritt läuft zu Ende,
+    danach greift der nächste Checkpoint. Kein harter Prozess-Kill.
+    """
+
+
+def _checkpoint(should_cancel: CancelFn | None, progress: ProgressFn) -> None:
+    if should_cancel is not None and should_cancel():
+        progress("Abbruch erkannt — Pipeline stoppt am Checkpoint.")
+        raise PipelineCanceled()
 
 
 @dataclass
@@ -56,9 +71,13 @@ def run_pipeline(
     caption_style: str = "high_energy",
     reframe_mode: str = "smart",
     progress: ProgressFn = _noop,
+    should_cancel: CancelFn | None = None,
 ) -> PipelineResult:
     settings = settings or get_settings()
     os.makedirs(output_dir, exist_ok=True)
+
+    # Checkpoint: vor Transkription
+    _checkpoint(should_cancel, progress)
 
     # 1) Transkript
     if transcript_path:
@@ -76,6 +95,9 @@ def run_pipeline(
         f"{transcript.duration:.1f}s, Sprache={transcript.language}"
     )
 
+    # Checkpoint: nach Transkription
+    _checkpoint(should_cancel, progress)
+
     # 2) Kandidaten
     candidates = build_candidates(transcript, settings)
     progress(f"{len(candidates)} Kandidaten-Clips gebildet")
@@ -87,6 +109,9 @@ def run_pipeline(
 
     # Top-N auswählen
     top = scored[: max(0, top_n)]
+
+    # Checkpoint: vor Content-Paketen
+    _checkpoint(should_cancel, progress)
 
     # 3b) Content-Pakete (Text-only, unabhängig vom Rendering)
     content_mode = "Claude" if settings.llm_available else "Regelbasiert"
@@ -110,6 +135,8 @@ def run_pipeline(
         progress(f"Caption-Modus: {caption_mode}, Style: {caption_style}")
         progress(f"Reframe-Modus: {reframe_mode}")
         for i, clip in enumerate(top, start=1):
+            # Checkpoint: vor jedem Clip-Render
+            _checkpoint(should_cancel, progress)
             out_path = os.path.join(output_dir, f"clip_{i:02d}_score{int(clip.score)}.mp4")
             progress(
                 f"Rendere Clip {i}/{len(top)} "
@@ -131,6 +158,8 @@ def run_pipeline(
                 rendered.append(out_path)
             except Exception as exc:  # noqa: BLE001
                 progress(f"  ⚠ Rendering fehlgeschlagen: {exc}")
+            # Checkpoint: nach jedem Clip-Render (fertige MP4s bleiben erhalten)
+            _checkpoint(should_cancel, progress)
 
     # 5) clips.json
     total_removed = round(

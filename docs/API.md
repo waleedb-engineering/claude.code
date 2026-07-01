@@ -38,6 +38,7 @@ Hook-Varianten; ohne Key läuft reine Heuristik.
 | `failed` | Abgebrochen — `error` enthält die Ursache |
 | `interrupted` | War beim Server-Neustart aktiv (`processing`/`queued`) und wurde **nicht** fortgesetzt |
 | `incomplete` | Nach Restore: Ergebnis-Dateien (clips.json / MP4s) fehlen |
+| `canceled` | Vom Nutzer kooperativ abgebrochen (`POST …/cancel`) |
 
 ### Persistenz & Wiederherstellung (Restore)
 
@@ -71,9 +72,11 @@ Wiederaufnahme laufender Renders nach Crash.
 | `POST` | `/api/jobs/batch` | **Mehrere** Videos hochladen → je Datei ein Job (per-Datei-Ergebnis) |
 | `GET` | `/api/jobs` | Alle Jobs (Kurzstatus) |
 | `GET` | `/api/jobs/{job_id}` | Voller Status: Progress, Logs, Fehler, Ergebnis, `files`-Übersicht |
+| `POST` | `/api/jobs/{job_id}/cancel` | Job kooperativ abbrechen → `canceled` |
 | `DELETE` | `/api/jobs/{job_id}` | Job-Ordner löschen (`?force=true` bei `processing`) |
 | `POST` | `/api/jobs/bulk-delete` | Mehrere Jobs gesammelt löschen (`confirm:"DELETE"`) |
 | `GET` | `/api/storage` | Lokale Speicher-Übersicht + Cleanup-Kandidaten |
+| `GET` | `/api/config` | Frontend-Limits (Upload-MB, Batch-Dateien, Worker, Typen) |
 | `DELETE` | `/api/jobs/{job_id}/manual-exports/{export_id}` | Einen manuellen Export löschen (MP4 + Sidecar-JSON) |
 | `GET` | `/api/jobs/{job_id}/transcript` | `transcript.json` (falls vorhanden) |
 | `GET` | `/api/jobs/{job_id}/clips` | `clips.json` (falls vorhanden) |
@@ -325,6 +328,13 @@ funktionieren identisch). Der Batch nutzt **kein** Transkript.
 **Robust:** eine ungültige/fehlerhafte Datei bricht den Batch **nicht** ab —
 jede Datei bekommt ein eigenes Ergebnis. `files` leer → `400`.
 
+**Upload-Limits** (`GET /api/config` liefert die Werte):
+- Zu **viele** Dateien (> `CLIPFORGE_MAX_BATCH_FILES`, Default 10) → **`400`**
+  (ganze Anfrage abgelehnt).
+- Eine zu **große** Datei (> `CLIPFORGE_MAX_UPLOAD_MB`, Default 500) → nur **diese**
+  Datei wird abgelehnt (`accepted:false`, `error`), gültige laufen weiter.
+- Einzel-Upload (`POST /api/jobs`) zu groß → **`413`** (Payload Too Large).
+
 ```json
 // 200
 {
@@ -358,6 +368,43 @@ Jobs laufen in einem `ThreadPoolExecutor`. Die parallele Verarbeitung ist über
 (und ggf. Whisper) startet, gilt **Stabilität vor Geschwindigkeit**: `=1`
 serialisiert strikt (ein Job nach dem anderen). Der Batch-Endpoint reiht nur
 ein — die tatsächliche Nebenläufigkeit bestimmt der Pool.
+
+### `GET /api/config`
+
+Liefert die Frontend-relevanten Limits/Optionen, damit die UI keine Werte
+doppelt pflegt: `{ max_upload_mb, max_batch_files, max_workers,
+supported_video_types }`.
+
+---
+
+## Job abbrechen (`POST /api/jobs/{job_id}/cancel`)
+
+**Ehrlich kooperativ — kein harter Prozess-Kill** (der würde halb-geschriebene
+MP4s riskieren):
+
+- `queued`-Job → **sofort** `canceled` (Worker bricht am Eintritt ab, keine
+  Verarbeitung).
+- `processing`-Job → `cancel_requested` wird gesetzt; die Pipeline stoppt am
+  **nächsten sicheren Checkpoint** (vor/nach Transkription, vor/nach jedem
+  Clip-Render). Ein bereits laufender FFmpeg-Schritt **läuft zu Ende**, danach
+  greift der Abbruch → `canceled`. Praktisch heißt das: der Abbruch ist nicht
+  zwingend sofort, sondern nach dem aktuellen Render-Schritt (kann Sekunden
+  dauern).
+- Endzustand (`completed`/`failed`/`interrupted`/`incomplete`/`canceled`) →
+  **`409`**; unbekannter Job → **`404`**.
+
+```json
+// 200 (processing)
+{ "canceled": true, "job_id": "…", "status": "processing",
+  "message": "Abbruch angefordert — Job stoppt am nächsten sicheren Checkpoint …" }
+```
+
+Bereits fertig gerenderte MP4s **bleiben erhalten** (Auto-Clips/manuelle Exporte
+werden nicht angefasst). `canceled`-Jobs werden nach Restart **restored** und
+sind **löschbar**. Job-Felder: `cancel_requested`, `canceled_at`,
+`cancel_reason`. In `GET /api/storage` erscheinen sie unter `by_status.canceled`
+und als **eigene** Gruppe `cleanup_candidates.canceled` (bewusst **nicht** Teil
+des Standard-Bulk-Cleanups → nicht versehentlich löschbar).
 
 ---
 

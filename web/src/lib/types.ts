@@ -8,7 +8,8 @@ export type JobStatus =
   | "completed"
   | "failed"
   | "interrupted"
-  | "incomplete";
+  | "incomplete"
+  | "canceled";
 
 export interface JobSummary {
   id: string;
@@ -21,6 +22,15 @@ export interface JobSummary {
   restored?: boolean;
   interrupted?: boolean;
   restore_warning?: string | null;
+  cancel_requested?: boolean;
+  canceled_at?: string | null;
+}
+
+export interface ClipForgeConfig {
+  max_upload_mb: number;
+  max_batch_files: number;
+  max_workers: number;
+  supported_video_types: string[];
 }
 
 export interface ResultClip {
@@ -81,6 +91,9 @@ export interface Job {
   restored_at?: string | null;
   interrupted?: boolean;
   restore_warning?: string | null;
+  cancel_requested?: boolean;
+  canceled_at?: string | null;
+  cancel_reason?: string | null;
 }
 
 export interface ScoreBreakdown {
