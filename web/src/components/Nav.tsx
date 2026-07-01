@@ -7,6 +7,7 @@ const links = [
   { href: "/", label: "Start" },
   { href: "/upload", label: "Hochladen" },
   { href: "/jobs", label: "Jobs" },
+  { href: "/settings/brand-kit", label: "Brand Kit" },
 ];
 
 export default function Nav() {

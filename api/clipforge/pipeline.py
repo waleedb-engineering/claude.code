@@ -70,6 +70,7 @@ def run_pipeline(
     caption_mode: str = "karaoke",
     caption_style: str = "high_energy",
     reframe_mode: str = "smart",
+    brand_overrides: dict | None = None,
     progress: ProgressFn = _noop,
     should_cancel: CancelFn | None = None,
 ) -> PipelineResult:
@@ -153,6 +154,7 @@ def run_pipeline(
                     caption_mode=caption_mode,
                     caption_style=caption_style,
                     reframe_mode=reframe_mode,
+                    brand_overrides=brand_overrides,
                     progress=progress,
                 )
                 rendered.append(out_path)
@@ -185,6 +187,8 @@ def run_pipeline(
         "reframe_fallback_count": reframe_fallback_count,
         "content_generator": content_mode,
         "content_fallback_count": content_fallback_count,
+        "brand_kit_used": bool((brand_overrides or {}).get("brand_kit_used")),
+        "brand_kit_name": (brand_overrides or {}).get("brand_kit_name"),
         "disclaimer": (
             "Der Performance-Potential-Score ist eine Wahrscheinlichkeits-"
             "Einschätzung auf Basis messbarer Signale und KEINE Garantie für "

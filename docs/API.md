@@ -77,6 +77,9 @@ Wiederaufnahme laufender Renders nach Crash.
 | `POST` | `/api/jobs/bulk-delete` | Mehrere Jobs gesammelt löschen (`confirm:"DELETE"`) |
 | `GET` | `/api/storage` | Lokale Speicher-Übersicht + Cleanup-Kandidaten |
 | `GET` | `/api/config` | Frontend-Limits (Upload-MB, Batch-Dateien, Worker, Typen) |
+| `GET` | `/api/caption-styles` | Verfügbare Caption-Styles (5) mit Beschreibung |
+| `GET` | `/api/brand-kit` | Aktuelles Brand Kit (oder Defaults) |
+| `POST` | `/api/brand-kit` | Brand Kit validieren + lokal speichern |
 | `DELETE` | `/api/jobs/{job_id}/manual-exports/{export_id}` | Einen manuellen Export löschen (MP4 + Sidecar-JSON) |
 | `GET` | `/api/jobs/{job_id}/transcript` | `transcript.json` (falls vorhanden) |
 | `GET` | `/api/jobs/{job_id}/clips` | `clips.json` (falls vorhanden) |
@@ -374,6 +377,58 @@ ein — die tatsächliche Nebenläufigkeit bestimmt der Pool.
 Liefert die Frontend-relevanten Limits/Optionen, damit die UI keine Werte
 doppelt pflegt: `{ max_upload_mb, max_batch_files, max_workers,
 supported_video_types }`.
+
+---
+
+## Caption-Styles & Brand Kit
+
+### `GET /api/caption-styles`
+
+5 zentral in `captions.STYLES` definierte Styles (keine Magic Values verstreut).
+Ein unbekannter `caption_style` fällt beim Rendern auf `clean` zurück; das Timing
+bleibt synchron (auch mit Silence-Removal).
+
+```json
+{ "default": "clean", "styles": [
+  { "style_id": "clean", "name": "clean",
+    "description": "Schlicht & professionell …",
+    "recommended_for": "Business, Talking-Head, allgemein",
+    "preview_label": "Clean weiß" },
+  { "style_id": "bold_creator", … }, { "style_id": "high_energy", … },
+  { "style_id": "podcast", … }, { "style_id": "minimal", … }
+]}
+```
+
+### `GET /api/brand-kit` · `POST /api/brand-kit`
+
+Optionales, lokales Brand Kit (Datei `api/config/brand_kit.json`, überschreibbar
+via `CLIPFORGE_BRAND_KIT`). **Keine DB, kein Account, keine Cloud.** Fehlt die
+Datei, gelten Defaults und es wird **kein** Brand-Effekt aufs Rendering
+angewandt (`_exists: false`, Ausgabe unverändert).
+
+Felder: `brand_name`, `primary_color` (Highlight), `secondary_color` (Outline),
+`font_family` (optional), `caption_style_default`, `highlight_keywords[]`,
+`watermark_text`, `watermark_enabled`.
+
+`POST` validiert und speichert. Fehler → **`400`**:
+- ungültige Hex-Farbe (`#RGB`/`#RRGGBB`), unbekannter `caption_style_default`,
+  `watermark_text` > 40 Zeichen, > 20 Keywords bzw. Keyword > 30 Zeichen.
+
+**Wirkung im Rendering** (stabil, keine instabile Filter-Kette):
+- `primary_color` → Highlight-Farbe (aktuelles Karaoke-Wort + Keywords).
+- `secondary_color` → Outline-Farbe.
+- `highlight_keywords` → diese Wörter werden in den Captions eingefärbt.
+- `watermark_text` (nur bei `watermark_enabled`) → **ein** kleines ASS-Event
+  oben-mittig (Safe Area).
+
+Metadaten `caption_style` / `brand_kit_used` / `brand_kit_name` landen in
+`clips.json` (+ `caption_info` pro Clip), in manuellen Export-Metadaten und in
+der `metadata.json` von `exports.zip` / `all-exports.zip` (dort als
+`caption_style_default`).
+
+> **Grenzen:** keine externen/mitgelieferten Fonts (System-/Standard-Font,
+> FFmpeg-Fallback), die UI-Vorschau ist nur eine **CSS-Näherung** (die
+> FFmpeg-Ausgabe ist maßgeblich), keine Cloud-Synchronisierung.
 
 ---
 

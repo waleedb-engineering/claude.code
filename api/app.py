@@ -30,6 +30,12 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
 
+from clipforge.brand_kit import (
+    BrandKitError,
+    load_brand_kit,
+    save_brand_kit,
+)
+from clipforge.captions import STYLES as CAPTION_STYLES
 from clipforge.ffmpeg_utils import FFmpegNotFound, ensure_ffmpeg
 from clipforge.rerender import (
     ManualExportError,
@@ -468,6 +474,48 @@ def get_config() -> dict:
     }
 
 
+@app.get("/api/caption-styles")
+def get_caption_styles() -> dict:
+    """Liste der verfügbaren Caption-Styles (zentral aus captions.STYLES)."""
+    styles = [
+        {
+            "style_id": sid,
+            "name": s.name,
+            "description": s.description,
+            "recommended_for": s.recommended_for,
+            "preview_label": s.preview_label,
+        }
+        for sid, s in CAPTION_STYLES.items()
+    ]
+    return {"styles": styles, "default": "clean"}
+
+
+@app.get("/api/brand-kit")
+def get_brand_kit() -> dict:
+    """Aktuelles Brand Kit (oder Defaults, falls keine Datei existiert)."""
+    return load_brand_kit()
+
+
+class BrandKitPayload(BaseModel):
+    brand_name: str = ""
+    primary_color: str = "#FFDD00"
+    secondary_color: str = "#000000"
+    font_family: str | None = None
+    caption_style_default: str = "clean"
+    highlight_keywords: list[str] = []
+    watermark_text: str = ""
+    watermark_enabled: bool = False
+
+
+@app.post("/api/brand-kit")
+def post_brand_kit(payload: BrandKitPayload) -> dict:
+    """Validiert und speichert das Brand Kit lokal. Ungültig → 400."""
+    try:
+        return save_brand_kit(payload.model_dump())
+    except BrandKitError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
 @app.get("/api/jobs")
 def list_jobs() -> dict:
     """Listet alle Jobs mit Kurzstatus."""
@@ -882,6 +930,8 @@ def export_zip(job_id: str):
     reframe_fallback_count = 0
     content_generator = None
     content_fallback_count = 0
+    brand_kit_used = False
+    brand_kit_name = None
     cj = _read_clips_json(job)
     if cj is not None:
         scorer = cj.get("scorer")
@@ -895,6 +945,8 @@ def export_zip(job_id: str):
         reframe_fallback_count = int(cj.get("reframe_fallback_count", 0))
         content_generator = cj.get("content_generator")
         content_fallback_count = int(cj.get("content_fallback_count", 0))
+        brand_kit_used = bool(cj.get("brand_kit_used"))
+        brand_kit_name = cj.get("brand_kit_name")
 
     now = datetime.datetime.now(datetime.timezone.utc).isoformat()
     metadata = {
@@ -910,12 +962,15 @@ def export_zip(job_id: str):
         "total_removed_silence_seconds": round(total_removed, 2),
         "caption_mode": caption_mode,
         "caption_style": caption_style,
+        "caption_style_default": caption_style,
         "caption_fallback_count": caption_fallback_count,
         "reframe_mode": reframe_mode,
         "reframe_fallback_count": reframe_fallback_count,
         "reframe_note": "Reframe/Gesichtserkennung läuft lokal, ohne Cloud.",
         "content_generator": content_generator,
         "content_fallback_count": content_fallback_count,
+        "brand_kit_used": brand_kit_used,
+        "brand_kit_name": brand_kit_name,
         "disclaimer": (
             "Der Performance-Potential-Score ist eine Wahrscheinlichkeits-"
             "Einschätzung und keine Garantie für Reichweite oder Viralität."
@@ -1012,7 +1067,10 @@ def all_exports_zip(job_id: str):
         "total_mp4_count": len(auto_mp4s) + len(manual_items),
         "remove_silence": remove_silence,
         "reframe_mode": reframe_mode,
+        "caption_style_default": (cj or {}).get("caption_style"),
         "content_generator": content_generator,
+        "brand_kit_used": bool((cj or {}).get("brand_kit_used")),
+        "brand_kit_name": (cj or {}).get("brand_kit_name"),
         "warnings": warnings,
         "disclaimer": (
             "Der Performance-Potential-Score ist eine Wahrscheinlichkeits-"

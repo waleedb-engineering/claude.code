@@ -16,6 +16,7 @@ import json
 import os
 from typing import Callable
 
+from .captions import DEFAULT_STYLE, STYLES
 from .config import Settings, get_settings
 from .models import CandidateClip, Transcript
 from .render import render_clip
@@ -30,7 +31,7 @@ MAX_MANUAL_SECONDS = 90.0
 
 MANUAL_DIR_NAME = "manual_exports"
 
-_VALID_CAPTION_STYLES = {"clean", "high_energy"}
+_VALID_CAPTION_STYLES = set(STYLES.keys())
 _VALID_REFRAME_MODES = {"center", "smart", "face"}
 
 
@@ -119,9 +120,16 @@ def rerender_clip(
     settings = settings or get_settings()
     log = progress or (lambda _m: None)
 
-    # Optionen normalisieren
-    caption_style = caption_style if caption_style in _VALID_CAPTION_STYLES else "high_energy"
+    # Optionen normalisieren (unbekannter Style → Default clean)
+    caption_style = caption_style if caption_style in _VALID_CAPTION_STYLES else DEFAULT_STYLE
     reframe_mode = reframe_mode if reframe_mode in _VALID_REFRAME_MODES else "smart"
+
+    # Brand Kit (optional) → Caption-Overrides. Crasht nie.
+    try:
+        from .brand_kit import load_brand_kit, to_caption_overrides
+        brand_overrides = to_caption_overrides(load_brand_kit())
+    except Exception:  # noqa: BLE001
+        brand_overrides = {}
 
     video_path = find_source_video(job_dir)
     if not video_path:
@@ -164,6 +172,7 @@ def rerender_clip(
             caption_mode=caption_mode,
             caption_style=caption_style,
             reframe_mode=reframe_mode,
+            brand_overrides=brand_overrides,
             progress=progress,
         )
     except Exception as exc:  # noqa: BLE001 — sauberer Fehler nach oben
@@ -200,6 +209,8 @@ def rerender_clip(
         "silence_info": silence_info or None,
         "reframe_info": reframe_info or None,
         "caption_info": scored.caption_info or None,
+        "brand_kit_used": bool((brand_overrides or {}).get("brand_kit_used")),
+        "brand_kit_name": (brand_overrides or {}).get("brand_kit_name"),
         "warning": warning,
     }
 

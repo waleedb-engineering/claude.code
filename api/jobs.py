@@ -544,6 +544,13 @@ class JobRegistry:
         def should_cancel() -> bool:
             return self.is_cancel_requested(job.id)
 
+        # Brand Kit (optional, projektweit) → Caption-Overrides. Crasht nie.
+        try:
+            from clipforge.brand_kit import load_brand_kit, to_caption_overrides
+            brand_overrides = to_caption_overrides(load_brand_kit())
+        except Exception:  # noqa: BLE001 — Brand darf Rendering nie blocken
+            brand_overrides = {}
+
         # Eigentliche Arbeit: bestehender Pipeline-Kern, KEINE Duplizierung
         try:
             pr = run_pipeline(
@@ -557,6 +564,7 @@ class JobRegistry:
                 caption_mode=job.caption_mode,
                 caption_style=job.caption_style,
                 reframe_mode=job.reframe_mode,
+                brand_overrides=brand_overrides,
                 progress=progress,
                 should_cancel=should_cancel,
             )

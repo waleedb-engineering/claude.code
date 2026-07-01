@@ -3,10 +3,22 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { batchUpload, createJob, getConfig } from "@/lib/api";
-import type { BatchUploadRow, ClipForgeConfig } from "@/lib/types";
+import {
+  batchUpload,
+  createJob,
+  getBrandKit,
+  getCaptionStyles,
+  getConfig,
+} from "@/lib/api";
+import type {
+  BatchUploadRow,
+  BrandKit,
+  CaptionStyleInfo,
+  ClipForgeConfig,
+} from "@/lib/types";
 import Spinner from "@/components/Spinner";
 import Disclaimer from "@/components/Disclaimer";
+import CaptionStyleSelect from "@/components/CaptionStyleSelect";
 
 const ACCEPT = ".mp4,.mov,.mkv,.webm,.avi,.m4v";
 
@@ -52,9 +64,20 @@ export default function UploadPage() {
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState(false);
   const [config, setConfig] = useState<ClipForgeConfig | null>(null);
+  const [styles, setStyles] = useState<CaptionStyleInfo[]>([]);
+  const [brand, setBrand] = useState<BrandKit | null>(null);
 
   useEffect(() => {
     getConfig().then(setConfig).catch(() => {});
+    getCaptionStyles().then(setStyles).catch(() => {});
+    getBrandKit()
+      .then((k) => {
+        setBrand(k);
+        if (k._exists && k.caption_style_default) {
+          setCaptionStyle(k.caption_style_default);
+        }
+      })
+      .catch(() => {});
   }, []);
 
   const maxFiles = config?.max_batch_files ?? 10;
@@ -268,6 +291,28 @@ export default function UploadPage() {
         </div>
       )}
 
+      {/* Brand-Kit-Hinweis */}
+      {brand?._exists && (
+        <div className="rounded-xl border border-indigo-500/30 bg-indigo-500/5 px-4 py-2.5 text-sm text-indigo-200">
+          🎨 Brand Kit aktiv{brand.brand_name ? `: ${brand.brand_name}` : ""} —
+          Marken-Farben/Watermark werden auf die Clips angewandt.
+        </div>
+      )}
+
+      {/* Caption-Style (mit Beschreibung + Vorschau) */}
+      {styles.length > 0 && (
+        <div className="rounded-2xl border border-neutral-800 bg-neutral-900/40 p-5">
+          <CaptionStyleSelect
+            styles={styles}
+            value={captionStyle}
+            onChange={setCaptionStyle}
+          />
+          <p className="mt-2 text-[11px] text-neutral-500">
+            Bei mehreren Videos gilt der gewählte Style für alle Jobs.
+          </p>
+        </div>
+      )}
+
       {/* Gemeinsame Optionen */}
       <div className="grid gap-4 rounded-2xl border border-neutral-800 bg-neutral-900/40 p-5 sm:grid-cols-2">
         <label className="block">
@@ -280,17 +325,6 @@ export default function UploadPage() {
             onChange={(e) => setTopN(Math.max(1, Number(e.target.value) || 1))}
             className="mt-1 w-full rounded-lg border border-neutral-700 bg-neutral-950 px-3 py-2 text-sm text-neutral-100 outline-none focus:border-indigo-500"
           />
-        </label>
-        <label className="block">
-          <span className="text-sm text-neutral-300">Caption-Style</span>
-          <select
-            value={captionStyle}
-            onChange={(e) => setCaptionStyle(e.target.value)}
-            className="mt-1 w-full rounded-lg border border-neutral-700 bg-neutral-950 px-3 py-2 text-sm text-neutral-100 outline-none focus:border-indigo-500"
-          >
-            <option value="high_energy">High Energy</option>
-            <option value="clean">Clean</option>
-          </select>
         </label>
         <label className="block">
           <span className="text-sm text-neutral-300">Bildausrichtung</span>

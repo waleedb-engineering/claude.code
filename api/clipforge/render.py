@@ -202,6 +202,7 @@ def render_clip(
     caption_mode: str = "karaoke",
     caption_style: str = "high_energy",
     reframe_mode: str = "smart",
+    brand_overrides: dict | None = None,
     progress: LogFn | None = None,
 ) -> RenderInfo:
     """Rendert einen einzelnen Clip. Gibt RenderInfo zurück.
@@ -254,7 +255,7 @@ def render_clip(
     def _caps(words, cs: float, ce: float):
         return make_captions(
             words, cs, ce, mode=caption_mode, style=caption_style,
-            width=out_w, height=out_h,
+            width=out_w, height=out_h, overrides=brand_overrides,
         )
 
     def _log_caps(cap: dict) -> None:

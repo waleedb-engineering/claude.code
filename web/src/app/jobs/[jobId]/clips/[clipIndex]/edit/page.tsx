@@ -5,15 +5,23 @@ import { useParams } from "next/navigation";
 import Link from "next/link";
 import {
   clipPreviewUrl,
+  getBrandKit,
+  getCaptionStyles,
   getClips,
   getManualExports,
   manualExportDownloadUrl,
   manualExportPreviewUrl,
   rerenderClip,
 } from "@/lib/api";
-import type { ManualExport, ScoredClipDict } from "@/lib/types";
+import type {
+  BrandKit,
+  CaptionStyleInfo,
+  ManualExport,
+  ScoredClipDict,
+} from "@/lib/types";
 import { fmtDuration, fmtTime } from "@/lib/format";
 import Spinner from "@/components/Spinner";
+import CaptionStyleSelect from "@/components/CaptionStyleSelect";
 
 const MIN_SECONDS = 5;
 const MAX_SECONDS = 90;
@@ -38,6 +46,13 @@ export default function ClipEditPage() {
   const [renderError, setRenderError] = useState<string | null>(null);
   const [newExport, setNewExport] = useState<ManualExport | null>(null);
   const [exports, setExports] = useState<ManualExport[]>([]);
+  const [styles, setStyles] = useState<CaptionStyleInfo[]>([]);
+  const [brand, setBrand] = useState<BrandKit | null>(null);
+
+  useEffect(() => {
+    getCaptionStyles().then(setStyles).catch(() => {});
+    getBrandKit().then(setBrand).catch(() => {});
+  }, []);
 
   // Initial: Clip-Daten laden und Felder vorbefüllen.
   useEffect(() => {
@@ -234,18 +249,22 @@ export default function ClipEditPage() {
           />
         </label>
 
+        {brand?._exists && (
+          <div className="rounded-lg border border-indigo-500/30 bg-indigo-500/5 px-3 py-2 text-xs text-indigo-200">
+            🎨 Brand Kit aktiv{brand.brand_name ? `: ${brand.brand_name}` : ""} —
+            Marken-Farben/Watermark werden beim Re-Render angewandt.
+          </div>
+        )}
+
+        {styles.length > 0 && (
+          <CaptionStyleSelect
+            styles={styles}
+            value={captionStyle}
+            onChange={setCaptionStyle}
+          />
+        )}
+
         <div className="grid gap-4 sm:grid-cols-2">
-          <label className="block">
-            <span className="text-sm text-neutral-300">Caption-Style</span>
-            <select
-              value={captionStyle}
-              onChange={(e) => setCaptionStyle(e.target.value)}
-              className="mt-1 w-full rounded-lg border border-neutral-700 bg-neutral-950 px-3 py-2 text-sm text-neutral-100 outline-none focus:border-indigo-500"
-            >
-              <option value="high_energy">High Energy</option>
-              <option value="clean">Clean</option>
-            </select>
-          </label>
           <label className="block">
             <span className="text-sm text-neutral-300">Untertitel-Modus</span>
             <select
@@ -418,6 +437,16 @@ function ExportMeta({ exp }: { exp: ManualExport }) {
       </span>
       <span>
         Bild: <span className="text-neutral-200">{exp.reframe_mode}</span>
+      </span>
+      <span>
+        Brand Kit:{" "}
+        <span className="text-neutral-200">
+          {exp.brand_kit_used
+            ? exp.brand_kit_name
+              ? `an (${exp.brand_kit_name})`
+              : "an"
+            : "aus"}
+        </span>
       </span>
       <span>
         Stille-Schnitt:{" "}

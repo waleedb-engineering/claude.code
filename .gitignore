@@ -8,6 +8,8 @@ venv/
 # ClipForge generated / test artifacts
 api/testdata/out/
 api/testdata/out_*/
+# lokales Brand Kit (nutzerspezifisch, keine Secrets, aber nicht ins Repo)
+api/config/brand_kit.json
 api/testdata/*.mp4
 api/testdata/*.wav
 api/jobs/

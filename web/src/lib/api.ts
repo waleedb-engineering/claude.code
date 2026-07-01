@@ -3,7 +3,9 @@
 
 import type {
   BatchUploadResult,
+  BrandKit,
   BulkDeleteResult,
+  CaptionStyleInfo,
   ClipForgeConfig,
   ClipsJson,
   HealthResponse,
@@ -120,6 +122,33 @@ export async function getStorage(): Promise<StorageSummary> {
 
 export async function getConfig(): Promise<ClipForgeConfig> {
   return getJson<ClipForgeConfig>("/api/config");
+}
+
+export async function getCaptionStyles(): Promise<CaptionStyleInfo[]> {
+  const data = await getJson<{ styles: CaptionStyleInfo[] }>("/api/caption-styles");
+  return data.styles;
+}
+
+export async function getBrandKit(): Promise<BrandKit> {
+  return getJson<BrandKit>("/api/brand-kit");
+}
+
+export async function saveBrandKit(kit: Partial<BrandKit>): Promise<BrandKit> {
+  let res: Response;
+  try {
+    res = await fetch(`${API_BASE}/api/brand-kit`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(kit),
+    });
+  } catch {
+    throw new ApiError(
+      `Backend nicht erreichbar unter ${API_BASE}. Läuft FastAPI auf Port 8000?`,
+      0,
+    );
+  }
+  if (!res.ok) await parseError(res);
+  return (await res.json()) as BrandKit;
 }
 
 export interface CancelJobResult {

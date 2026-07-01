@@ -33,6 +33,26 @@ export interface ClipForgeConfig {
   supported_video_types: string[];
 }
 
+export interface CaptionStyleInfo {
+  style_id: string;
+  name: string;
+  description: string;
+  recommended_for: string;
+  preview_label: string;
+}
+
+export interface BrandKit {
+  brand_name: string;
+  primary_color: string;
+  secondary_color: string;
+  font_family: string | null;
+  caption_style_default: string;
+  highlight_keywords: string[];
+  watermark_text: string;
+  watermark_enabled: boolean;
+  _exists?: boolean;
+}
+
 export interface ResultClip {
   index: number;
   score: number;
@@ -234,6 +254,8 @@ export interface ManualExport {
   silence_info?: SilenceInfo | null;
   reframe_info?: ReframeInfo | null;
   caption_info?: CaptionInfo | null;
+  brand_kit_used?: boolean;
+  brand_kit_name?: string | null;
   warning?: string | null;
   available?: boolean;
   log?: string[];

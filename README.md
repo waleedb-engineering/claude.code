@@ -46,6 +46,7 @@ npm run dev      # http://127.0.0.1:3000
 | Schritt 15 | **Storage-Übersicht & Bulk-Cleanup** | ✅ fertig & verifiziert |
 | Schritt 16 | **Batch-Upload & Queue-Ansicht** | ✅ fertig & verifiziert |
 | Schritt 17 | **Job abbrechen (kooperativ) & Upload-Limits** | ✅ fertig & verifiziert |
+| Schritt 18 | **Caption-Styles (5) & Brand Kit** | ✅ fertig & verifiziert |
 | später | Face-Tracking-Reframe, echtes A/B-Tracking, Direkt-Posten | 🔭 später |
 
 ### Was schon echt funktioniert
@@ -131,6 +132,19 @@ npm run dev      # http://127.0.0.1:3000
   mit zu vielen Dateien → `400`; eine zu große Datei im Batch wird **einzeln**
   abgelehnt, gültige laufen weiter. `GET /api/config` liefert die Limits ans
   Frontend (keine doppelte Pflege).
+- **Caption-Styles & Brand Kit**: 5 zentral definierte Caption-Styles
+  (`clean`, `bold_creator`, `high_energy`, `podcast`, `minimal`) — wählbar in
+  Upload & Editor mit Beschreibung/CSS-Vorschau (`GET /api/caption-styles`).
+  Unbekannter Style fällt auf `clean` zurück; Timing bleibt synchron (auch mit
+  Silence-Removal). Ein optionales **Brand Kit** (`api/config/brand_kit.json`,
+  keine DB/Cloud) definiert Primary/Secondary-Farbe, Default-Style,
+  Highlight-Keywords und Watermark — wird beim Rendern **stabil** angewandt
+  (Farb-Overrides + Keyword-Highlight + optionale Watermark als **ein**
+  zusätzliches ASS-Event, keine neue Filter-Kette). Ohne Brand-Kit-Datei bleibt
+  die Ausgabe unverändert. Verwaltung unter `/settings/brand-kit`
+  (`GET`/`POST /api/brand-kit`, validiert: Hex-Farben, bekannter Style,
+  Watermark ≤ 40). Metadaten (`caption_style`, `brand_kit_used`,
+  `brand_kit_name`) landen in `clips.json`, Manual-Export-Metadaten und ZIPs.
 
 ### Klar als TODO gekennzeichnet (noch nicht echt)
 - Reframe ist **statischer** Smart-Crop (ein Fokuspunkt pro Clip) — **kein
@@ -285,3 +299,4 @@ Danach liegen abspielbare 9:16-MP4s in `testdata/out/`.
 | `CLIPFORGE_MAX_UPLOAD_MB` | `500` | Maximale Dateigröße pro Upload |
 | `CLIPFORGE_MAX_BATCH_FILES` | `10` | Maximale Dateien pro Batch-Upload |
 | `CLIPFORGE_JOBS_DIR` | `api/jobs` | Speicherort der Job-Ordner |
+| `CLIPFORGE_BRAND_KIT` | `api/config/brand_kit.json` | Speicherort des lokalen Brand Kits |

@@ -58,7 +58,8 @@ App öffnen: <http://127.0.0.1:3000>
 | `/upload` | **Mehrfach-Upload** (Drag-and-drop, Datei-Liste mit Status je Datei), **Upload-Limits sichtbar**, gemeinsame Optionen, optionales Transkript-JSON **nur bei genau 1 Datei** |
 | `/jobs` | **Queue-Summary** + **Storage-Widget** + Job-Liste mit Live-Status + **Abbrechen** (processing/queued) + **Job löschen** je Karte |
 | `/jobs/[jobId]` | Status + Export-Counts, Clip-Karten, ZIP-Downloads (Auto & alle), **Bearbeiten**, Bereich „Manuelle Exporte" |
-| `/jobs/[jobId]/clips/[clipIndex]/edit` | **Clip-Editor**: Start/Ende feinjustieren, Optionen wählen, neu rendern |
+| `/jobs/[jobId]/clips/[clipIndex]/edit` | **Clip-Editor**: Start/Ende feinjustieren, **Caption-Style** (mit Beschreibung/Vorschau), neu rendern |
+| `/settings/brand-kit` | **Brand Kit**: Farben, Default-Style, Highlight-Keywords, Watermark (lokal speichern) |
 
 ---
 
@@ -152,6 +153,17 @@ App öffnen: <http://127.0.0.1:3000>
    „X gelöscht · Y freigegeben" und Liste + Widget aktualisieren sich. Gibt es
    keine Kandidaten, ist der Button deaktiviert („Keine problematischen Jobs zum
    Aufräumen").
+14. **Caption-Styles (`/upload` + Editor):** Auswahl aus 5 Styles (clean,
+    bold_creator, high_energy, podcast, minimal) mit **Beschreibung** und einer
+    kleinen **CSS-Vorschau** (nur Näherung — die FFmpeg-Ausgabe ist maßgeblich).
+    Bei Batch gilt der gewählte Style für alle Jobs.
+15. **Brand Kit (`/settings/brand-kit`, Nav-Link „Brand Kit"):** Brand Name,
+    Primary/Secondary Color (Color-Picker + Hex), Default-Caption-Style,
+    Highlight-Keywords (Komma-Liste), Watermark-Text + An/Aus, **Speichern** mit
+    Erfolgs-/Fehlermeldung. Ist ein Brand Kit gespeichert, zeigen Upload und
+    Editor **„🎨 Brand Kit aktiv: {name}"** und nutzen dessen Default-Style; die
+    Marken-Farben/Watermark werden beim Rendern angewandt. Nach einem Re-Render
+    zeigen die Export-Metadaten `caption_style` und `Brand Kit an/aus`.
 
 > Echtes Video **ohne** angehängtes Transkript: Die Pipeline transkribiert dann
 > lokal mit faster-whisper. Beim ersten Lauf wird das Modell geladen (~140 MB),
@@ -182,4 +194,5 @@ App öffnen: <http://127.0.0.1:3000>
 
 ❌ Accounts · ❌ Billing · ❌ Cloud · ❌ Face-Tracking · ❌ Direkt-Posten auf
 TikTok/Instagram/YouTube · ❌ neue Backend-Logik · ❌ Datenbank ·
-❌ Cloud-Persistenz · ❌ automatische Wiederaufnahme laufender Renders nach Crash.
+❌ Cloud-Persistenz · ❌ automatische Wiederaufnahme laufender Renders nach Crash ·
+❌ externe/mitgelieferte Fonts · ❌ Brand-Kit-Cloud-Sync (nur lokale JSON).
