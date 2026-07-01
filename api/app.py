@@ -61,6 +61,15 @@ JOBS_DIR = os.environ.get(
     "CLIPFORGE_JOBS_DIR", os.path.join(os.path.dirname(os.path.abspath(__file__)), "jobs")
 )
 
+# Parallel verarbeitete Jobs (FFmpeg-lastig). Stabilität vor Geschwindigkeit:
+# Default 2, per CLIPFORGE_MAX_WORKERS überschreibbar (1 = strikt seriell).
+def _max_workers() -> int:
+    try:
+        return max(1, int(os.environ.get("CLIPFORGE_MAX_WORKERS", "2")))
+    except ValueError:
+        return 2
+
+
 app = FastAPI(title="ClipForge AI API", version="0.1.0")
 
 # CORS offen für lokale Entwicklung (Next.js-Client kommt in Schritt 3).
@@ -72,7 +81,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-registry = JobRegistry(JOBS_DIR)
+registry = JobRegistry(JOBS_DIR, max_workers=_max_workers())
 
 # Persistente Jobs nach (Neu-)Start aus jobs/ wiederherstellen. Robust:
 # kaputte Ordner werden übersprungen, Warnungen werden geloggt. Es wird nie
@@ -315,6 +324,74 @@ async def create_job(
 
     registry.start(job)
     return {"job_id": job.id, "status": job.status}
+
+
+@app.post("/api/jobs/batch")
+async def create_jobs_batch(
+    files: list[UploadFile] = File(...),
+    top_n: int = Form(default=5),
+    remove_silence: bool = Form(default=True),
+    caption_mode: str = Form(default="karaoke"),
+    caption_style: str = Form(default="high_energy"),
+    reframe_mode: str = Form(default="smart"),
+) -> dict:
+    """Legt für mehrere hochgeladene Videos je einen Job an.
+
+    Robust: eine ungültige/fehlerhafte Datei bricht den Batch NICHT ab — jede
+    Datei bekommt ein eigenes Ergebnis (accepted + job_id oder error). Die
+    tatsächliche Parallelität begrenzt der ThreadPool (CLIPFORGE_MAX_WORKERS),
+    hier werden Jobs nur angelegt und eingereiht. Speicherung wie beim
+    Einzel-Upload unter jobs/<id>/ → Restore/Delete/Storage funktionieren gleich.
+    """
+    if not files:
+        raise HTTPException(status_code=400, detail="Keine Dateien übermittelt.")
+
+    top_n = max(1, int(top_n))
+    results: list[dict] = []
+    accepted = 0
+    for file in files:
+        filename = file.filename or ""
+        ext = os.path.splitext(filename)[1].lower()
+        if not filename or ext not in ALLOWED_EXT:
+            await file.close()
+            results.append({
+                "filename": filename or "(ohne Namen)",
+                "accepted": False, "job_id": None,
+                "error": (
+                    f"Ungültiger Dateityp '{ext or '?'}'. Erlaubt: "
+                    f"{', '.join(sorted(ALLOWED_EXT))}."
+                ),
+            })
+            continue
+        try:
+            job = registry.create(
+                filename=filename, top_n=top_n, remove_silence=remove_silence,
+                caption_mode=caption_mode, caption_style=caption_style,
+                reframe_mode=reframe_mode,
+            )
+            input_path = os.path.join(job.job_dir, f"input{ext}")
+            with open(input_path, "wb") as out:
+                shutil.copyfileobj(file.file, out)
+            job.input_path = input_path
+            registry.start(job)
+            accepted += 1
+            results.append({
+                "filename": filename, "accepted": True,
+                "job_id": job.id, "error": None,
+            })
+        except Exception as exc:  # noqa: BLE001 — eine Datei darf den Batch nie killen
+            results.append({
+                "filename": filename, "accepted": False, "job_id": None,
+                "error": f"{type(exc).__name__}: {exc}",
+            })
+        finally:
+            await file.close()
+
+    return {
+        "accepted_count": accepted,
+        "rejected_count": len(files) - accepted,
+        "results": results,
+    }
 
 
 @app.get("/api/jobs")

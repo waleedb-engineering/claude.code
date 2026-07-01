@@ -42,6 +42,11 @@ App öffnen: <http://127.0.0.1:3000>
 
 > `NEXT_PUBLIC_API_BASE_URL` in `web/.env.local` zeigt standardmäßig auf
 > `http://127.0.0.1:8000`. Bei anderem Backend-Port hier anpassen.
+>
+> Parallele Job-Verarbeitung: `CLIPFORGE_MAX_WORKERS` (Backend-ENV, Default 2).
+> **Stabilität vor Geschwindigkeit** — bei großen Batches/Videos `=1` setzen
+> (strikt seriell). Lokal, kein Cloud-Queue-System; keine Wiederaufnahme mitten
+> im Render; große Batches können viel Speicher/CPU brauchen.
 
 ---
 
@@ -50,8 +55,8 @@ App öffnen: <http://127.0.0.1:3000>
 | Pfad | Inhalt |
 |---|---|
 | `/` | Landing mit „Video hochladen" |
-| `/upload` | Drop-Zone, Top-Clip-Anzahl, **Toggle „Stille Pausen entfernen"**, **Untertitel-Modus (Standard/Karaoke) + Caption-Style (Clean/High Energy)**, **Bildausrichtung (Smart/Face/Center)**, optionales Transkript-JSON |
-| `/jobs` | **Storage-Widget** (Speicher, Status-Verteilung, größte Jobs, Bulk-Cleanup) + Job-Liste mit Live-Status + **Job löschen** je Karte |
+| `/upload` | **Mehrfach-Upload** (Drag-and-drop, Datei-Liste mit Status je Datei), gemeinsame Optionen (Top-Clips, Caption-Style, Bildausrichtung, Stille-Toggle), optionales Transkript-JSON **nur bei genau 1 Datei** |
+| `/jobs` | **Queue-Summary** + **Storage-Widget** (Speicher, Status-Verteilung, größte Jobs, Bulk-Cleanup) + Job-Liste mit Live-Status + **Job löschen** je Karte |
 | `/jobs/[jobId]` | Status + Export-Counts, Clip-Karten, ZIP-Downloads (Auto & alle), **Bearbeiten**, Bereich „Manuelle Exporte" |
 | `/jobs/[jobId]/clips/[clipIndex]/edit` | **Clip-Editor**: Start/Ende feinjustieren, Optionen wählen, neu rendern |
 
@@ -114,7 +119,18 @@ App öffnen: <http://127.0.0.1:3000>
    der Button deaktiviert. Nach dem Löschen verschwindet der Job aus der Liste
    bzw. die Detailseite navigiert zurück nach `/jobs`. Es wird der komplette
    lokale Job-Ordner entfernt — nie etwas außerhalb von `jobs/`.
-9. **Storage-Widget (oben auf `/jobs`):** zeigt lokalen Gesamtspeicher, Anzahl
+9. **Batch-Upload (`/upload`):** ein oder mehrere Videos per Drag-and-drop /
+   Mehrfachauswahl. Die Datei-Liste zeigt je Datei **Name, Größe und Status**
+   (Wartet → Lädt hoch → Angenommen / Fehler). „Videos analysieren" legt pro
+   Datei einen Job an (1 Datei → Einzel-Upload mit optionalem Transkript; >1 →
+   Batch-Endpoint). Ungültige Dateien scheitern **einzeln** (per-Datei-Fehler),
+   ohne die gültigen zu blockieren. Danach: **„Zur Queue"** und pro angenommener
+   Datei **„Job öffnen"**.
+10. **Queue-Summary (`/jobs`):** kompakte Zeile „Verarbeitet gerade / Wartet /
+    Fertig / Fehlgeschlagen", abgeleitet aus der (automatisch gepollten)
+    Jobliste. Laufende Jobs zeigen einen Spinner-Badge; Details/Fortschritt auf
+    der Job-Detailseite.
+11. **Storage-Widget (oben auf `/jobs`):** zeigt lokalen Gesamtspeicher, Anzahl
    Jobs, Auto-/Manuelle Exporte, die **Status-Verteilung** (Fertig, Fehlgeschlagen,
    Unterbrochen, Unvollständig, Läuft, Warteschlange) und die **größten Jobs**.
    Der Button **„Problematische Jobs aufräumen (N)"** löscht nach Inline-

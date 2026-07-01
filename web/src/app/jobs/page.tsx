@@ -35,6 +35,16 @@ export default function JobsPage() {
     return () => clearInterval(id);
   }, []);
 
+  // Queue-Summary direkt aus der (bereits gepollten) Jobliste ableiten.
+  const jl = jobs ?? [];
+  const q = {
+    processing: jl.filter((j) => j.status === "processing").length,
+    queued: jl.filter((j) => j.status === "queued").length,
+    completed: jl.filter((j) => j.status === "completed").length,
+    failed: jl.filter((j) => j.status === "failed").length,
+  };
+  const hasActivity = q.processing > 0 || q.queued > 0;
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -51,6 +61,30 @@ export default function JobsPage() {
           + Neuer Job
         </Link>
       </div>
+
+      {/* Queue-Summary */}
+      {jobs && jobs.length > 0 && (
+        <div className="flex flex-wrap items-center gap-x-5 gap-y-1 rounded-xl border border-neutral-800 bg-neutral-900/40 px-4 py-3 text-sm">
+          <span className="flex items-center gap-2 text-neutral-300">
+            {hasActivity && <Spinner className="h-3.5 w-3.5 text-indigo-400" />}
+            <span className="font-medium text-white">Queue</span>
+          </span>
+          <span className="text-neutral-400">
+            Verarbeitet gerade:{" "}
+            <span className="font-semibold text-indigo-300">{q.processing}</span>
+          </span>
+          <span className="text-neutral-400">
+            Wartet: <span className="font-semibold text-neutral-200">{q.queued}</span>
+          </span>
+          <span className="text-neutral-400">
+            Fertig: <span className="font-semibold text-emerald-400">{q.completed}</span>
+          </span>
+          <span className="text-neutral-400">
+            Fehlgeschlagen:{" "}
+            <span className="font-semibold text-rose-400">{q.failed}</span>
+          </span>
+        </div>
+      )}
 
       {/* Storage-Übersicht + Bulk-Cleanup */}
       <StorageWidget storage={storage} onCleaned={load} />

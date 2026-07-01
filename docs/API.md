@@ -67,7 +67,8 @@ Wiederaufnahme laufender Renders nach Crash.
 | Methode | Pfad | Zweck |
 |---|---|---|
 | `GET` | `/health` | Backend- & FFmpeg-Status |
-| `POST` | `/api/jobs` | Video hochladen, Job starten → `job_id` |
+| `POST` | `/api/jobs` | **Ein** Video hochladen, Job starten → `job_id` (inkl. optionalem Transkript) |
+| `POST` | `/api/jobs/batch` | **Mehrere** Videos hochladen → je Datei ein Job (per-Datei-Ergebnis) |
 | `GET` | `/api/jobs` | Alle Jobs (Kurzstatus) |
 | `GET` | `/api/jobs/{job_id}` | Voller Status: Progress, Logs, Fehler, Ergebnis, `files`-Übersicht |
 | `DELETE` | `/api/jobs/{job_id}` | Job-Ordner löschen (`?force=true` bei `processing`) |
@@ -305,6 +306,58 @@ Jeder Clip enthält ein `content_package`-Feld mit publizierfertigem Text:
 Der gewählte `remove_silence`-Wert ist im Job-Status sichtbar (Feld
 `remove_silence`) und im `progress`-Log (erkannte Stellen, entfernte Dauer,
 ggf. Fallback). Werden keine sinnvollen Pausen gefunden, wird normal gerendert.
+
+### `POST /api/jobs/batch` — Mehrere Videos (multipart/form-data)
+
+Für **jede** Datei wird ein eigener Job angelegt (Speicherung wie beim
+Einzel-Upload unter `jobs/<id>/` → Restore/Delete/Storage/Bulk-Cleanup
+funktionieren identisch). Der Batch nutzt **kein** Transkript.
+
+| Feld | Typ | Pflicht | Default | Beschreibung |
+|---|---|---|---|---|
+| `files` | Datei[] | ja | – | Mehrere Videos (gleiche erlaubten Endungen) |
+| `top_n` | int | nein | `5` | Top-Clips je Video |
+| `remove_silence` | bool | nein | `true` | Stille entfernen |
+| `caption_mode` | string | nein | `karaoke` | `karaoke` / `standard` |
+| `caption_style` | string | nein | `high_energy` | `high_energy` / `clean` |
+| `reframe_mode` | string | nein | `smart` | `smart` / `face` / `center` |
+
+**Robust:** eine ungültige/fehlerhafte Datei bricht den Batch **nicht** ab —
+jede Datei bekommt ein eigenes Ergebnis. `files` leer → `400`.
+
+```json
+// 200
+{
+  "accepted_count": 2, "rejected_count": 1,
+  "results": [
+    { "filename": "a.mp4", "accepted": true,  "job_id": "…",  "error": null },
+    { "filename": "b.mov", "accepted": true,  "job_id": "…",  "error": null },
+    { "filename": "bad.txt", "accepted": false, "job_id": null,
+      "error": "Ungültiger Dateityp '.txt'. Erlaubt: …" }
+  ]
+}
+```
+
+**Einzel- vs. Batch-Upload:** `POST /api/jobs` bleibt der einfache Einzel-Weg
+(inkl. optionalem Transkript, deterministisch). `POST /api/jobs/batch` ist für
+mehrere Dateien und meldet pro Datei Erfolg/Fehler. Beide legen identische
+Job-Ordner an.
+
+### Queue-/Status-Anzeige
+
+Es gibt **keinen** eigenen `/api/queue`-Endpoint — die Queue-Summary ist aus
+vorhandenen Daten ableitbar: `GET /api/jobs` liefert je Job `status`, und
+`GET /api/storage` liefert `by_status` (queued/processing/completed/failed/
+interrupted/incomplete). Das Frontend berechnet daraus „verarbeitet gerade /
+wartet / fertig / fehlgeschlagen".
+
+### Parallelität (`CLIPFORGE_MAX_WORKERS`)
+
+Jobs laufen in einem `ThreadPoolExecutor`. Die parallele Verarbeitung ist über
+`CLIPFORGE_MAX_WORKERS` konfigurierbar (**Default 2**). Da jeder Job FFmpeg
+(und ggf. Whisper) startet, gilt **Stabilität vor Geschwindigkeit**: `=1`
+serialisiert strikt (ein Job nach dem anderen). Der Batch-Endpoint reiht nur
+ein — die tatsächliche Nebenläufigkeit bestimmt der Pool.
 
 ---
 

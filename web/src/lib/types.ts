@@ -285,6 +285,19 @@ export interface BulkDeleteResult {
   }[];
 }
 
+export interface BatchUploadRow {
+  filename: string;
+  accepted: boolean;
+  job_id: string | null;
+  error: string | null;
+}
+
+export interface BatchUploadResult {
+  accepted_count: number;
+  rejected_count: number;
+  results: BatchUploadRow[];
+}
+
 export interface HealthResponse {
   status: string;
   service: string;

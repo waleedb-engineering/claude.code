@@ -44,6 +44,7 @@ npm run dev      # http://127.0.0.1:3000
 | Schritt 13 | **Persistente Job-Registry** (Restore nach Server-Neustart) | ✅ fertig & verifiziert |
 | Schritt 14 | **Cleanup** (Jobs & manuelle Exporte sicher löschen) | ✅ fertig & verifiziert |
 | Schritt 15 | **Storage-Übersicht & Bulk-Cleanup** | ✅ fertig & verifiziert |
+| Schritt 16 | **Batch-Upload & Queue-Ansicht** | ✅ fertig & verifiziert |
 | später | Face-Tracking-Reframe, echtes A/B-Tracking, Direkt-Posten | 🔭 später |
 
 ### Was schon echt funktioniert
@@ -107,6 +108,15 @@ npm run dev      # http://127.0.0.1:3000
   geschützt. Bulk-Delete nutzt dieselbe sichere `delete()`-Logik wie
   Einzel-Delete (Traversal-Schutz, `jobs/`-Containment); Teil-Fehler werden je
   Job berichtet.
+- **Batch-Upload & Queue**: mehrere Videos gleichzeitig hochladen
+  (`POST /api/jobs/batch`) — jede Datei wird ein eigener Job, eine ungültige
+  Datei blockiert die anderen nicht (per-Datei-Ergebnis: `accepted`/`job_id`/
+  `error`). Die `/upload`-Seite unterstützt Mehrfachauswahl + Drag-and-drop mit
+  Statusliste je Datei; `/jobs` zeigt eine **Queue-Summary** (verarbeitet gerade
+  / wartet / fertig / fehlgeschlagen) und aktualisiert sich automatisch.
+  Parallelität via `ThreadPoolExecutor`, konfigurierbar über
+  **`CLIPFORGE_MAX_WORKERS`** (Default 2, `=1` für strikt seriell). Einzel-Upload
+  (`POST /api/jobs`, inkl. Transkript) bleibt unverändert.
 
 ### Klar als TODO gekennzeichnet (noch nicht echt)
 - Reframe ist **statischer** Smart-Crop (ein Fokuspunkt pro Clip) — **kein
@@ -257,3 +267,5 @@ Danach liegen abspielbare 9:16-MP4s in `testdata/out/`.
 | `ANTHROPIC_API_KEY` | – | aktiviert Claude-Scoring + Content-Paket-Verbesserung (optional) |
 | `CLIPFORGE_LLM_MODEL` | `claude-sonnet-4-6` | Modell für Scoring + Content-Pakete |
 | `CLIPFORGE_USE_LLM` | `auto` | `off` erzwingt reine Heuristik + regelbasierte Pakete |
+| `CLIPFORGE_MAX_WORKERS` | `2` | Parallel verarbeitete Jobs (`1` = strikt seriell, stabilster Modus) |
+| `CLIPFORGE_JOBS_DIR` | `api/jobs` | Speicherort der Job-Ordner |

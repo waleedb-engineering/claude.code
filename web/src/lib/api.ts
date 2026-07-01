@@ -2,6 +2,7 @@
 // Ruft ausschließlich bestehende Endpoints auf — keine Backend-Logik hier.
 
 import type {
+  BatchUploadResult,
   BulkDeleteResult,
   ClipsJson,
   HealthResponse,
@@ -177,6 +178,44 @@ export async function createJob({
   }
   if (!res.ok) await parseError(res);
   return (await res.json()) as { job_id: string; status: string };
+}
+
+export interface BatchUploadInput {
+  files: File[];
+  topN?: number;
+  removeSilence?: boolean;
+  captionMode?: string;
+  captionStyle?: string;
+  reframeMode?: string;
+}
+
+export async function batchUpload({
+  files,
+  topN = 5,
+  removeSilence = true,
+  captionMode = "karaoke",
+  captionStyle = "high_energy",
+  reframeMode = "smart",
+}: BatchUploadInput): Promise<BatchUploadResult> {
+  const form = new FormData();
+  for (const f of files) form.append("files", f);
+  form.append("top_n", String(topN));
+  form.append("remove_silence", String(removeSilence));
+  form.append("caption_mode", captionMode);
+  form.append("caption_style", captionStyle);
+  form.append("reframe_mode", reframeMode);
+
+  let res: Response;
+  try {
+    res = await fetch(`${API_BASE}/api/jobs/batch`, { method: "POST", body: form });
+  } catch {
+    throw new ApiError(
+      `Backend nicht erreichbar unter ${API_BASE}. Läuft FastAPI auf Port 8000?`,
+      0,
+    );
+  }
+  if (!res.ok) await parseError(res);
+  return (await res.json()) as BatchUploadResult;
 }
 
 export async function getManualExports(jobId: string): Promise<ManualExport[]> {
