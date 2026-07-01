@@ -70,6 +70,8 @@ Wiederaufnahme laufender Renders nach Crash.
 | `POST` | `/api/jobs` | Video hochladen, Job starten → `job_id` |
 | `GET` | `/api/jobs` | Alle Jobs (Kurzstatus) |
 | `GET` | `/api/jobs/{job_id}` | Voller Status: Progress, Logs, Fehler, Ergebnis, `files`-Übersicht |
+| `DELETE` | `/api/jobs/{job_id}` | Job-Ordner löschen (`?force=true` bei `processing`) |
+| `DELETE` | `/api/jobs/{job_id}/manual-exports/{export_id}` | Einen manuellen Export löschen (MP4 + Sidecar-JSON) |
 | `GET` | `/api/jobs/{job_id}/transcript` | `transcript.json` (falls vorhanden) |
 | `GET` | `/api/jobs/{job_id}/clips` | `clips.json` (falls vorhanden) |
 | `GET` | `/api/jobs/{job_id}/clips/{clip_index}/download` | Gerenderten Clip als MP4 (Attachment, 1-basiert) |
@@ -365,6 +367,56 @@ Ungültige/nicht existierende `export_id` → `404` (Path-Traversal wird geblock
 > `exports.zip` enthält bewusst weiter **nur die Auto-Clips** (unverändert). Das
 > kombinierte Paket (Auto + manuell, geordnete Ordner) liefert der Endpoint
 > **`all-exports.zip`** (siehe oben).
+
+---
+
+## Löschen / Cleanup
+
+Zwei getrennte Löschvorgänge — ein **ganzer Job** vs. ein **einzelner manueller
+Export**. Beide löschen **ausschließlich** innerhalb von `jobs/` (siehe
+Sicherheit unten).
+
+### `DELETE /api/jobs/{job_id}`
+
+Löscht den kompletten Ordner `jobs/<job_id>/` (Auto-Clips, `manual_exports/`,
+alle JSONs) und entfernt den Job aus der Registry.
+
+- `processing`-Job → **`409`** („Job wird gerade verarbeitet …"), außer
+  `?force=true` wird gesetzt. Alle anderen Zustände (`completed`, `failed`,
+  `interrupted`, `incomplete`, restored) sind normal löschbar.
+- Unbekannter Job → **`404`**. Unsichere `job_id` → **`400`**.
+
+```json
+// 200
+{ "deleted": true, "job_id": "…", "removed_files_count": 7, "removed_bytes": 6240166 }
+```
+
+### `DELETE /api/jobs/{job_id}/manual-exports/{export_id}`
+
+Löscht **nur** die MP4 + die passende Sidecar-`{export_id}.json` eines manuellen
+Exports. **Auto-Clips bleiben unberührt.** Danach zeigt
+`GET …/manual-exports` die aktualisierte Liste, `all-exports.zip` enthält den
+Export nicht mehr, und `manual_export_count` / `total_export_count` /
+`has_manual_exports` / `all_exports_ready` stimmen wieder.
+
+- Nicht vorhanden → **`404`**. Unsichere `export_id` → **`400`**.
+
+```json
+// 200
+{ "deleted": true, "export_id": "…",
+  "removed_files": ["….mp4", "….json"], "removed_bytes": 973603 }
+```
+
+### Sicherheit (Löschlogik)
+
+- **Path-Traversal geblockt:** `job_id`/`export_id` mit `/`, `\`, `..` oder als
+  absoluter Pfad werden abgewiesen.
+- **Jobs-Root-Schutz:** vor dem Löschen wird der Zielpfad per `realpath`
+  aufgelöst und geprüft, dass er **strikt unterhalb** von `jobs/` (bzw.
+  `manual_exports/`) liegt — nie der Ordner selbst, nie darüber.
+- **Processing-Schutz:** laufende Renders werden nicht still gelöscht (`409`).
+- **Keine stillen Fehler:** kann nur teilweise gelöscht werden, meldet die API
+  das klar (`deleted:false` + `error` bzw. HTTP `500`).
 
 ---
 

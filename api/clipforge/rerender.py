@@ -230,13 +230,78 @@ def list_manual_exports(job_dir: str) -> list[dict]:
     return exports
 
 
+def _safe_export_id(export_id: str) -> bool:
+    """True, wenn export_id sicher ist (kein Path-Traversal / Pfad-Trenner)."""
+    return bool(export_id) and not (
+        "/" in export_id
+        or "\\" in export_id
+        or ".." in export_id
+        or os.path.isabs(export_id)
+    )
+
+
 def manual_export_path(job_dir: str, export_id: str) -> str | None:
     """Absoluter MP4-Pfad eines manuellen Exports oder None. Schützt vor Traversal."""
-    # export_id darf keine Pfad-Trenner enthalten (Sicherheit).
-    if not export_id or "/" in export_id or "\\" in export_id or ".." in export_id:
+    if not _safe_export_id(export_id):
         return None
     out_dir = manual_dir(job_dir)
     path = os.path.join(out_dir, f"{export_id}.mp4")
     if os.path.exists(path) and os.path.isfile(path):
         return path
     return None
+
+
+class ManualExportError(Exception):
+    """export_id ergibt einen Pfad außerhalb von manual_exports/ (→ 400)."""
+
+
+def delete_manual_export(job_dir: str, export_id: str) -> dict | None:
+    """Löscht MP4 + Sidecar-JSON eines manuellen Exports.
+
+    Sicherheit: `export_id` wird validiert und beide Zielpfade müssen strikt
+    innerhalb von `manual_exports/` liegen (realpath-Prüfung). Es wird niemals
+    ein Auto-Clip oder eine Datei außerhalb dieses Ordners angefasst.
+
+    Rückgabe:
+      - dict {deleted, export_id, removed_files, removed_bytes} bei Erfolg
+      - None, wenn kein Bestandteil existiert (→ 404)
+    Wirft ManualExportError bei unsicherer export_id (→ 400).
+    """
+    if not _safe_export_id(export_id):
+        raise ManualExportError(f"Ungültige export_id: {export_id!r}")
+
+    out_dir = manual_dir(job_dir)
+    base = os.path.realpath(out_dir)
+    candidates = [f"{export_id}.mp4", f"{export_id}.json"]
+
+    removed_files: list[str] = []
+    removed_bytes = 0
+    any_existed = False
+    for name in candidates:
+        path = os.path.join(out_dir, name)
+        # Doppelter Schutz: aufgelöster Pfad muss unter manual_exports/ liegen.
+        real = os.path.realpath(path)
+        if os.path.dirname(real) != base:
+            raise ManualExportError(f"Pfad außerhalb von manual_exports/: {name!r}")
+        if os.path.exists(real) and os.path.isfile(real):
+            any_existed = True
+            try:
+                size = os.path.getsize(real)
+            except OSError:
+                size = 0
+            try:
+                os.remove(real)
+                removed_files.append(name)
+                removed_bytes += size
+            except OSError:
+                pass
+
+    if not any_existed:
+        return None
+
+    return {
+        "deleted": True,
+        "export_id": export_id,
+        "removed_files": removed_files,
+        "removed_bytes": removed_bytes,
+    }

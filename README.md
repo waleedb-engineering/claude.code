@@ -42,6 +42,7 @@ npm run dev      # http://127.0.0.1:3000
 | Schritt 11 | **Web-Clip-Editor** (Start/Ende feinjustieren + Re-Render) | ✅ fertig & verifiziert |
 | Schritt 12 | **Export-Management** (all-exports.zip + Manual-Übersicht) | ✅ fertig & verifiziert |
 | Schritt 13 | **Persistente Job-Registry** (Restore nach Server-Neustart) | ✅ fertig & verifiziert |
+| Schritt 14 | **Cleanup** (Jobs & manuelle Exporte sicher löschen) | ✅ fertig & verifiziert |
 | später | Face-Tracking-Reframe, echtes A/B-Tracking, Direkt-Posten | 🔭 später |
 
 ### Was schon echt funktioniert
@@ -87,6 +88,15 @@ npm run dev      # http://127.0.0.1:3000
   sind in der UI als „aus lokalem Speicher wiederhergestellt" markiert; kaputte
   Job-Ordner werden übersprungen und crashen das Backend nicht. **Keine
   automatische Wiederaufnahme** laufender Renders — bewusst.
+- **Cleanup / sicheres Löschen**: Jobs und einzelne manuelle Exporte lassen sich
+  über die Web-App entfernen (`DELETE /api/jobs/{id}` bzw.
+  `DELETE /api/jobs/{id}/manual-exports/{export_id}`). Job löschen entfernt den
+  **kompletten** Ordner `jobs/<id>/` (Auto-Clips, manuelle Exporte, JSONs);
+  einen manuellen Export löschen entfernt nur dessen MP4 + Sidecar-JSON und lässt
+  **Auto-Clips unberührt**. Sicherheit: strenge `job_id`/`export_id`-Validierung
+  und realpath-Prüfung — es wird **nie** außerhalb von `jobs/` gelöscht; ein
+  laufender `processing`-Job ist geschützt (`409`, außer `?force=true`). Jede
+  Löschung verlangt in der UI eine Inline-Bestätigung.
 
 ### Klar als TODO gekennzeichnet (noch nicht echt)
 - Reframe ist **statischer** Smart-Crop (ein Fokuspunkt pro Clip) — **kein

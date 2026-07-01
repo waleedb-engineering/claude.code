@@ -32,13 +32,15 @@ from pydantic import BaseModel
 
 from clipforge.ffmpeg_utils import FFmpegNotFound, ensure_ffmpeg
 from clipforge.rerender import (
+    ManualExportError,
     RerenderError,
+    delete_manual_export,
     list_manual_exports,
     manual_dir,
     manual_export_path,
     rerender_clip,
 )
-from jobs import Job, JobRegistry
+from jobs import Job, JobBusy, JobNotFound, JobRegistry, UnsafeJobPath
 
 # Erlaubte Video-Endungen (Fehlerfall: ungültiger Dateityp)
 ALLOWED_EXT = {".mp4", ".mov", ".mkv", ".webm", ".avi", ".m4v"}
@@ -279,6 +281,29 @@ def get_job(job_id: str) -> dict:
     return data
 
 
+@app.delete("/api/jobs/{job_id}")
+def delete_job(job_id: str, force: bool = False) -> dict:
+    """Löscht den kompletten Job-Ordner (jobs/<id>/) und entfernt ihn aus der Registry.
+
+    - Löscht **nie** außerhalb von jobs/ (Path-Traversal geblockt).
+    - `processing`-Jobs → `409` (außer `?force=true`).
+    - Unbekannter Job → `404`.
+    Antwort: `{deleted, job_id, removed_files_count, removed_bytes}`.
+    """
+    try:
+        result = registry.delete(job_id, force=force)
+    except UnsafeJobPath as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except JobNotFound:
+        raise HTTPException(status_code=404, detail="Job nicht gefunden.")
+    except JobBusy as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+    if not result.get("deleted"):
+        # teilweise gelöscht → klar melden statt still zu schlucken
+        raise HTTPException(status_code=500, detail=result.get("error") or "Löschen fehlgeschlagen.")
+    return result
+
+
 @app.get("/api/jobs/{job_id}/transcript")
 def get_transcript(job_id: str):
     """Gibt transcript.json zurück (falls vorhanden)."""
@@ -458,6 +483,24 @@ def download_manual_export(job_id: str, export_id: str):
     if not path:
         raise HTTPException(status_code=404, detail="Manueller Export nicht gefunden.")
     return FileResponse(path, media_type="video/mp4", filename=f"{export_id}.mp4")
+
+
+@app.delete("/api/jobs/{job_id}/manual-exports/{export_id}")
+def delete_manual_export_endpoint(job_id: str, export_id: str) -> dict:
+    """Löscht MP4 + Sidecar-JSON eines manuellen Exports.
+
+    - Fasst **keine** Auto-Clips an, löscht nur innerhalb von manual_exports/.
+    - Unsichere `export_id` → `400`; nicht vorhanden → `404`.
+    Antwort: `{deleted, export_id, removed_files, removed_bytes}`.
+    """
+    job = _require_job(job_id)
+    try:
+        result = delete_manual_export(job.job_dir, export_id)
+    except ManualExportError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    if result is None:
+        raise HTTPException(status_code=404, detail="Manueller Export nicht gefunden.")
+    return result
 
 
 @app.get("/api/jobs/{job_id}/exports.zip")

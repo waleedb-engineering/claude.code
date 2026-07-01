@@ -14,6 +14,7 @@ import datetime
 import glob
 import json
 import os
+import shutil
 import threading
 import uuid
 from concurrent.futures import ThreadPoolExecutor
@@ -33,8 +34,35 @@ STATUS_INTERRUPTED = "interrupted"   # war beim Neustart aktiv → nicht fortges
 STATUS_INCOMPLETE = "incomplete"     # Ergebnis-Dateien fehlen (unvollständig)
 
 
+class JobNotFound(Exception):
+    """Job existiert weder in der Registry noch auf der Platte (→ 404)."""
+
+
+class JobBusy(Exception):
+    """Job wird gerade verarbeitet — Löschen nur mit force (→ 409)."""
+
+
+class UnsafeJobPath(Exception):
+    """job_id ergibt einen Pfad außerhalb von jobs/ (→ 400)."""
+
+
 def _now() -> str:
     return datetime.datetime.now(datetime.timezone.utc).isoformat()
+
+
+def _dir_stats(path: str) -> tuple[int, int]:
+    """(Anzahl Dateien, Gesamtgröße in Bytes) eines Verzeichnisbaums."""
+    files = 0
+    total = 0
+    for root, _dirs, names in os.walk(path):
+        for name in names:
+            fp = os.path.join(root, name)
+            try:
+                total += os.path.getsize(fp)
+                files += 1
+            except OSError:
+                pass
+    return files, total
 
 
 @dataclass
@@ -139,6 +167,76 @@ class JobRegistry:
     def list(self) -> list[Job]:
         with self._lock:
             return sorted(self._jobs.values(), key=lambda j: j.created_at, reverse=True)
+
+    # ---------- Löschen (sicher, nur innerhalb jobs/) ----------
+
+    def safe_job_dir(self, job_id: str) -> str:
+        """Validiert job_id und liefert den **garantiert** in jobs/ liegenden Pfad.
+
+        Blockt Path-Traversal (`..`), absolute Pfade, Pfad-Trenner und alles,
+        was nach realpath-Auflösung nicht strikt unterhalb von base_dir liegt.
+        """
+        if (
+            not job_id
+            or "/" in job_id
+            or "\\" in job_id
+            or ".." in job_id
+            or os.path.isabs(job_id)
+            or job_id in (".", "")
+        ):
+            raise UnsafeJobPath(f"Ungültige job_id: {job_id!r}")
+        base = os.path.realpath(self.base_dir)
+        target = os.path.realpath(os.path.join(base, job_id))
+        # target muss echt unterhalb von base liegen (nicht base selbst).
+        if target == base or os.path.commonpath([base, target]) != base:
+            raise UnsafeJobPath(f"Pfad außerhalb von jobs/: {job_id!r}")
+        return target
+
+    def delete(self, job_id: str, force: bool = False) -> dict:
+        """Löscht den kompletten Job-Ordner + entfernt den Job aus der Registry.
+
+        Wirft UnsafeJobPath (→400), JobNotFound (→404), JobBusy (→409).
+        Löscht niemals außerhalb von jobs/.
+        """
+        target = self.safe_job_dir(job_id)  # kann UnsafeJobPath werfen
+
+        with self._lock:
+            job = self._jobs.get(job_id)
+        exists_on_disk = os.path.isdir(target)
+        if job is None and not exists_on_disk:
+            raise JobNotFound(f"Job {job_id} nicht gefunden.")
+
+        if job is not None and job.status == STATUS_PROCESSING and not force:
+            raise JobBusy(
+                "Job wird gerade verarbeitet. Löschen erst nach Abschluss "
+                "(oder mit force=true)."
+            )
+
+        removed_files, removed_bytes = _dir_stats(target) if exists_on_disk else (0, 0)
+        partial_error: str | None = None
+        if exists_on_disk:
+            try:
+                shutil.rmtree(target)
+            except OSError as exc:
+                # Teilweise gelöscht? Rest zählen, Fehler klar melden.
+                still_files, _still_bytes = _dir_stats(target)
+                partial_error = (
+                    f"Ordner konnte nicht vollständig gelöscht werden "
+                    f"({type(exc).__name__}): {exc}. Noch {still_files} Datei(en) übrig."
+                )
+
+        with self._lock:
+            self._jobs.pop(job_id, None)
+
+        result = {
+            "deleted": partial_error is None,
+            "job_id": job_id,
+            "removed_files_count": removed_files,
+            "removed_bytes": removed_bytes,
+        }
+        if partial_error:
+            result["error"] = partial_error
+        return result
 
     # ---------- Wiederherstellung nach Server-Neustart ----------
 

@@ -65,6 +65,51 @@ export async function getClips(jobId: string): Promise<ClipsJson> {
   return getJson<ClipsJson>(`/api/jobs/${jobId}/clips`);
 }
 
+async function del<T>(path: string): Promise<T> {
+  let res: Response;
+  try {
+    res = await fetch(`${API_BASE}${path}`, { method: "DELETE" });
+  } catch {
+    throw new ApiError(
+      `Backend nicht erreichbar unter ${API_BASE}. Läuft FastAPI auf Port 8000?`,
+      0,
+    );
+  }
+  if (!res.ok) await parseError(res);
+  return (await res.json()) as T;
+}
+
+export interface DeleteJobResult {
+  deleted: boolean;
+  job_id: string;
+  removed_files_count: number;
+  removed_bytes: number;
+}
+
+export async function deleteJob(
+  jobId: string,
+  force = false,
+): Promise<DeleteJobResult> {
+  const q = force ? "?force=true" : "";
+  return del<DeleteJobResult>(`/api/jobs/${jobId}${q}`);
+}
+
+export interface DeleteManualExportResult {
+  deleted: boolean;
+  export_id: string;
+  removed_files: string[];
+  removed_bytes: number;
+}
+
+export async function deleteManualExport(
+  jobId: string,
+  exportId: string,
+): Promise<DeleteManualExportResult> {
+  return del<DeleteManualExportResult>(
+    `/api/jobs/${jobId}/manual-exports/${exportId}`,
+  );
+}
+
 export interface CreateJobInput {
   file: File;
   topN?: number;

@@ -2,10 +2,11 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { listJobs } from "@/lib/api";
+import { deleteJob, listJobs } from "@/lib/api";
 import type { JobSummary } from "@/lib/types";
 import StatusBadge from "@/components/StatusBadge";
 import Spinner from "@/components/Spinner";
+import DeleteControl from "@/components/DeleteControl";
 import { fmtDateTime } from "@/lib/format";
 
 export default function JobsPage() {
@@ -75,33 +76,45 @@ export default function JobsPage() {
       {jobs && jobs.length > 0 && (
         <ul className="space-y-2">
           {jobs.map((j) => (
-            <li key={j.id}>
-              <Link
-                href={`/jobs/${j.id}`}
-                className="flex items-center justify-between gap-4 rounded-xl border border-neutral-800 bg-neutral-900/50 px-4 py-3 transition hover:border-neutral-700"
-              >
-                <div className="min-w-0">
-                  <p className="truncate font-medium text-neutral-100">
-                    {j.filename}
+            <li
+              key={j.id}
+              className="flex items-center justify-between gap-4 rounded-xl border border-neutral-800 bg-neutral-900/50 px-4 py-3 transition hover:border-neutral-700"
+            >
+              <Link href={`/jobs/${j.id}`} className="min-w-0 flex-1">
+                <p className="truncate font-medium text-neutral-100">
+                  {j.filename}
+                </p>
+                <p className="mt-0.5 text-xs text-neutral-500">
+                  {fmtDateTime(j.created_at)} · {j.id}
+                </p>
+                {j.restored && (
+                  <p className="mt-0.5 text-[11px] text-neutral-500">
+                    ↻ Aus lokalem Speicher wiederhergestellt
                   </p>
-                  <p className="mt-0.5 text-xs text-neutral-500">
-                    {fmtDateTime(j.created_at)} · {j.id}
-                  </p>
-                  {j.restored && (
-                    <p className="mt-0.5 text-[11px] text-neutral-500">
-                      ↻ Aus lokalem Speicher wiederhergestellt
-                    </p>
-                  )}
-                </div>
-                <div className="flex shrink-0 items-center gap-3">
-                  {typeof j.clip_count === "number" && (
-                    <span className="text-sm text-neutral-400">
-                      {j.clip_count} Clips
-                    </span>
-                  )}
-                  <StatusBadge status={j.status} />
-                </div>
+                )}
               </Link>
+              <div className="flex shrink-0 items-center gap-3">
+                {typeof j.clip_count === "number" && (
+                  <span className="text-sm text-neutral-400">
+                    {j.clip_count} Clips
+                  </span>
+                )}
+                <StatusBadge status={j.status} />
+                <DeleteControl
+                  label="Job löschen"
+                  confirmLabel="Diesen Job wirklich löschen? Alle Clips, manuellen Exporte und Metadaten werden entfernt."
+                  disabled={j.status === "processing"}
+                  disabledHint="Job wird verarbeitet — Löschen nach Abschluss möglich."
+                  onConfirm={async () => {
+                    await deleteJob(j.id);
+                  }}
+                  onDone={() =>
+                    setJobs((prev) =>
+                      (prev ?? []).filter((x) => x.id !== j.id),
+                    )
+                  }
+                />
+              </div>
             </li>
           ))}
         </ul>

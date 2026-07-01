@@ -4,16 +4,20 @@ import { useState } from "react";
 import Link from "next/link";
 import type { ManualExport } from "@/lib/types";
 import {
+  deleteManualExport,
   manualExportDownloadUrl,
   manualExportPreviewUrl,
 } from "@/lib/api";
+import DeleteControl from "./DeleteControl";
 
 function ExportRow({
   jobId,
   exp,
+  onDeleted,
 }: {
   jobId: string;
   exp: ManualExport;
+  onDeleted?: (exportId: string) => void;
 }) {
   const [showPreview, setShowPreview] = useState(false);
   return (
@@ -77,6 +81,14 @@ function ExportRow({
         >
           Zum Editor
         </Link>
+        <DeleteControl
+          label="Löschen"
+          confirmLabel="Diesen manuellen Export wirklich löschen?"
+          onConfirm={async () => {
+            await deleteManualExport(jobId, exp.export_id);
+          }}
+          onDone={() => onDeleted?.(exp.export_id)}
+        />
         {exp.warning && (
           <span className="text-xs text-amber-400">⚠ {exp.warning}</span>
         )}
@@ -88,9 +100,11 @@ function ExportRow({
 export default function ManualExportsSection({
   jobId,
   exports,
+  onDeleted,
 }: {
   jobId: string;
   exports: ManualExport[];
+  onDeleted?: (exportId: string) => void;
 }) {
   if (!exports.length) return null;
   // Neueste zuerst (Backend liefert bereits so, aber defensiv sortieren).
@@ -107,7 +121,12 @@ export default function ManualExportsSection({
       </div>
       <ul className="space-y-3">
         {sorted.map((e) => (
-          <ExportRow key={e.export_id} jobId={jobId} exp={e} />
+          <ExportRow
+            key={e.export_id}
+            jobId={jobId}
+            exp={e}
+            onDeleted={onDeleted}
+          />
         ))}
       </ul>
     </section>

@@ -51,7 +51,7 @@ App öffnen: <http://127.0.0.1:3000>
 |---|---|
 | `/` | Landing mit „Video hochladen" |
 | `/upload` | Drop-Zone, Top-Clip-Anzahl, **Toggle „Stille Pausen entfernen"**, **Untertitel-Modus (Standard/Karaoke) + Caption-Style (Clean/High Energy)**, **Bildausrichtung (Smart/Face/Center)**, optionales Transkript-JSON |
-| `/jobs` | Übersicht aller Jobs mit Live-Status |
+| `/jobs` | Übersicht aller Jobs mit Live-Status + **Job löschen** je Karte |
 | `/jobs/[jobId]` | Status + Export-Counts, Clip-Karten, ZIP-Downloads (Auto & alle), **Bearbeiten**, Bereich „Manuelle Exporte" |
 | `/jobs/[jobId]/clips/[clipIndex]/edit` | **Clip-Editor**: Start/Ende feinjustieren, Optionen wählen, neu rendern |
 
@@ -104,8 +104,16 @@ App öffnen: <http://127.0.0.1:3000>
 7. Unter den Clip-Karten fasst der Bereich **„Manuelle Exporte"** alle
    manuellen Re-Renders **clip-übergreifend** zusammen: Titel, Quell-Clip,
    Start/Ende, finale Dauer, Caption-Style, Silence-Removal, Reframe-Modus,
-   eine ein-/ausblendbare **Vorschau**, **Download** und ein **„Zum Editor"**-
-   Link zum jeweiligen Clip.
+   eine ein-/ausblendbare **Vorschau**, **Download**, ein **„Zum Editor"**-
+   Link und ein **„Löschen"** (mit Inline-Bestätigung; entfernt nur diesen
+   Export, Auto-Clips bleiben erhalten, Counts + all-exports.zip aktualisieren
+   sich sofort).
+8. **Job löschen:** sowohl in der Jobliste (pro Karte) als auch auf der
+   Detailseite (Kopfzeile) gibt es **„Job löschen"** mit Inline-Bestätigung
+   („Diesen Job wirklich löschen? …"). Läuft der Job gerade (`processing`), ist
+   der Button deaktiviert. Nach dem Löschen verschwindet der Job aus der Liste
+   bzw. die Detailseite navigiert zurück nach `/jobs`. Es wird der komplette
+   lokale Job-Ordner entfernt — nie etwas außerhalb von `jobs/`.
 
 > Echtes Video **ohne** angehängtes Transkript: Die Pipeline transkribiert dann
 > lokal mit faster-whisper. Beim ersten Lauf wird das Modell geladen (~140 MB),

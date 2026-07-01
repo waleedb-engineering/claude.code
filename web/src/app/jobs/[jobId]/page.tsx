@@ -1,10 +1,11 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import {
   allExportsZipUrl,
+  deleteJob,
   exportsZipUrl,
   getClips,
   getJob,
@@ -16,17 +17,18 @@ import Spinner from "@/components/Spinner";
 import ClipCard from "@/components/ClipCard";
 import Disclaimer from "@/components/Disclaimer";
 import ManualExportsSection from "@/components/ManualExportsSection";
+import DeleteControl from "@/components/DeleteControl";
 
 const POLL_MS = 2000;
 
 export default function JobDetailPage() {
   const params = useParams<{ jobId: string }>();
+  const router = useRouter();
   const jobId = params.jobId;
 
   const [job, setJob] = useState<Job | null>(null);
   const [clips, setClips] = useState<ClipsJson | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [manualCounts, setManualCounts] = useState<Record<number, number>>({});
   const [manualExports, setManualExports] = useState<ManualExport[]>([]);
   const clipsLoaded = useRef(false);
 
@@ -39,17 +41,18 @@ export default function JobDetailPage() {
       /* clips.json evtl. nicht vorhanden (leeres Ergebnis) — kein harter Fehler */
     }
     try {
-      const exports = await getManualExports(jobId);
-      setManualExports(exports);
-      const counts: Record<number, number> = {};
-      for (const e of exports) {
-        counts[e.source_clip_index] = (counts[e.source_clip_index] ?? 0) + 1;
-      }
-      setManualCounts(counts);
+      setManualExports(await getManualExports(jobId));
     } catch {
       /* manuelle Exporte optional — kein harter Fehler */
     }
   }, [jobId]);
+
+  // Zähler je Quell-Clip aus der aktuellen Manual-Export-Liste ableiten.
+  const manualCounts: Record<number, number> = {};
+  for (const e of manualExports) {
+    manualCounts[e.source_clip_index] =
+      (manualCounts[e.source_clip_index] ?? 0) + 1;
+  }
 
   useEffect(() => {
     let active = true;
@@ -106,7 +109,21 @@ export default function JobDetailPage() {
             </p>
           )}
         </div>
-        {job && <StatusBadge status={job.status} />}
+        <div className="flex shrink-0 items-center gap-3">
+          {job && <StatusBadge status={job.status} />}
+          {job && (
+            <DeleteControl
+              label="Job löschen"
+              confirmLabel="Diesen Job wirklich löschen? Alle Clips, manuellen Exporte und Metadaten werden entfernt."
+              disabled={job.status === "processing"}
+              disabledHint="Job wird verarbeitet — Löschen nach Abschluss möglich."
+              onConfirm={async () => {
+                await deleteJob(jobId);
+              }}
+              onDone={() => router.push("/jobs")}
+            />
+          )}
+        </div>
       </div>
 
       {/* Verbindungsfehler */}
@@ -185,14 +202,13 @@ export default function JobDetailPage() {
               />
               <Stat
                 label="Manuelle Exporte"
-                value={String(job.files?.manual_export_count ?? 0)}
+                value={String(manualExports.length)}
               />
               <Stat
                 label="Gesamt-Exporte"
                 value={String(
-                  job.files?.total_export_count ??
-                    job.files?.mp4_count ??
-                    0,
+                  (job.files?.auto_export_count ?? job.files?.mp4_count ?? 0) +
+                    manualExports.length,
                 )}
               />
               <Stat label="Sprache" value={result?.language ?? "—"} />
@@ -307,7 +323,15 @@ export default function JobDetailPage() {
             )
           )}
 
-          <ManualExportsSection jobId={jobId} exports={manualExports} />
+          <ManualExportsSection
+            jobId={jobId}
+            exports={manualExports}
+            onDeleted={(exportId) =>
+              setManualExports((prev) =>
+                prev.filter((e) => e.export_id !== exportId),
+              )
+            }
+          />
         </>
       )}
     </div>
