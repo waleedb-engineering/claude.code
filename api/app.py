@@ -34,6 +34,7 @@ from clipforge.ffmpeg_utils import FFmpegNotFound, ensure_ffmpeg
 from clipforge.rerender import (
     RerenderError,
     list_manual_exports,
+    manual_dir,
     manual_export_path,
     rerender_clip,
 )
@@ -72,20 +73,77 @@ def _require_job(job_id: str):
 
 
 def _mp4_paths(job: Job) -> list[str]:
-    """Alle gerenderten Clip-MP4s im Job-Ordner (sortiert)."""
+    """Alle automatisch gerenderten Clip-MP4s im Job-Ordner (sortiert)."""
     return sorted(glob.glob(os.path.join(job.job_dir, "clip_*.mp4")))
+
+
+def _manual_mp4_paths(job: Job) -> list[str]:
+    """Alle manuell re-gerenderten MP4s (jobs/<id>/manual_exports/, sortiert)."""
+    d = manual_dir(job.job_dir)
+    if not os.path.isdir(d):
+        return []
+    return sorted(glob.glob(os.path.join(d, "*.mp4")))
+
+
+def _read_clips_json(job: Job) -> dict | None:
+    """Liest clips.json (oder None bei Fehlen/Defekt)."""
+    path = os.path.join(job.job_dir, "clips.json")
+    if not os.path.exists(path):
+        return None
+    try:
+        with open(path, "r", encoding="utf-8") as fh:
+            return json.load(fh)
+    except (OSError, ValueError):
+        return None
+
+
+def _build_content_packages_doc(cj: dict | None, job_id: str, now: str) -> dict | None:
+    """Baut das content_packages.json-Dokument aus clips.json (oder None)."""
+    if cj is None:
+        return None
+    packages = []
+    for i, c in enumerate(cj.get("clips") or [], start=1):
+        md = c.get("metadata") or {}
+        title = None
+        for key in ("tiktok", "reels", "shorts"):
+            t = (md.get(key) or {}).get("title")
+            if t:
+                title = t
+                break
+        content_package = c.get("content_package")
+        if not title and content_package:
+            title = (content_package.get("youtube_shorts") or {}).get("title")
+        if not title:
+            title = f"Clip {i}"
+        packages.append({
+            "clip_index": i,
+            "title": title,
+            "transcript_excerpt": (c.get("text") or "")[:200],
+            "content_package": content_package,
+        })
+    return {"job_id": job_id, "export_created_at": now, "clips": packages}
 
 
 def _files_summary(job: Job) -> dict:
     """Übersicht über die im Job-Ordner vorhandenen Ergebnis-Dateien."""
     mp4s = _mp4_paths(job)
+    manual = _manual_mp4_paths(job)
     result = job.result or {}
+    auto_count = len(mp4s)
+    manual_count = len(manual)
+    total = auto_count + manual_count
     return {
         "clip_count": result.get("clip_count", 0),
-        "mp4_count": len(mp4s),
+        "mp4_count": auto_count,
         "has_transcript": os.path.exists(os.path.join(job.job_dir, "transcript.json")),
         "has_clips_json": os.path.exists(os.path.join(job.job_dir, "clips.json")),
-        "exports_ready": len(mp4s) > 0,
+        "exports_ready": auto_count > 0,
+        # Export-Management (Auto vs. manuell)
+        "auto_export_count": auto_count,
+        "manual_export_count": manual_count,
+        "total_export_count": total,
+        "has_manual_exports": manual_count > 0,
+        "all_exports_ready": total > 0,
     }
 
 
@@ -401,25 +459,19 @@ def export_zip(job_id: str):
     reframe_fallback_count = 0
     content_generator = None
     content_fallback_count = 0
-    clips_json_path = os.path.join(job.job_dir, "clips.json")
-    cj: dict | None = None
-    if os.path.exists(clips_json_path):
-        try:
-            with open(clips_json_path, "r", encoding="utf-8") as fh:
-                cj = json.load(fh)
-            scorer = cj.get("scorer")
-            remove_silence = cj.get("remove_silence", remove_silence)
-            audio_smoothing = bool(cj.get("audio_smoothing", False))
-            total_removed = float(cj.get("total_removed_silence_seconds", 0.0))
-            caption_mode = cj.get("caption_mode", caption_mode)
-            caption_style = cj.get("caption_style", caption_style)
-            caption_fallback_count = int(cj.get("caption_fallback_count", 0))
-            reframe_mode = cj.get("reframe_mode", reframe_mode)
-            reframe_fallback_count = int(cj.get("reframe_fallback_count", 0))
-            content_generator = cj.get("content_generator")
-            content_fallback_count = int(cj.get("content_fallback_count", 0))
-        except (OSError, ValueError):
-            cj = None
+    cj = _read_clips_json(job)
+    if cj is not None:
+        scorer = cj.get("scorer")
+        remove_silence = cj.get("remove_silence", remove_silence)
+        audio_smoothing = bool(cj.get("audio_smoothing", False))
+        total_removed = float(cj.get("total_removed_silence_seconds", 0.0))
+        caption_mode = cj.get("caption_mode", caption_mode)
+        caption_style = cj.get("caption_style", caption_style)
+        caption_fallback_count = int(cj.get("caption_fallback_count", 0))
+        reframe_mode = cj.get("reframe_mode", reframe_mode)
+        reframe_fallback_count = int(cj.get("reframe_fallback_count", 0))
+        content_generator = cj.get("content_generator")
+        content_fallback_count = int(cj.get("content_fallback_count", 0))
 
     now = datetime.datetime.now(datetime.timezone.utc).isoformat()
     metadata = {
@@ -459,32 +511,8 @@ def export_zip(job_id: str):
         zf.writestr("metadata.json", json.dumps(metadata, ensure_ascii=False, indent=2))
 
         # content_packages.json: publizierfertige Texte je Clip (Begleitdatei)
-        if cj is not None:
-            packages = []
-            for i, c in enumerate(cj.get("clips") or [], start=1):
-                md = c.get("metadata") or {}
-                title = None
-                for key in ("tiktok", "reels", "shorts"):
-                    t = (md.get(key) or {}).get("title")
-                    if t:
-                        title = t
-                        break
-                content_package = c.get("content_package")
-                if not title and content_package:
-                    title = (content_package.get("youtube_shorts") or {}).get("title")
-                if not title:
-                    title = f"Clip {i}"
-                packages.append({
-                    "clip_index": i,
-                    "title": title,
-                    "transcript_excerpt": (c.get("text") or "")[:200],
-                    "content_package": content_package,
-                })
-            content_packages_doc = {
-                "job_id": job.id,
-                "export_created_at": now,
-                "clips": packages,
-            }
+        content_packages_doc = _build_content_packages_doc(cj, job.id, now)
+        if content_packages_doc is not None:
             zf.writestr(
                 "content_packages.json",
                 json.dumps(content_packages_doc, ensure_ascii=False, indent=2),
@@ -492,6 +520,119 @@ def export_zip(job_id: str):
     buf.seek(0)
 
     filename = f"clipforge_{job.id}_clips.zip"
+    return StreamingResponse(
+        buf,
+        media_type="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+def _collect_manual_for_zip(job: Job) -> tuple[list[tuple[str, dict]], list[str]]:
+    """Sammelt (mp4_pfad, metadata) je manuellem Export + Warnungen.
+
+    Kaputte Metadateien und fehlende MP4s werden übersprungen und als Warnung
+    zurückgegeben (crasht nie).
+    """
+    d = manual_dir(job.job_dir)
+    items: list[tuple[str, dict]] = []
+    warnings: list[str] = []
+    if not os.path.isdir(d):
+        return items, warnings
+    for meta_path in sorted(glob.glob(os.path.join(d, "*.json"))):
+        base = os.path.basename(meta_path)
+        try:
+            with open(meta_path, "r", encoding="utf-8") as fh:
+                meta = json.load(fh)
+        except (OSError, ValueError):
+            warnings.append(f"Kaputte Metadatei übersprungen: {base}")
+            continue
+        out = meta.get("output_file")
+        mp4 = os.path.join(d, out) if out else None
+        if not mp4 or not os.path.exists(mp4):
+            warnings.append(
+                f"MP4 fehlt zu {meta.get('export_id') or base} — übersprungen."
+            )
+            continue
+        items.append((mp4, meta))
+    return items, warnings
+
+
+@app.get("/api/jobs/{job_id}/all-exports.zip")
+def all_exports_zip(job_id: str):
+    """Vollständiges Paket: Auto-Clips + manuelle Exporte + alle JSONs.
+
+    Separater Endpoint — verändert `exports.zip` NICHT. Ordnerstruktur:
+        auto_clips/…   manual_exports/…   data/…
+    """
+    job = _require_job(job_id)
+    auto_mp4s = _mp4_paths(job)
+    manual_items, warnings = _collect_manual_for_zip(job)
+
+    if not auto_mp4s and not manual_items:
+        raise HTTPException(
+            status_code=404,
+            detail="Keine Exporte vorhanden (weder Auto-Clips noch manuelle Exporte).",
+        )
+
+    now = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    cj = _read_clips_json(job)
+    content_generator = (cj or {}).get("content_generator")
+    remove_silence = (cj or {}).get("remove_silence", job.remove_silence)
+    reframe_mode = (cj or {}).get("reframe_mode", job.reframe_mode)
+
+    metadata = {
+        "job_id": job.id,
+        "source_filename": job.filename,
+        "export_created_at": now,
+        "auto_clip_count": len(auto_mp4s),
+        "manual_export_count": len(manual_items),
+        "total_mp4_count": len(auto_mp4s) + len(manual_items),
+        "remove_silence": remove_silence,
+        "reframe_mode": reframe_mode,
+        "content_generator": content_generator,
+        "warnings": warnings,
+        "disclaimer": (
+            "Der Performance-Potential-Score ist eine Wahrscheinlichkeits-"
+            "Einschätzung und keine Garantie für Reichweite oder Viralität."
+        ),
+    }
+
+    manual_exports_doc = {
+        "job_id": job.id,
+        "export_created_at": now,
+        "exports": [meta for _, meta in manual_items],
+    }
+
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        # 1) Auto-Clips
+        for path in auto_mp4s:
+            zf.write(path, arcname=f"auto_clips/{os.path.basename(path)}")
+        # 2) manuelle Exporte
+        for mp4, _meta in manual_items:
+            zf.write(mp4, arcname=f"manual_exports/{os.path.basename(mp4)}")
+        # 3) Daten
+        for optional in ("clips.json", "transcript.json"):
+            p = os.path.join(job.job_dir, optional)
+            if os.path.exists(p):
+                zf.write(p, arcname=f"data/{optional}")
+        content_packages_doc = _build_content_packages_doc(cj, job.id, now)
+        if content_packages_doc is not None:
+            zf.writestr(
+                "data/content_packages.json",
+                json.dumps(content_packages_doc, ensure_ascii=False, indent=2),
+            )
+        zf.writestr(
+            "data/manual_exports.json",
+            json.dumps(manual_exports_doc, ensure_ascii=False, indent=2),
+        )
+        zf.writestr(
+            "data/metadata.json",
+            json.dumps(metadata, ensure_ascii=False, indent=2),
+        )
+    buf.seek(0)
+
+    filename = f"clipforge_{job.id}_all_exports.zip"
     return StreamingResponse(
         buf,
         media_type="application/zip",

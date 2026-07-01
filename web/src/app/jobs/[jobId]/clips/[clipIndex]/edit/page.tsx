@@ -320,9 +320,12 @@ export default function ClipEditPage() {
           <div className="flex items-center gap-2">
             <span className="text-emerald-400">✓</span>
             <h2 className="font-semibold text-neutral-100">
-              Neuer Export erstellt
+              Manueller Export gespeichert
             </h2>
           </div>
+          <p className="font-mono text-xs text-neutral-400">
+            Export-ID: <span className="text-neutral-200">{newExport.export_id}</span>
+          </p>
           <div className="overflow-hidden rounded-xl border border-neutral-800 bg-black">
             <video
               key={newExport.export_id}
@@ -334,13 +337,27 @@ export default function ClipEditPage() {
             />
           </div>
           <ExportMeta exp={newExport} />
-          <a
-            href={manualExportDownloadUrl(jobId, newExport.export_id)}
-            download
-            className="inline-flex items-center gap-2 rounded-lg bg-white px-3.5 py-2 text-sm font-medium text-neutral-900 transition hover:bg-neutral-200"
-          >
-            MP4 herunterladen
-          </a>
+          <div className="flex flex-wrap items-center gap-2">
+            <a
+              href={manualExportDownloadUrl(jobId, newExport.export_id)}
+              download
+              className="inline-flex items-center gap-2 rounded-lg bg-white px-3.5 py-2 text-sm font-medium text-neutral-900 transition hover:bg-neutral-200"
+            >
+              MP4 herunterladen
+            </a>
+            <Link
+              href={`/jobs/${jobId}`}
+              className="inline-flex items-center gap-2 rounded-lg border border-neutral-700 px-3.5 py-2 text-sm font-medium text-neutral-200 transition hover:border-neutral-500 hover:text-white"
+            >
+              Zur Job-Übersicht
+            </Link>
+          </div>
+          <p className="rounded-lg bg-neutral-800/40 px-3 py-2 text-xs text-neutral-400">
+            ℹ Dieser Export erscheint jetzt im Bereich{" "}
+            <span className="text-neutral-200">„Manuelle Exporte"</span> auf der
+            Job-Seite und ist Teil von{" "}
+            <span className="text-neutral-200">all-exports.zip</span>.
+          </p>
         </div>
       )}
 

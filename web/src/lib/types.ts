@@ -40,6 +40,11 @@ export interface JobFiles {
   has_transcript: boolean;
   has_clips_json: boolean;
   exports_ready: boolean;
+  auto_export_count?: number;
+  manual_export_count?: number;
+  total_export_count?: number;
+  has_manual_exports?: boolean;
+  all_exports_ready?: boolean;
 }
 
 export interface Job {

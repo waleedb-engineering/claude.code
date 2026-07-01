@@ -52,7 +52,7 @@ App öffnen: <http://127.0.0.1:3000>
 | `/` | Landing mit „Video hochladen" |
 | `/upload` | Drop-Zone, Top-Clip-Anzahl, **Toggle „Stille Pausen entfernen"**, **Untertitel-Modus (Standard/Karaoke) + Caption-Style (Clean/High Energy)**, **Bildausrichtung (Smart/Face/Center)**, optionales Transkript-JSON |
 | `/jobs` | Übersicht aller Jobs mit Live-Status |
-| `/jobs/[jobId]` | Status + Progress/Logs, danach Clip-Karten + Downloads + **Bearbeiten** |
+| `/jobs/[jobId]` | Status + Export-Counts, Clip-Karten, ZIP-Downloads (Auto & alle), **Bearbeiten**, Bereich „Manuelle Exporte" |
 | `/jobs/[jobId]/clips/[clipIndex]/edit` | **Clip-Editor**: Start/Ende feinjustieren, Optionen wählen, neu rendern |
 
 ---
@@ -85,8 +85,13 @@ App öffnen: <http://127.0.0.1:3000>
    Textfelder haben einen **„Kopieren"-Button**; pro Plattform gibt es
    „Alles kopieren". Funktioniert ohne API-Key (regelbasiert, DE+EN).
 5. Clip direkt im Player **abspielen**, einzeln per **MP4 herunterladen**, oder
-   **Alle Clips als ZIP** (enthält MP4s + clips.json/transcript.json/
-   metadata.json/**content_packages.json**).
+   als ZIP-Paket. Die Statuszeile zeigt zusätzlich **Auto-Clips**, **Manuelle
+   Exporte** und **Gesamt-Exporte**. Zwei ZIP-Buttons:
+   - **„Alle Clips als ZIP"** → `exports.zip` (unverändert, **nur Auto-Clips**,
+     flach + clips.json/transcript.json/metadata.json/content_packages.json).
+   - **„Alle Exporte als ZIP"** → `all-exports.zip` (**vollständiges Paket**:
+     `auto_clips/` + `manual_exports/` + `data/` mit u. a. `manual_exports.json`
+     und `metadata.json`).
 6. Über **„Bearbeiten"** auf jeder Clip-Karte öffnet sich der **Clip-Editor**
    (`/jobs/[jobId]/clips/[clipIndex]/edit`): Vorschau des Auto-Clips, Felder für
    **Start-/Endzeit** (mit Live-Längenanzeige + Warnung bei <5s/>90s), **Titel**,
@@ -96,6 +101,11 @@ App öffnen: <http://127.0.0.1:3000>
    Export-Metadaten und ein **Download-Button**. Bestehende manuelle Exporte des
    Clips werden darunter aufgelistet. Auf der Job-Seite zeigt die Clip-Karte
    zusätzlich einen Hinweis, wenn manuelle Exporte existieren.
+7. Unter den Clip-Karten fasst der Bereich **„Manuelle Exporte"** alle
+   manuellen Re-Renders **clip-übergreifend** zusammen: Titel, Quell-Clip,
+   Start/Ende, finale Dauer, Caption-Style, Silence-Removal, Reframe-Modus,
+   eine ein-/ausblendbare **Vorschau**, **Download** und ein **„Zum Editor"**-
+   Link zum jeweiligen Clip.
 
 > Echtes Video **ohne** angehängtes Transkript: Die Pipeline transkribiert dann
 > lokal mit faster-whisper. Beim ersten Lauf wird das Modell geladen (~140 MB),

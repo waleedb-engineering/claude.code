@@ -40,6 +40,7 @@ npm run dev      # http://127.0.0.1:3000
 | Schritt 6–9 | **Karaoke-Captions · Smart-Reframe · Audio-Smoothing** | ✅ fertig & verifiziert |
 | Schritt 10 | **Content-Package-Generator** (TikTok / Reels / Shorts-Texte) | ✅ fertig & verifiziert |
 | Schritt 11 | **Web-Clip-Editor** (Start/Ende feinjustieren + Re-Render) | ✅ fertig & verifiziert |
+| Schritt 12 | **Export-Management** (all-exports.zip + Manual-Übersicht) | ✅ fertig & verifiziert |
 | später | Face-Tracking-Reframe, echtes A/B-Tracking, Direkt-Posten | 🔭 später |
 
 ### Was schon echt funktioniert
@@ -68,6 +69,14 @@ npm run dev      # http://127.0.0.1:3000
   Reframe-Modus / Titel wählen und als **neuer, separater Export** neu rendern —
   der ursprüngliche Auto-Clip bleibt unangetastet. Manuelle Exporte landen unter
   `jobs/<id>/manual_exports/` und sind einzeln als Vorschau/Download verfügbar.
+- **Export-Management**: die Job-Seite zeigt **Auto-Clips / Manuelle Exporte /
+  Gesamt-Exporte** und bietet zwei Downloads:
+  - **`exports.zip`** (unverändert) — **nur Auto-Clips**, flach.
+  - **`all-exports.zip`** (neu) — **vollständiges Paket** mit sauberer Struktur
+    `auto_clips/` + `manual_exports/` + `data/` (clips.json, transcript.json,
+    content_packages.json, `manual_exports.json`, metadata.json).
+  Ein Bereich **„Manuelle Exporte"** listet alle Re-Renders clip-übergreifend
+  mit Vorschau, Download und Link zurück zum Editor.
 
 ### Klar als TODO gekennzeichnet (noch nicht echt)
 - Reframe ist **statischer** Smart-Crop (ein Fokuspunkt pro Clip) — **kein

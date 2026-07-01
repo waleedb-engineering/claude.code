@@ -3,12 +3,19 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
-import { exportsZipUrl, getClips, getJob, getManualExports } from "@/lib/api";
-import type { ClipsJson, Job } from "@/lib/types";
+import {
+  allExportsZipUrl,
+  exportsZipUrl,
+  getClips,
+  getJob,
+  getManualExports,
+} from "@/lib/api";
+import type { ClipsJson, Job, ManualExport } from "@/lib/types";
 import StatusBadge from "@/components/StatusBadge";
 import Spinner from "@/components/Spinner";
 import ClipCard from "@/components/ClipCard";
 import Disclaimer from "@/components/Disclaimer";
+import ManualExportsSection from "@/components/ManualExportsSection";
 
 const POLL_MS = 2000;
 
@@ -20,6 +27,7 @@ export default function JobDetailPage() {
   const [clips, setClips] = useState<ClipsJson | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [manualCounts, setManualCounts] = useState<Record<number, number>>({});
+  const [manualExports, setManualExports] = useState<ManualExport[]>([]);
   const clipsLoaded = useRef(false);
 
   const fetchClips = useCallback(async () => {
@@ -32,6 +40,7 @@ export default function JobDetailPage() {
     }
     try {
       const exports = await getManualExports(jobId);
+      setManualExports(exports);
       const counts: Record<number, number> = {};
       for (const e of exports) {
         counts[e.source_clip_index] = (counts[e.source_clip_index] ?? 0) + 1;
@@ -144,8 +153,25 @@ export default function JobDetailPage() {
                 value={String(job.files?.clip_count ?? result?.clip_count ?? 0)}
               />
               <Stat
-                label="Exportiert"
-                value={String(job.files?.mp4_count ?? result?.rendered_count ?? 0)}
+                label="Auto-Clips"
+                value={String(
+                  job.files?.auto_export_count ??
+                    job.files?.mp4_count ??
+                    result?.rendered_count ??
+                    0,
+                )}
+              />
+              <Stat
+                label="Manuelle Exporte"
+                value={String(job.files?.manual_export_count ?? 0)}
+              />
+              <Stat
+                label="Gesamt-Exporte"
+                value={String(
+                  job.files?.total_export_count ??
+                    job.files?.mp4_count ??
+                    0,
+                )}
               />
               <Stat label="Sprache" value={result?.language ?? "—"} />
               <Stat
@@ -177,28 +203,52 @@ export default function JobDetailPage() {
                 }
               />
             </div>
-            {job.files?.exports_ready && (
-              <a
-                href={exportsZipUrl(jobId)}
-                className="inline-flex items-center gap-2 rounded-lg bg-white px-3.5 py-2 text-sm font-medium text-neutral-900 transition hover:bg-neutral-200"
-                download
-              >
-                <svg
-                  className="h-4 w-4"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
+            <div className="flex flex-wrap items-center gap-2">
+              {job.files?.exports_ready && (
+                <a
+                  href={exportsZipUrl(jobId)}
+                  className="inline-flex items-center gap-2 rounded-lg border border-neutral-700 px-3.5 py-2 text-sm font-medium text-neutral-200 transition hover:border-neutral-500 hover:text-white"
+                  download
                 >
-                  <path
-                    d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                </svg>
-                Alle Clips als ZIP
-              </a>
-            )}
+                  <svg
+                    className="h-4 w-4"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                  >
+                    <path
+                      d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  </svg>
+                  Alle Clips als ZIP
+                </a>
+              )}
+              {(job.files?.all_exports_ready ?? job.files?.exports_ready) && (
+                <a
+                  href={allExportsZipUrl(jobId)}
+                  className="inline-flex items-center gap-2 rounded-lg bg-white px-3.5 py-2 text-sm font-medium text-neutral-900 transition hover:bg-neutral-200"
+                  download
+                >
+                  <svg
+                    className="h-4 w-4"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                  >
+                    <path
+                      d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  </svg>
+                  Alle Exporte als ZIP
+                </a>
+              )}
+            </div>
           </div>
 
           <details className="rounded-2xl border border-neutral-800 bg-neutral-900/40">
@@ -234,6 +284,8 @@ export default function JobDetailPage() {
               </div>
             )
           )}
+
+          <ManualExportsSection jobId={jobId} exports={manualExports} />
         </>
       )}
     </div>

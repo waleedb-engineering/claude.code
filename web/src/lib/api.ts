@@ -158,4 +158,8 @@ export function exportsZipUrl(jobId: string): string {
   return `${API_BASE}/api/jobs/${jobId}/exports.zip`;
 }
 
+export function allExportsZipUrl(jobId: string): string {
+  return `${API_BASE}/api/jobs/${jobId}/all-exports.zip`;
+}
+
 export { ApiError };

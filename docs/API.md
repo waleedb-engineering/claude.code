@@ -55,18 +55,24 @@ Hook-Varianten; ohne Key läuft reine Heuristik.
 | `GET` | `/api/jobs/{job_id}/manual-exports` | Alle manuellen Exporte eines Jobs |
 | `GET` | `/api/jobs/{job_id}/manual-exports/{export_id}/preview` | Manuellen Export inline streamen |
 | `GET` | `/api/jobs/{job_id}/manual-exports/{export_id}/download` | Manuellen Export als MP4 (Attachment) |
-| `GET` | `/api/jobs/{job_id}/exports.zip` | Alle **Auto**-MP4-Clips + clips.json/transcript.json/metadata.json/content_packages.json als ZIP |
+| `GET` | `/api/jobs/{job_id}/exports.zip` | **Nur Auto**-Clips (flach) + clips.json/transcript.json/metadata.json/content_packages.json als ZIP |
+| `GET` | `/api/jobs/{job_id}/all-exports.zip` | **Vollständiges Paket**: Auto-Clips + manuelle Exporte + alle JSONs (Ordnerstruktur) |
 | `GET` | `/api/jobs/{job_id}/files` | Alle Dateien im Job-Ordner |
 
 ### `files`-Übersicht in `GET /api/jobs/{job_id}`
 
 ```json
 "files": {
-  "clip_count": 2,          // erkannte/bewertete Clips
-  "mp4_count": 2,           // tatsächlich gerenderte MP4-Exporte
-  "has_transcript": true,   // transcript.json vorhanden
-  "has_clips_json": true,   // clips.json vorhanden
-  "exports_ready": true     // mp4_count > 0 (ZIP/Downloads verfügbar)
+  "clip_count": 2,            // erkannte/bewertete Clips
+  "mp4_count": 2,             // Auto-MP4-Exporte (== auto_export_count)
+  "has_transcript": true,     // transcript.json vorhanden
+  "has_clips_json": true,     // clips.json vorhanden
+  "exports_ready": true,      // auto_export_count > 0 (exports.zip verfügbar)
+  "auto_export_count": 2,     // automatische Clips im Job-Root
+  "manual_export_count": 1,   // manuelle Re-Renders (manual_exports/)
+  "total_export_count": 3,    // Auto + manuell
+  "has_manual_exports": true, // manual_export_count > 0
+  "all_exports_ready": true   // total_export_count > 0 (all-exports.zip verfügbar)
 }
 ```
 
@@ -75,6 +81,20 @@ Hook-Varianten; ohne Key läuft reine Heuristik.
 - **preview**: ohne `Content-Disposition: attachment` → Browser spielt inline
   ab; unterstützt `Range`-Requests (HTTP 206) fürs Seeken in `<video>`.
 - **download**: mit `attachment; filename=…` → erzwingt Speichern.
+
+### `exports.zip` vs. `all-exports.zip`
+
+Zwei getrennte Endpoints — **`exports.zip` bleibt bewusst unverändert** (nur
+Auto-Clips, flache Struktur; Rückwärtskompatibilität). `all-exports.zip` ist das
+neue vollständige Paket inkl. manueller Re-Renders und geordneter Ordner.
+
+| | `exports.zip` | `all-exports.zip` |
+|---|---|---|
+| Auto-Clips | ✅ (flach im Root) | ✅ (`auto_clips/`) |
+| Manuelle Exporte | ❌ | ✅ (`manual_exports/`) |
+| JSON-Dateien | im Root | in `data/` |
+| `manual_exports.json` | ❌ | ✅ |
+| Struktur | flach | `auto_clips/ manual_exports/ data/` |
 
 ### `exports.zip`
 
@@ -114,6 +134,52 @@ analysiert wurden) `content_packages.json`:
 ```
 
 Ohne gerenderte Clips → `404`.
+
+### `all-exports.zip`
+
+Vollständiges Paket eines Jobs. Ordnerstruktur:
+
+```
+auto_clips/
+  clip_01_score81.mp4
+  clip_02_score74.mp4
+manual_exports/
+  clip_1_20260701T040956Z.mp4
+data/
+  clips.json
+  transcript.json
+  content_packages.json
+  manual_exports.json
+  metadata.json
+```
+
+`data/metadata.json` (Counts + Kontext):
+
+```json
+{
+  "job_id": "…", "source_filename": "…", "export_created_at": "…",
+  "auto_clip_count": 2, "manual_export_count": 1, "total_mp4_count": 3,
+  "remove_silence": true, "reframe_mode": "smart",
+  "content_generator": "Regelbasiert",
+  "warnings": [],
+  "disclaimer": "Der Performance-Potential-Score … keine Garantie …"
+}
+```
+
+`data/manual_exports.json` (alle manuellen Exporte mit Metadaten —
+`source_clip_index`, `start_time`, `end_time`, `final_duration`, `title`,
+`caption_style`, `remove_silence`, `reframe_mode`, `output_file`, …):
+
+```json
+{ "job_id": "…", "export_created_at": "…", "exports": [ { … }, … ] }
+```
+
+Fehler-/Robustheitsverhalten:
+- Job nicht gefunden → `404`.
+- Weder Auto-Clips noch manuelle Exporte → `404` („Keine Exporte vorhanden …").
+- **Kaputte** manuelle Metadatei → übersprungen, Eintrag in `metadata.json`
+  unter `warnings` (kein Crash).
+- **Fehlende MP4** zu einer Metadatei → übersprungen + `warnings`-Eintrag.
 
 ### Schnitt-Metriken in `clips.json`
 
@@ -270,8 +336,9 @@ zusätzlichem `available` (MP4 auf Platte vorhanden?).
 Inline-Stream (Range-Support) bzw. Attachment-Download des manuellen Exports.
 Ungültige/nicht existierende `export_id` → `404` (Path-Traversal wird geblockt).
 
-> `exports.zip` enthält bewusst weiter **nur die Auto-Clips** (unverändert). Ein
-> kombiniertes `all-exports.zip` (Auto + manuell) ist als **TODO** notiert.
+> `exports.zip` enthält bewusst weiter **nur die Auto-Clips** (unverändert). Das
+> kombinierte Paket (Auto + manuell, geordnete Ordner) liefert der Endpoint
+> **`all-exports.zip`** (siehe oben).
 
 ---
 
