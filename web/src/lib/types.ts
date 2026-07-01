@@ -237,6 +237,54 @@ export interface RerenderRequest {
   export_name?: string | null;
 }
 
+export interface StorageJob {
+  job_id: string;
+  status: JobStatus;
+  filename: string;
+  files_count: number;
+  bytes: number;
+  human_size: string;
+  auto_export_count: number;
+  manual_export_count: number;
+  restored: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface StorageSummary {
+  jobs_root: string;
+  total_jobs: number;
+  total_bytes: number;
+  total_human: string;
+  by_status: Record<string, number>;
+  counts: {
+    auto_exports: number;
+    manual_exports: number;
+    total_exports: number;
+  };
+  largest_jobs: StorageJob[];
+  cleanup_candidates: {
+    failed: string[];
+    interrupted: string[];
+    incomplete: string[];
+    completed_without_exports: string[];
+  };
+}
+
+export interface BulkDeleteResult {
+  deleted_count: number;
+  failed_count: number;
+  removed_bytes: number;
+  removed_human: string;
+  results: {
+    job_id: string;
+    deleted: boolean;
+    removed_files_count?: number;
+    removed_bytes?: number;
+    error?: string;
+  }[];
+}
+
 export interface HealthResponse {
   status: string;
   service: string;

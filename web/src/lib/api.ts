@@ -2,12 +2,14 @@
 // Ruft ausschließlich bestehende Endpoints auf — keine Backend-Logik hier.
 
 import type {
+  BulkDeleteResult,
   ClipsJson,
   HealthResponse,
   Job,
   JobSummary,
   ManualExport,
   RerenderRequest,
+  StorageSummary,
 } from "./types";
 
 export const API_BASE =
@@ -108,6 +110,32 @@ export async function deleteManualExport(
   return del<DeleteManualExportResult>(
     `/api/jobs/${jobId}/manual-exports/${exportId}`,
   );
+}
+
+export async function getStorage(): Promise<StorageSummary> {
+  return getJson<StorageSummary>("/api/storage");
+}
+
+export async function bulkDeleteJobs(
+  jobIds: string[],
+  confirm: string,
+  force = false,
+): Promise<BulkDeleteResult> {
+  let res: Response;
+  try {
+    res = await fetch(`${API_BASE}/api/jobs/bulk-delete`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ job_ids: jobIds, confirm, force }),
+    });
+  } catch {
+    throw new ApiError(
+      `Backend nicht erreichbar unter ${API_BASE}. Läuft FastAPI auf Port 8000?`,
+      0,
+    );
+  }
+  if (!res.ok) await parseError(res);
+  return (await res.json()) as BulkDeleteResult;
 }
 
 export interface CreateJobInput {

@@ -43,6 +43,7 @@ npm run dev      # http://127.0.0.1:3000
 | Schritt 12 | **Export-Management** (all-exports.zip + Manual-Übersicht) | ✅ fertig & verifiziert |
 | Schritt 13 | **Persistente Job-Registry** (Restore nach Server-Neustart) | ✅ fertig & verifiziert |
 | Schritt 14 | **Cleanup** (Jobs & manuelle Exporte sicher löschen) | ✅ fertig & verifiziert |
+| Schritt 15 | **Storage-Übersicht & Bulk-Cleanup** | ✅ fertig & verifiziert |
 | später | Face-Tracking-Reframe, echtes A/B-Tracking, Direkt-Posten | 🔭 später |
 
 ### Was schon echt funktioniert
@@ -97,6 +98,15 @@ npm run dev      # http://127.0.0.1:3000
   und realpath-Prüfung — es wird **nie** außerhalb von `jobs/` gelöscht; ein
   laufender `processing`-Job ist geschützt (`409`, außer `?force=true`). Jede
   Löschung verlangt in der UI eine Inline-Bestätigung.
+- **Storage-Übersicht & Bulk-Cleanup**: `GET /api/storage` zeigt lokalen
+  Speicherverbrauch, Status-Verteilung, Auto-/Manual-Export-Counts, die größten
+  Jobs und Cleanup-Kandidaten. Die `/jobs`-Seite zeigt das als kompaktes Widget
+  plus **„Problematische Jobs aufräumen"** — löscht per `POST /api/jobs/bulk-delete`
+  (`confirm:"DELETE"`) gesammelt nur `failed`/`interrupted`/`incomplete`-Jobs.
+  **`completed`-Jobs werden nie automatisch gelöscht**, `processing` ist
+  geschützt. Bulk-Delete nutzt dieselbe sichere `delete()`-Logik wie
+  Einzel-Delete (Traversal-Schutz, `jobs/`-Containment); Teil-Fehler werden je
+  Job berichtet.
 
 ### Klar als TODO gekennzeichnet (noch nicht echt)
 - Reframe ist **statischer** Smart-Crop (ein Fokuspunkt pro Clip) — **kein

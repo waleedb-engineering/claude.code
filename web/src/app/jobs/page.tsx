@@ -2,15 +2,17 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { deleteJob, listJobs } from "@/lib/api";
-import type { JobSummary } from "@/lib/types";
+import { deleteJob, getStorage, listJobs } from "@/lib/api";
+import type { JobSummary, StorageSummary } from "@/lib/types";
 import StatusBadge from "@/components/StatusBadge";
 import Spinner from "@/components/Spinner";
 import DeleteControl from "@/components/DeleteControl";
+import StorageWidget from "@/components/StorageWidget";
 import { fmtDateTime } from "@/lib/format";
 
 export default function JobsPage() {
   const [jobs, setJobs] = useState<JobSummary[] | null>(null);
+  const [storage, setStorage] = useState<StorageSummary | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   async function load() {
@@ -19,6 +21,11 @@ export default function JobsPage() {
       setJobs(await listJobs());
     } catch (e) {
       setError(e instanceof Error ? e.message : "Konnte Jobs nicht laden.");
+    }
+    try {
+      setStorage(await getStorage());
+    } catch {
+      /* Storage-Übersicht optional — kein harter Fehler */
     }
   }
 
@@ -44,6 +51,9 @@ export default function JobsPage() {
           + Neuer Job
         </Link>
       </div>
+
+      {/* Storage-Übersicht + Bulk-Cleanup */}
+      <StorageWidget storage={storage} onCleaned={load} />
 
       {/* Error */}
       {error && (

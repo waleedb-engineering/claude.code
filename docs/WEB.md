@@ -51,7 +51,7 @@ App öffnen: <http://127.0.0.1:3000>
 |---|---|
 | `/` | Landing mit „Video hochladen" |
 | `/upload` | Drop-Zone, Top-Clip-Anzahl, **Toggle „Stille Pausen entfernen"**, **Untertitel-Modus (Standard/Karaoke) + Caption-Style (Clean/High Energy)**, **Bildausrichtung (Smart/Face/Center)**, optionales Transkript-JSON |
-| `/jobs` | Übersicht aller Jobs mit Live-Status + **Job löschen** je Karte |
+| `/jobs` | **Storage-Widget** (Speicher, Status-Verteilung, größte Jobs, Bulk-Cleanup) + Job-Liste mit Live-Status + **Job löschen** je Karte |
 | `/jobs/[jobId]` | Status + Export-Counts, Clip-Karten, ZIP-Downloads (Auto & alle), **Bearbeiten**, Bereich „Manuelle Exporte" |
 | `/jobs/[jobId]/clips/[clipIndex]/edit` | **Clip-Editor**: Start/Ende feinjustieren, Optionen wählen, neu rendern |
 
@@ -114,6 +114,15 @@ App öffnen: <http://127.0.0.1:3000>
    der Button deaktiviert. Nach dem Löschen verschwindet der Job aus der Liste
    bzw. die Detailseite navigiert zurück nach `/jobs`. Es wird der komplette
    lokale Job-Ordner entfernt — nie etwas außerhalb von `jobs/`.
+9. **Storage-Widget (oben auf `/jobs`):** zeigt lokalen Gesamtspeicher, Anzahl
+   Jobs, Auto-/Manuelle Exporte, die **Status-Verteilung** (Fertig, Fehlgeschlagen,
+   Unterbrochen, Unvollständig, Läuft, Warteschlange) und die **größten Jobs**.
+   Der Button **„Problematische Jobs aufräumen (N)"** löscht nach Inline-
+   Bestätigung gesammelt nur `failed`/`interrupted`/`incomplete`-Jobs
+   (`completed` bleibt erhalten, `processing` ist geschützt); danach zeigt es
+   „X gelöscht · Y freigegeben" und Liste + Widget aktualisieren sich. Gibt es
+   keine Kandidaten, ist der Button deaktiviert („Keine problematischen Jobs zum
+   Aufräumen").
 
 > Echtes Video **ohne** angehängtes Transkript: Die Pipeline transkribiert dann
 > lokal mit faster-whisper. Beim ersten Lauf wird das Modell geladen (~140 MB),

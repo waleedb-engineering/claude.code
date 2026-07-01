@@ -71,6 +71,8 @@ Wiederaufnahme laufender Renders nach Crash.
 | `GET` | `/api/jobs` | Alle Jobs (Kurzstatus) |
 | `GET` | `/api/jobs/{job_id}` | Voller Status: Progress, Logs, Fehler, Ergebnis, `files`-Übersicht |
 | `DELETE` | `/api/jobs/{job_id}` | Job-Ordner löschen (`?force=true` bei `processing`) |
+| `POST` | `/api/jobs/bulk-delete` | Mehrere Jobs gesammelt löschen (`confirm:"DELETE"`) |
+| `GET` | `/api/storage` | Lokale Speicher-Übersicht + Cleanup-Kandidaten |
 | `DELETE` | `/api/jobs/{job_id}/manual-exports/{export_id}` | Einen manuellen Export löschen (MP4 + Sidecar-JSON) |
 | `GET` | `/api/jobs/{job_id}/transcript` | `transcript.json` (falls vorhanden) |
 | `GET` | `/api/jobs/{job_id}/clips` | `clips.json` (falls vorhanden) |
@@ -417,6 +419,71 @@ Export nicht mehr, und `manual_export_count` / `total_export_count` /
 - **Processing-Schutz:** laufende Renders werden nicht still gelöscht (`409`).
 - **Keine stillen Fehler:** kann nur teilweise gelöscht werden, meldet die API
   das klar (`deleted:false` + `error` bzw. HTTP `500`).
+
+---
+
+## Speicher-Übersicht & Bulk-Cleanup
+
+### `GET /api/storage`
+
+Lokale Speicher-Übersicht über **alle** Jobs (nutzt Registry + Dateisystem,
+keine DB). Kaputte Job-Ordner ergeben 0 Bytes und crashen den Endpoint nicht.
+`processing`-Jobs werden gezählt, aber **nie** als Cleanup-Kandidat gelistet.
+
+```json
+{
+  "jobs_root": "…/jobs",
+  "total_jobs": 21, "total_bytes": 73180160, "total_human": "69.8 MB",
+  "by_status": { "completed": 19, "failed": 0, "interrupted": 0,
+                 "incomplete": 2, "processing": 0, "queued": 0 },
+  "counts": { "auto_exports": 28, "manual_exports": 3, "total_exports": 31 },
+  "largest_jobs": [
+    { "job_id": "…", "status": "completed", "filename": "sample.mp4",
+      "bytes": 8283750, "human_size": "7.9 MB",
+      "auto_export_count": 2, "manual_export_count": 1,
+      "restored": true, "created_at": "…", "updated_at": "…" }
+  ],
+  "cleanup_candidates": {
+    "failed": [], "interrupted": [], "incomplete": ["…","…"],
+    "completed_without_exports": []
+  }
+}
+```
+
+**Cleanup-Kandidaten** sind Jobs mit Status `failed` / `interrupted` /
+`incomplete` (plus separat `completed_without_exports` = fertige Jobs ganz ohne
+MP4s). `?largest=N` steuert die Länge von `largest_jobs` (Default 10).
+
+### `POST /api/jobs/bulk-delete`
+
+```json
+// Request
+{ "job_ids": ["…","…"], "confirm": "DELETE", "force": false }
+```
+
+- `confirm` muss exakt `"DELETE"` sein (fehlend oder falsch → **`400`**).
+- Leere `job_ids` → **`400`**.
+- Nutzt **dieselbe sichere `registry.delete()`-Logik** wie Einzel-Delete →
+  Path-Traversal geblockt, `jobs/`-Containment, `processing`-Schutz.
+- **Teilweises Scheitern bricht nicht ab** — jedes Ergebnis wird einzeln
+  berichtet.
+
+```json
+// 200
+{
+  "deleted_count": 2, "failed_count": 1,
+  "removed_bytes": 123456, "removed_human": "120.6 KB",
+  "results": [
+    { "job_id": "…", "deleted": true, "removed_files_count": 10, "removed_bytes": 12345 },
+    { "job_id": "…", "deleted": false, "error": "processing job cannot be deleted without force" }
+  ]
+}
+```
+
+> **Wichtig:** `completed`-Jobs werden **nur** gelöscht, wenn sie explizit in
+> `job_ids` stehen — der UI-Button „Problematische Jobs aufräumen" nimmt sie
+> bewusst **nicht** auf. `force` ist nur API-seitig, nicht in der UI. Kein
+> Undo/Papierkorb, keine Cloud-Speicherverwaltung.
 
 ---
 

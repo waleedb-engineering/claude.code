@@ -40,7 +40,19 @@ from clipforge.rerender import (
     manual_export_path,
     rerender_clip,
 )
-from jobs import Job, JobBusy, JobNotFound, JobRegistry, UnsafeJobPath
+from jobs import (
+    STATUS_COMPLETED,
+    STATUS_FAILED,
+    STATUS_INCOMPLETE,
+    STATUS_INTERRUPTED,
+    STATUS_PROCESSING,
+    STATUS_QUEUED,
+    Job,
+    JobBusy,
+    JobNotFound,
+    JobRegistry,
+    UnsafeJobPath,
+)
 
 # Erlaubte Video-Endungen (Fehlerfall: ungültiger Dateityp)
 ALLOWED_EXT = {".mp4", ".mov", ".mkv", ".webm", ".avi", ".m4v"}
@@ -173,6 +185,49 @@ def _files_summary(job: Job) -> dict:
     }
 
 
+def _human_size(n: int) -> str:
+    """Bytes → menschenlesbar (z. B. '6.2 MB'). Rein kosmetisch."""
+    size = float(n)
+    for unit in ("B", "KB", "MB", "GB", "TB"):
+        if size < 1024 or unit == "TB":
+            return f"{size:.0f} {unit}" if unit == "B" else f"{size:.1f} {unit}"
+        size /= 1024
+    return f"{size:.1f} TB"
+
+
+# Status, deren Jobs als „problematisch" gelten und gesammelt aufgeräumt werden
+# dürfen. completed/queued/processing gehören BEWUSST nicht dazu.
+CLEANUP_STATUSES = (STATUS_FAILED, STATUS_INTERRUPTED, STATUS_INCOMPLETE)
+
+
+def _job_storage(job: Job) -> dict:
+    """Per-Job-Speicherinfo. Robust: kaputte/fehlende Ordner ergeben 0 Bytes."""
+    from jobs import _dir_stats  # lokal, um zyklische Importe zu vermeiden
+
+    try:
+        files, total = _dir_stats(job.job_dir) if os.path.isdir(job.job_dir) else (0, 0)
+    except OSError:
+        files, total = 0, 0
+    try:
+        auto = len(_mp4_paths(job))
+        manual = len(_manual_mp4_paths(job))
+    except OSError:
+        auto = manual = 0
+    return {
+        "job_id": job.id,
+        "status": job.status,
+        "filename": job.filename,
+        "files_count": files,
+        "bytes": total,
+        "human_size": _human_size(total),
+        "auto_export_count": auto,
+        "manual_export_count": manual,
+        "restored": job.restored,
+        "created_at": job.created_at,
+        "updated_at": job.updated_at,
+    }
+
+
 # --------------------------------------------------------------------------
 # Health
 # --------------------------------------------------------------------------
@@ -268,6 +323,65 @@ def list_jobs() -> dict:
     return {"jobs": [job.summary() for job in registry.list()]}
 
 
+@app.get("/api/storage")
+def storage_summary(largest: int = 10) -> dict:
+    """Lokale Speicher-Übersicht über alle Jobs im jobs/-Ordner.
+
+    Nutzt ausschließlich Registry + Dateisystem (keine DB). Kaputte Job-Ordner
+    ergeben 0 Bytes und crashen nicht. `processing`-Jobs werden nur gezählt,
+    nie als Cleanup-Kandidat gelistet.
+    """
+    by_status = {
+        STATUS_COMPLETED: 0, STATUS_FAILED: 0, STATUS_INTERRUPTED: 0,
+        STATUS_INCOMPLETE: 0, STATUS_PROCESSING: 0, STATUS_QUEUED: 0,
+    }
+    total_bytes = 0
+    auto_exports = 0
+    manual_exports = 0
+    per_job: list[dict] = []
+    cleanup = {STATUS_FAILED: [], STATUS_INTERRUPTED: [], STATUS_INCOMPLETE: [],
+               "completed_without_exports": []}
+
+    for job in registry.list():
+        try:
+            info = _job_storage(job)
+        except Exception:  # noqa: BLE001 — ein kaputter Job darf /storage nie killen
+            continue
+        by_status[job.status] = by_status.get(job.status, 0) + 1
+        total_bytes += info["bytes"]
+        auto_exports += info["auto_export_count"]
+        manual_exports += info["manual_export_count"]
+        per_job.append(info)
+
+        if job.status in cleanup:
+            cleanup[job.status].append(job.id)
+        elif (
+            job.status == STATUS_COMPLETED
+            and info["auto_export_count"] == 0
+            and info["manual_export_count"] == 0
+        ):
+            cleanup["completed_without_exports"].append(job.id)
+
+    largest_jobs = sorted(per_job, key=lambda d: d["bytes"], reverse=True)[
+        : max(0, largest)
+    ]
+
+    return {
+        "jobs_root": registry.base_dir,
+        "total_jobs": len(per_job),
+        "total_bytes": total_bytes,
+        "total_human": _human_size(total_bytes),
+        "by_status": by_status,
+        "counts": {
+            "auto_exports": auto_exports,
+            "manual_exports": manual_exports,
+            "total_exports": auto_exports + manual_exports,
+        },
+        "largest_jobs": largest_jobs,
+        "cleanup_candidates": cleanup,
+    }
+
+
 @app.get("/api/jobs/{job_id}")
 def get_job(job_id: str) -> dict:
     """Voller Status: Zustand, Progress/Logs, Fehler, Ergebnisübersicht.
@@ -302,6 +416,74 @@ def delete_job(job_id: str, force: bool = False) -> dict:
         # teilweise gelöscht → klar melden statt still zu schlucken
         raise HTTPException(status_code=500, detail=result.get("error") or "Löschen fehlgeschlagen.")
     return result
+
+
+class BulkDeleteRequest(BaseModel):
+    job_ids: list[str] = []
+    confirm: str | None = None
+    force: bool = False
+
+
+@app.post("/api/jobs/bulk-delete")
+def bulk_delete_jobs(req: BulkDeleteRequest) -> dict:
+    """Löscht mehrere Jobs über dieselbe sichere `registry.delete()`-Logik.
+
+    - `confirm` muss exakt `"DELETE"` sein → sonst `400`.
+    - Leere `job_ids` → `400`.
+    - Teilweises Scheitern bricht nicht ab; jedes Ergebnis wird einzeln
+      berichtet. `processing`-Jobs ohne `force` werden nicht gelöscht.
+    """
+    if req.confirm != "DELETE":
+        raise HTTPException(
+            status_code=400, detail='confirm muss exakt "DELETE" sein.'
+        )
+    if not req.job_ids:
+        raise HTTPException(status_code=400, detail="job_ids darf nicht leer sein.")
+
+    results: list[dict] = []
+    deleted_count = 0
+    failed_count = 0
+    removed_bytes = 0
+    for job_id in req.job_ids:
+        try:
+            res = registry.delete(job_id, force=req.force)
+        except UnsafeJobPath as exc:
+            results.append({"job_id": job_id, "deleted": False, "error": str(exc)})
+            failed_count += 1
+            continue
+        except JobNotFound:
+            results.append({"job_id": job_id, "deleted": False, "error": "Job nicht gefunden."})
+            failed_count += 1
+            continue
+        except JobBusy:
+            results.append({
+                "job_id": job_id, "deleted": False,
+                "error": "processing job cannot be deleted without force",
+            })
+            failed_count += 1
+            continue
+        if res.get("deleted"):
+            deleted_count += 1
+            removed_bytes += res.get("removed_bytes", 0)
+            results.append({
+                "job_id": job_id, "deleted": True,
+                "removed_files_count": res.get("removed_files_count", 0),
+                "removed_bytes": res.get("removed_bytes", 0),
+            })
+        else:
+            failed_count += 1
+            results.append({
+                "job_id": job_id, "deleted": False,
+                "error": res.get("error") or "Löschen fehlgeschlagen.",
+            })
+
+    return {
+        "deleted_count": deleted_count,
+        "failed_count": failed_count,
+        "removed_bytes": removed_bytes,
+        "removed_human": _human_size(removed_bytes),
+        "results": results,
+    }
 
 
 @app.get("/api/jobs/{job_id}/transcript")
