@@ -28,8 +28,15 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse
+from pydantic import BaseModel
 
 from clipforge.ffmpeg_utils import FFmpegNotFound, ensure_ffmpeg
+from clipforge.rerender import (
+    RerenderError,
+    list_manual_exports,
+    manual_export_path,
+    rerender_clip,
+)
 from jobs import Job, JobRegistry
 
 # Erlaubte Video-Endungen (Fehlerfall: ungültiger Dateityp)
@@ -261,6 +268,114 @@ def preview_clip(job_id: str, clip_index: int):
     job = _require_job(job_id)
     path, _ = _resolve_clip_path(job, clip_index)
     return FileResponse(path, media_type="video/mp4")
+
+
+# --------------------------------------------------------------------------
+# Manuelle Re-Renders (Web-Clip-Editor)
+# --------------------------------------------------------------------------
+
+class RerenderRequest(BaseModel):
+    start_time: float
+    end_time: float
+    title: str | None = None
+    caption_style: str | None = "high_energy"
+    caption_mode: str | None = "karaoke"
+    remove_silence: bool = True
+    reframe_mode: str | None = "smart"
+    export_name: str | None = None
+
+
+def _original_clip_times(job: Job, clip_index: int) -> tuple[float | None, float | None]:
+    """Start/Ende des ursprünglichen Auto-Clips (für Metadaten), falls vorhanden."""
+    clips = (job.result or {}).get("clips") or []
+    match = next((c for c in clips if c.get("index") == clip_index), None)
+    if match:
+        return match.get("start"), match.get("end")
+    return None, None
+
+
+@app.post("/api/jobs/{job_id}/clips/{clip_index}/rerender")
+def rerender(job_id: str, clip_index: int, req: RerenderRequest) -> dict:
+    """Rendert einen bestehenden Clip mit manuell gesetzten Optionen neu.
+
+    Der neue Export landet unter jobs/<id>/manual_exports/ und überschreibt die
+    automatischen Clips NICHT. Validierungsfehler → 400, fehlende Quell-Dateien
+    → 409/404, Render-Fehler → 500 mit klarer Meldung.
+    """
+    job = _require_job(job_id)
+
+    # Clip-Index muss zu einem erkannten Clip gehören.
+    clips = (job.result or {}).get("clips") or []
+    if not any(c.get("index") == clip_index for c in clips):
+        raise HTTPException(
+            status_code=404, detail=f"Clip {clip_index} nicht gefunden."
+        )
+
+    logs: list[str] = []
+    try:
+        metadata = rerender_clip(
+            job.job_dir,
+            clip_index,
+            start_time=req.start_time,
+            end_time=req.end_time,
+            title=req.title,
+            caption_style=req.caption_style or "high_energy",
+            caption_mode=req.caption_mode or "karaoke",
+            remove_silence=bool(req.remove_silence),
+            reframe_mode=req.reframe_mode or "smart",
+            export_name=req.export_name,
+            progress=logs.append,
+        )
+    except RerenderError as exc:  # Validierung → 400
+        raise HTTPException(status_code=400, detail=str(exc))
+    except FileNotFoundError as exc:  # Quellvideo/Transkript fehlt → 409
+        raise HTTPException(status_code=409, detail=str(exc))
+    except Exception as exc:  # noqa: BLE001 — Render-/Systemfehler → 500
+        raise HTTPException(status_code=500, detail=str(exc))
+
+    # Original-Zeiten für die Metadaten nachtragen.
+    o_start, o_end = _original_clip_times(job, clip_index)
+    metadata["original_start_time"] = o_start
+    metadata["original_end_time"] = o_end
+    # Persistiertes JSON ebenfalls aktualisieren.
+    meta_path = os.path.join(
+        job.job_dir, "manual_exports", f"{metadata['export_id']}.json"
+    )
+    try:
+        with open(meta_path, "w", encoding="utf-8") as fh:
+            json.dump(metadata, fh, ensure_ascii=False, indent=2)
+    except OSError:
+        pass
+
+    metadata["log"] = logs
+    return metadata
+
+
+@app.get("/api/jobs/{job_id}/manual-exports")
+def get_manual_exports(job_id: str) -> dict:
+    """Listet alle manuellen Exporte eines Jobs (neueste zuerst)."""
+    job = _require_job(job_id)
+    return {"job_id": job_id, "exports": list_manual_exports(job.job_dir)}
+
+
+@app.get("/api/jobs/{job_id}/manual-exports/{export_id}/preview")
+def preview_manual_export(job_id: str, export_id: str):
+    """Streamt einen manuell gerenderten Clip inline (Range-Support fürs Abspielen)."""
+    job = _require_job(job_id)
+    path = manual_export_path(job.job_dir, export_id)
+    if not path:
+        raise HTTPException(status_code=404, detail="Manueller Export nicht gefunden.")
+    return FileResponse(path, media_type="video/mp4")
+
+
+@app.get("/api/jobs/{job_id}/manual-exports/{export_id}/download")
+def download_manual_export(job_id: str, export_id: str):
+    """Lädt einen manuell gerenderten Clip als MP4 (Attachment)."""
+    job = _require_job(job_id)
+    path = manual_export_path(job.job_dir, export_id)
+    if not path:
+        raise HTTPException(status_code=404, detail="Manueller Export nicht gefunden.")
+    return FileResponse(path, media_type="video/mp4", filename=f"{export_id}.mp4")
 
 
 @app.get("/api/jobs/{job_id}/exports.zip")

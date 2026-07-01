@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
-import { exportsZipUrl, getClips, getJob } from "@/lib/api";
+import { exportsZipUrl, getClips, getJob, getManualExports } from "@/lib/api";
 import type { ClipsJson, Job } from "@/lib/types";
 import StatusBadge from "@/components/StatusBadge";
 import Spinner from "@/components/Spinner";
@@ -19,6 +19,7 @@ export default function JobDetailPage() {
   const [job, setJob] = useState<Job | null>(null);
   const [clips, setClips] = useState<ClipsJson | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [manualCounts, setManualCounts] = useState<Record<number, number>>({});
   const clipsLoaded = useRef(false);
 
   const fetchClips = useCallback(async () => {
@@ -28,6 +29,16 @@ export default function JobDetailPage() {
       setClips(await getClips(jobId));
     } catch {
       /* clips.json evtl. nicht vorhanden (leeres Ergebnis) — kein harter Fehler */
+    }
+    try {
+      const exports = await getManualExports(jobId);
+      const counts: Record<number, number> = {};
+      for (const e of exports) {
+        counts[e.source_clip_index] = (counts[e.source_clip_index] ?? 0) + 1;
+      }
+      setManualCounts(counts);
+    } catch {
+      /* manuelle Exporte optional — kein harter Fehler */
     }
   }, [jobId]);
 
@@ -211,6 +222,7 @@ export default function JobDetailPage() {
                     index={i + 1}
                     jobId={jobId}
                     downloadable={downloadableByIndex.get(i + 1) ?? false}
+                    manualExportCount={manualCounts[i + 1] ?? 0}
                   />
                 ))}
               </div>

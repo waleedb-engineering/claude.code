@@ -39,6 +39,7 @@ npm run dev      # http://127.0.0.1:3000
 | Schritt 5 | **Schnelle Schnitte** (Silence-Removal) | ✅ fertig & verifiziert |
 | Schritt 6–9 | **Karaoke-Captions · Smart-Reframe · Audio-Smoothing** | ✅ fertig & verifiziert |
 | Schritt 10 | **Content-Package-Generator** (TikTok / Reels / Shorts-Texte) | ✅ fertig & verifiziert |
+| Schritt 11 | **Web-Clip-Editor** (Start/Ende feinjustieren + Re-Render) | ✅ fertig & verifiziert |
 | später | Face-Tracking-Reframe, echtes A/B-Tracking, Direkt-Posten | 🔭 später |
 
 ### Was schon echt funktioniert
@@ -62,6 +63,11 @@ npm run dev      # http://127.0.0.1:3000
   DE+EN) — mit gesetztem `ANTHROPIC_API_KEY` optional durch Claude verbessert.
   - ZIP enthält zusätzlich `content_packages.json` mit allen Texten je Clip
   - Frontend: aufklappbares „📦 Content-Paket"-Panel mit Copy-Buttons pro Text
+- **Web-Clip-Editor**: jeder vorgeschlagene Clip lässt sich in der Web-App öffnen
+  („Bearbeiten"), **Start/Ende feinjustieren**, Caption-Style / Silence-Removal /
+  Reframe-Modus / Titel wählen und als **neuer, separater Export** neu rendern —
+  der ursprüngliche Auto-Clip bleibt unangetastet. Manuelle Exporte landen unter
+  `jobs/<id>/manual_exports/` und sind einzeln als Vorschau/Download verfügbar.
 
 ### Klar als TODO gekennzeichnet (noch nicht echt)
 - Reframe ist **statischer** Smart-Crop (ein Fokuspunkt pro Clip) — **kein
@@ -85,6 +91,7 @@ api/
     content.py       # Content-Package-Generator (regelbasiert + optional Claude)
     captions.py      # Wort-Timestamps -> ASS-Untertitel
     render.py        # ffmpeg: 9:16-Crop + Untertitel einbrennen
+    rerender.py      # manuelles Re-Rendering einzelner Clips (Web-Editor)
     pipeline.py      # Orchestrierung
     cli.py           # Kommandozeile
   tests/             # abhängigkeitsfreie Regressionstests

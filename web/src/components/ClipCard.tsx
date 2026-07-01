@@ -1,3 +1,4 @@
+import Link from "next/link";
 import type { ScoredClipDict } from "@/lib/types";
 import { clipDownloadUrl, clipPreviewUrl } from "@/lib/api";
 import { clipTitle, fmtTime, fmtDuration } from "@/lib/format";
@@ -43,11 +44,13 @@ export default function ClipCard({
   index,
   jobId,
   downloadable,
+  manualExportCount = 0,
 }: {
   clip: ScoredClipDict;
   index: number;
   jobId: string;
   downloadable: boolean;
+  manualExportCount?: number;
 }) {
   const title = clipTitle(clip.metadata, index);
 
@@ -186,7 +189,15 @@ export default function ClipCard({
 
       {clip.content_package && <ContentPackagePanel pkg={clip.content_package} />}
 
-      <div className="mt-auto flex items-center gap-2 pt-1">
+      {manualExportCount > 0 && (
+        <p className="rounded-lg border border-indigo-500/30 bg-indigo-500/5 px-3 py-2 text-xs text-indigo-300">
+          ✎ {manualExportCount} manuelle{manualExportCount === 1 ? "r" : ""}{" "}
+          Export{manualExportCount === 1 ? "" : "e"} für diesen Clip — in der
+          Bearbeiten-Ansicht ansehen/herunterladen.
+        </p>
+      )}
+
+      <div className="mt-auto flex flex-wrap items-center gap-2 pt-1">
         {downloadable ? (
           <a
             href={clipDownloadUrl(jobId, index)}
@@ -213,6 +224,25 @@ export default function ClipCard({
             Nicht gerendert
           </span>
         )}
+        <Link
+          href={`/jobs/${jobId}/clips/${index}/edit`}
+          className="inline-flex items-center gap-2 rounded-lg border border-neutral-700 px-3.5 py-2 text-sm font-medium text-neutral-200 transition hover:border-neutral-500 hover:text-white"
+        >
+          <svg
+            className="h-4 w-4"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+          >
+            <path
+              d="M12 20h9M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
+          Bearbeiten
+        </Link>
       </div>
     </article>
   );

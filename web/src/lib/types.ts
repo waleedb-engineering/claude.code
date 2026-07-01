@@ -180,6 +180,42 @@ export interface ClipsJson {
   clips: ScoredClipDict[];
 }
 
+// Manueller Re-Render-Export (Web-Clip-Editor).
+export interface ManualExport {
+  export_id: string;
+  source_clip_index: number;
+  created_at: string;
+  start_time: number;
+  end_time: number;
+  original_start_time: number | null;
+  original_end_time: number | null;
+  final_duration: number;
+  title: string | null;
+  caption_mode: string;
+  caption_style: string;
+  remove_silence: boolean;
+  reframe_mode: string;
+  score?: number;
+  output_file: string;
+  silence_info?: SilenceInfo | null;
+  reframe_info?: ReframeInfo | null;
+  caption_info?: CaptionInfo | null;
+  warning?: string | null;
+  available?: boolean;
+  log?: string[];
+}
+
+export interface RerenderRequest {
+  start_time: number;
+  end_time: number;
+  title?: string | null;
+  caption_style?: string;
+  caption_mode?: string;
+  remove_silence?: boolean;
+  reframe_mode?: string;
+  export_name?: string | null;
+}
+
 export interface HealthResponse {
   status: string;
   service: string;

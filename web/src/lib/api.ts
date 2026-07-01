@@ -6,6 +6,8 @@ import type {
   HealthResponse,
   Job,
   JobSummary,
+  ManualExport,
+  RerenderRequest,
 } from "./types";
 
 export const API_BASE =
@@ -102,6 +104,46 @@ export async function createJob({
   }
   if (!res.ok) await parseError(res);
   return (await res.json()) as { job_id: string; status: string };
+}
+
+export async function getManualExports(jobId: string): Promise<ManualExport[]> {
+  const data = await getJson<{ exports: ManualExport[] }>(
+    `/api/jobs/${jobId}/manual-exports`,
+  );
+  return data.exports;
+}
+
+export async function rerenderClip(
+  jobId: string,
+  clipIndex: number,
+  body: RerenderRequest,
+): Promise<ManualExport> {
+  let res: Response;
+  try {
+    res = await fetch(
+      `${API_BASE}/api/jobs/${jobId}/clips/${clipIndex}/rerender`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      },
+    );
+  } catch {
+    throw new ApiError(
+      `Backend nicht erreichbar unter ${API_BASE}. Läuft FastAPI auf Port 8000?`,
+      0,
+    );
+  }
+  if (!res.ok) await parseError(res);
+  return (await res.json()) as ManualExport;
+}
+
+export function manualExportPreviewUrl(jobId: string, exportId: string): string {
+  return `${API_BASE}/api/jobs/${jobId}/manual-exports/${exportId}/preview`;
+}
+
+export function manualExportDownloadUrl(jobId: string, exportId: string): string {
+  return `${API_BASE}/api/jobs/${jobId}/manual-exports/${exportId}/download`;
 }
 
 export function clipDownloadUrl(jobId: string, clipIndex: number): string {

@@ -52,7 +52,8 @@ App öffnen: <http://127.0.0.1:3000>
 | `/` | Landing mit „Video hochladen" |
 | `/upload` | Drop-Zone, Top-Clip-Anzahl, **Toggle „Stille Pausen entfernen"**, **Untertitel-Modus (Standard/Karaoke) + Caption-Style (Clean/High Energy)**, **Bildausrichtung (Smart/Face/Center)**, optionales Transkript-JSON |
 | `/jobs` | Übersicht aller Jobs mit Live-Status |
-| `/jobs/[jobId]` | Status + Progress/Logs, danach Clip-Karten + Downloads |
+| `/jobs/[jobId]` | Status + Progress/Logs, danach Clip-Karten + Downloads + **Bearbeiten** |
+| `/jobs/[jobId]/clips/[clipIndex]/edit` | **Clip-Editor**: Start/Ende feinjustieren, Optionen wählen, neu rendern |
 
 ---
 
@@ -86,6 +87,15 @@ App öffnen: <http://127.0.0.1:3000>
 5. Clip direkt im Player **abspielen**, einzeln per **MP4 herunterladen**, oder
    **Alle Clips als ZIP** (enthält MP4s + clips.json/transcript.json/
    metadata.json/**content_packages.json**).
+6. Über **„Bearbeiten"** auf jeder Clip-Karte öffnet sich der **Clip-Editor**
+   (`/jobs/[jobId]/clips/[clipIndex]/edit`): Vorschau des Auto-Clips, Felder für
+   **Start-/Endzeit** (mit Live-Längenanzeige + Warnung bei <5s/>90s), **Titel**,
+   **Caption-Style**, **Untertitel-Modus**, **Bildausrichtung** und **Stille-
+   Pausen-Toggle**. **„Neu rendern"** erzeugt einen **separaten** manuellen Export
+   (der Auto-Clip bleibt unangetastet); danach erscheinen neue Vorschau,
+   Export-Metadaten und ein **Download-Button**. Bestehende manuelle Exporte des
+   Clips werden darunter aufgelistet. Auf der Job-Seite zeigt die Clip-Karte
+   zusätzlich einen Hinweis, wenn manuelle Exporte existieren.
 
 > Echtes Video **ohne** angehängtes Transkript: Die Pipeline transkribiert dann
 > lokal mit faster-whisper. Beim ersten Lauf wird das Modell geladen (~140 MB),

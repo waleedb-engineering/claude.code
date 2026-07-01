@@ -51,7 +51,11 @@ Hook-Varianten; ohne Key läuft reine Heuristik.
 | `GET` | `/api/jobs/{job_id}/clips` | `clips.json` (falls vorhanden) |
 | `GET` | `/api/jobs/{job_id}/clips/{clip_index}/download` | Gerenderten Clip als MP4 (Attachment, 1-basiert) |
 | `GET` | `/api/jobs/{job_id}/clips/{clip_index}/preview` | Clip inline streamen (video/mp4, Range/206 → Seeking) |
-| `GET` | `/api/jobs/{job_id}/exports.zip` | Alle MP4-Clips + clips.json/transcript.json/metadata.json als ZIP |
+| `POST` | `/api/jobs/{job_id}/clips/{clip_index}/rerender` | Clip mit manuellen Optionen neu rendern (Web-Clip-Editor) |
+| `GET` | `/api/jobs/{job_id}/manual-exports` | Alle manuellen Exporte eines Jobs |
+| `GET` | `/api/jobs/{job_id}/manual-exports/{export_id}/preview` | Manuellen Export inline streamen |
+| `GET` | `/api/jobs/{job_id}/manual-exports/{export_id}/download` | Manuellen Export als MP4 (Attachment) |
+| `GET` | `/api/jobs/{job_id}/exports.zip` | Alle **Auto**-MP4-Clips + clips.json/transcript.json/metadata.json/content_packages.json als ZIP |
 | `GET` | `/api/jobs/{job_id}/files` | Alle Dateien im Job-Ordner |
 
 ### `files`-Übersicht in `GET /api/jobs/{job_id}`
@@ -205,6 +209,69 @@ Jeder Clip enthält ein `content_package`-Feld mit publizierfertigem Text:
 Der gewählte `remove_silence`-Wert ist im Job-Status sichtbar (Feld
 `remove_silence`) und im `progress`-Log (erkannte Stellen, entfernte Dauer,
 ggf. Fallback). Werden keine sinnvollen Pausen gefunden, wird normal gerendert.
+
+---
+
+## Manuelle Re-Renders (Web-Clip-Editor)
+
+Der Nutzer kann einen bestehenden Clip feinjustieren und neu exportieren. Das
+Backend nutzt dafür das Quellvideo (`jobs/<id>/input.*`) und das gespeicherte
+`transcript.json` und ruft die **bestehende** `render_clip()`-Funktion auf —
+keine Render-Logik dupliziert. Ergebnisse landen strikt getrennt unter
+`jobs/<id>/manual_exports/` und **überschreiben die Auto-Clips nie**.
+
+### `POST /api/jobs/{job_id}/clips/{clip_index}/rerender`
+
+JSON-Body:
+
+| Feld | Typ | Pflicht | Default | Beschreibung |
+|---|---|---|---|---|
+| `start_time` | float | ja | – | Neue Startzeit (Sekunden, Quellvideo-Zeitachse) |
+| `end_time` | float | ja | – | Neue Endzeit; muss `> start_time` sein |
+| `title` | string | nein | – | Optionaler Titel |
+| `caption_style` | string | nein | `high_energy` | `high_energy` / `clean` |
+| `caption_mode` | string | nein | `karaoke` | `karaoke` / `standard` |
+| `remove_silence` | bool | nein | `true` | Stille Pausen entfernen |
+| `reframe_mode` | string | nein | `smart` | `smart` / `face` / `center` |
+| `export_name` | string | nein | – | (reserviert; Dateiname wird intern vergeben) |
+
+Validierung: `end_time > start_time`, Clip-Länge **5–90 s** (`400` bei Verstoß),
+gültiger `clip_index` (`404`), vorhandenes Quellvideo/Transkript (`409`).
+Antwort = das Metadaten-dict des neuen Exports (siehe unten) plus `log`.
+
+Der neue Export wird als `manual_exports/clip_{clip_index}_{timestamp}.mp4`
+gespeichert, dazu eine gleichnamige `.json` mit den Metadaten:
+
+```json
+{
+  "export_id": "clip_1_20260701T034721Z",
+  "source_clip_index": 1,
+  "created_at": "…",
+  "start_time": 1.0, "end_time": 13.0,
+  "original_start_time": 0.0, "original_end_time": 29.0,
+  "final_duration": 12.0,
+  "title": "Editierter Clip",
+  "caption_mode": "karaoke", "caption_style": "clean",
+  "remove_silence": false, "reframe_mode": "center",
+  "score": 59.8,
+  "output_file": "clip_1_20260701T034721Z.mp4",
+  "silence_info": { … }, "reframe_info": { … }, "caption_info": { … },
+  "warning": null
+}
+```
+
+### `GET /api/jobs/{job_id}/manual-exports`
+
+`{ "job_id": "…", "exports": [ <metadata>, … ] }` — neueste zuerst, jeweils mit
+zusätzlichem `available` (MP4 auf Platte vorhanden?).
+
+### `GET …/manual-exports/{export_id}/preview` · `…/download`
+
+Inline-Stream (Range-Support) bzw. Attachment-Download des manuellen Exports.
+Ungültige/nicht existierende `export_id` → `404` (Path-Traversal wird geblockt).
+
+> `exports.zip` enthält bewusst weiter **nur die Auto-Clips** (unverändert). Ein
+> kombiniertes `all-exports.zip` (Auto + manuell) ist als **TODO** notiert.
 
 ---
 
