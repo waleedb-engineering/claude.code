@@ -485,3 +485,37 @@ export interface PublishingOverview {
   drafts: PublishingDraftRow[];
   warnings: string[];
 }
+
+// --- YouTube Dry-Run (Phase 1 — kein echter Upload) ------------------------
+
+export interface YouTubeDryRunChecks {
+  mp4_exists: boolean;
+  format_9_16: boolean | null;
+  title_present: boolean;
+  description_present: boolean;
+  no_viral_guarantee: boolean;
+  upload_feature_enabled: boolean;
+  credentials_configured: boolean;
+}
+
+export interface YouTubeDryRun {
+  platform: "youtube_shorts";
+  enabled: boolean;
+  would_upload: boolean;
+  video_file: string | null;
+  title: string;
+  description: string;
+  hashtags: string[];
+  privacy_status: string;
+  scheduled_at: string | null;
+  checks: YouTubeDryRunChecks;
+  warnings: string[];
+  blocked_reasons: string[];
+  request_preview: {
+    endpoint: string;
+    metadata: unknown;
+    video_body: string;
+    note: string;
+  };
+  upload_implemented: boolean;
+}

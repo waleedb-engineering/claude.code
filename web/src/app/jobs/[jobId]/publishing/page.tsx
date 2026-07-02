@@ -19,6 +19,7 @@ import {
   validatePublishingDraft,
 } from "@/lib/api";
 import DuplicateDraftButton from "@/components/DuplicateDraftButton";
+import YouTubeDryRunPanel from "@/components/YouTubeDryRunPanel";
 import type {
   ClipsJson,
   ManualExport,
@@ -337,6 +338,10 @@ function DraftCard({
       )}
 
       <Checklist draft={draft} />
+
+      {draft.platform === "youtube_shorts" && (
+        <YouTubeDryRunPanel jobId={jobId} publishingId={draft.publishing_id} />
+      )}
 
       {error && (
         <p className="rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-1.5 text-xs text-red-300">

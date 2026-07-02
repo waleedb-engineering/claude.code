@@ -51,6 +51,7 @@ npm run dev      # http://127.0.0.1:3000
 | Schritt 20 | **Score-Kalibrierung & Analyzer-Härtung** | ✅ fertig & verifiziert |
 | Schritt 21 | **Publishing Planner (lokale Drafts + Pack-ZIP, kein Upload)** | ✅ fertig & verifiziert |
 | Schritt 22 | **Globale Publishing-Übersicht & Draft-Duplizieren** | ✅ fertig & verifiziert |
+| Schritt 23 | **YouTube Publishing Adapter (Dry-Run, kein echter Upload)** | ✅ fertig & verifiziert |
 | später | Face-Tracking-Reframe, echtes A/B-Tracking, Direkt-Posten | 🔭 später |
 
 ### Was schon echt funktioniert
@@ -183,6 +184,15 @@ npm run dev      # http://127.0.0.1:3000
   geplante), mit Summary-Cards und **Draft-Duplizieren** (auch für eine andere
   Plattform, mit Texten aus dem Content-Paket neu abgeleitet). Job-Detailseite
   zeigt dazu passende Publishing-Badges. Weiterhin **kein Upload, keine Tokens**.
+- **YouTube Publishing Adapter — Phase 1: Dry-Run** (`platforms/youtube.py`):
+  zeigt pro YouTube-Draft, was an die offizielle YouTube Data API
+  (`videos.insert`) gehen *würde* (Metadaten-Vorschau, Checks, Blocker) —
+  **löst nie einen Upload aus**. Der Publish-Endpoint ist sicher blockiert:
+  ohne `CLIPFORGE_ENABLE_YOUTUBE_UPLOAD=true` → `403`, `public` nur mit
+  Extra-Bestätigung, ohne Credentials → `409`; selbst bei grünem Licht
+  `not_implemented` (kein Fake-Erfolg, kein Statuswechsel). **Kein OAuth, keine
+  Token-Speicherung.** Sicherheitsmodell + API-Realität in
+  [`docs/YOUTUBE_PUBLISHING.md`](docs/YOUTUBE_PUBLISHING.md).
 
 ### Klar als TODO gekennzeichnet (noch nicht echt)
 - Reframe ist **statischer** Smart-Crop (ein Fokuspunkt pro Clip) — **kein

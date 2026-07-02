@@ -213,7 +213,7 @@ vor jedem Upload `external_post_id` prüfen — gesetzt ⇒ niemals erneut poste
 | Phase | Inhalt | Voraussetzung |
 |---|---|---|
 | **1 (✅ jetzt)** | Publishing Planner lokal (Drafts, Validierung, Pack-ZIP, **globale Übersicht + Duplizieren**, Prompt 21+22) | — |
-| 2 | YouTube-Upload über offizielle API (Privacy-Status wählbar, `publishAt`) | OAuth-Konzept + verschlüsselte Token-Ablage + ggf. API-Audit |
+| 2 | YouTube-Upload über offizielle API (Privacy-Status wählbar, `publishAt`) — **Phase-1-Dry-Run bereits gebaut**, siehe [`YOUTUBE_PUBLISHING.md`](YOUTUBE_PUBLISHING.md) | OAuth-Konzept + verschlüsselte Token-Ablage + ggf. API-Audit |
 | 3 | Instagram/TikTok nach offizieller Prüfung (App-Review/Audit, Hosting-Frage für IG klären) | Meta-/TikTok-Review bestanden |
 | 4 | Scheduling/Queue (lokaler Worker verarbeitet `scheduled`-Drafts) | Phase 2 stabil |
 | 5 | Analytics/Rückmeldung (Views/Likes zurück in ClipForge, Score-Feedback) | offizielle Analytics-APIs |

@@ -17,6 +17,7 @@ import type {
   PublishingPlatform,
   RerenderRequest,
   StorageSummary,
+  YouTubeDryRun,
 } from "./types";
 
 export const API_BASE =
@@ -471,4 +472,15 @@ export async function getPublishingOverview(
   if (filters.scheduled_only) params.set("scheduled_only", "true");
   const qs = params.toString();
   return getJson<PublishingOverview>(`/api/publishing${qs ? `?${qs}` : ""}`);
+}
+
+// YouTube Dry-Run (Phase 1) — löst niemals einen echten Upload aus.
+export async function youtubeDryRun(
+  jobId: string,
+  publishingId: string,
+): Promise<YouTubeDryRun> {
+  return sendJson<YouTubeDryRun>(
+    `/api/jobs/${jobId}/publishing/${publishingId}/youtube/dry-run`,
+    "POST",
+  );
 }

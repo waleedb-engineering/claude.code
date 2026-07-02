@@ -625,6 +625,35 @@ false` (Default) setzt `scheduled_at` im Duplikat auf `null`.
 
 ---
 
+## YouTube Publishing — Phase 1: Dry-Run (KEIN echter Upload)
+
+Erste echte Plattform, aber standardmäßig nur Dry-Run. **Kein OAuth, keine
+Token-Speicherung, kein externer Upload.** Konzept + API-Realität in
+[`YOUTUBE_PUBLISHING.md`](YOUTUBE_PUBLISHING.md). Beide Endpoints gelten nur für
+`platform = youtube_shorts` (sonst `400`) und sind path-traversal-sicher.
+
+| Endpoint | Zweck |
+|---|---|
+| `POST /api/jobs/{job_id}/publishing/{publishing_id}/youtube/dry-run` | Upload-Vorschau: `enabled`, `would_upload`, `video_file` (nur Dateiname), `title`, `description`, `hashtags`, `privacy_status`, `scheduled_at`, `checks`, `warnings`, `blocked_reasons`, `request_preview` (Metadaten für `videos.insert` — **ohne** Token/Secrets/Binär-Body). Löst **nie** einen Upload aus. |
+| `POST /api/jobs/{job_id}/publishing/{publishing_id}/youtube/publish` | Sicher blockiert. Body `{confirm, privacy_status}`. |
+
+Publish-Verhalten:
+
+- Feature-Flag `CLIPFORGE_ENABLE_YOUTUBE_UPLOAD` aus → **`403`**
+  („YouTube upload is disabled. Dry-run only.").
+- `privacy_status: "public"` ohne `confirm: "UPLOAD_PUBLIC"` → **`400`**
+  (privat/unlisted brauchen `UPLOAD_PRIVATE`).
+- Keine Credentials (`CLIPFORGE_YOUTUBE_CLIENT_SECRETS` fehlt/existiert nicht)
+  oder Draft nicht valide oder bereits `external_post_id` → **`409`**.
+- Alle Vorbedingungen erfüllt → **`200`** mit `{"status": "not_implemented", …}`.
+  **Kein echter Upload, kein Fake-Erfolg**, Draft-Status bleibt `draft`/`ready`.
+
+Konfiguration: `CLIPFORGE_ENABLE_YOUTUBE_UPLOAD` (Default `false`),
+`CLIPFORGE_YOUTUBE_CLIENT_SECRETS` (Pfad, nur Existenzprüfung — Inhalt wird nie
+gelesen oder geloggt), `CLIPFORGE_YOUTUBE_CATEGORY_ID` (Default `22`).
+
+---
+
 ## Löschen / Cleanup
 
 Zwei getrennte Löschvorgänge — ein **ganzer Job** vs. ein **einzelner manueller

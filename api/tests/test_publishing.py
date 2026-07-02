@@ -29,8 +29,44 @@ from clipforge.publishing import (
     update_draft,
     validate_draft,
 )
+from clipforge.config import Settings
+from clipforge.platforms import YouTubeAdapter
 
 _FFMPEG = shutil.which("ffmpeg") is not None
+
+
+def _yt_settings(enabled: bool = False, creds_path: str | None = None) -> Settings:
+    return Settings(
+        enable_youtube_upload=enabled, youtube_client_secrets_file=creds_path
+    )
+
+
+def _valid_yt_draft(mp4_path: str) -> dict:
+    """Ein validierter YouTube-Draft-Dict (mit gespeicherten Checks)."""
+    return {
+        "publishing_id": "abcdef012345",
+        "job_id": "job1",
+        "platform": "youtube_shorts",
+        "source_type": "auto_clip",
+        "source_clip_index": 1,
+        "manual_export_id": None,
+        "mp4_path": mp4_path,
+        "title": "Warum die meisten scheitern",
+        "caption": "Ein Fehler.",
+        "description": "Der eine Fehler, den fast alle machen.",
+        "hashtags": ["#shorts", "#lernen"],
+        "pinned_comment": "",
+        "scheduled_at": None,
+        "status": "ready",
+        "external_post_id": None,
+        "validation": {
+            "checks": {
+                "mp4_exists": True, "format_9_16": True, "title_present": True,
+                "caption_present": True, "hashtags_present": True,
+                "no_virality_claim": True,
+            }
+        },
+    }
 
 
 def _make_mp4(path: str, w: int = 108, h: int = 192) -> None:
@@ -587,6 +623,261 @@ def test_validation_summary_has_blocking_warnings_checklist_hints():
         r = client.get("/api/publishing")
         row = next(d for d in r.json()["drafts"] if d["publishing_id"] == pid)
         assert "title_too_long" in row["validation_summary"]["quality_hints"]
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+        os.environ.pop("CLIPFORGE_JOBS_DIR", None)
+        sys.modules.pop("app", None)
+
+
+# ---------------------- YouTube Adapter (Modul, ohne echten Upload) -------
+
+_SECRET_MARKERS = ("token", "access_token", "refresh_token", "client_secret",
+                   "authorization", "bearer", "password", "api_key")
+
+
+def _assert_no_secrets(obj):
+    blob = json.dumps(obj, ensure_ascii=False).lower()
+    for m in _SECRET_MARKERS:
+        assert m not in blob, f"möglicher Secret-Marker in Antwort: {m}"
+
+
+def test_youtube_dry_run_works_and_has_no_secrets():
+    if not _FFMPEG:
+        print("  (übersprungen: ffmpeg fehlt)")
+        return
+    mp4 = tempfile.NamedTemporaryFile(suffix=".mp4", delete=False)
+    mp4.write(b"x"); mp4.close()
+    try:
+        adapter = YouTubeAdapter(_yt_settings(enabled=False))
+        res = adapter.dry_run(_valid_yt_draft(mp4.name))
+        assert res["platform"] == "youtube_shorts"
+        assert res["enabled"] is False
+        assert res["upload_implemented"] is False
+        # video_file ist nur der Basename, nicht der volle Pfad
+        assert res["video_file"] == os.path.basename(mp4.name)
+        assert "/" not in (res["video_file"] or "")
+        assert "metadata" in res["request_preview"]
+        assert "video_body" in res["request_preview"]
+        _assert_no_secrets(res)
+    finally:
+        os.unlink(mp4.name)
+
+
+def test_youtube_dry_run_does_not_mutate_draft():
+    """Dry-Run darf keinen Upload/Status-Effekt haben."""
+    if not _FFMPEG:
+        print("  (übersprungen: ffmpeg fehlt)")
+        return
+    jd = _make_job_dir()
+    try:
+        d = create_draft(jd, "job1", platform="youtube_shorts",
+                         source_type="auto_clip", source_clip_index=1)
+        before = load_draft(jd, d["publishing_id"])
+        YouTubeAdapter(_yt_settings(enabled=True)).dry_run(before)
+        after = load_draft(jd, d["publishing_id"])
+        assert after["status"] == before["status"]
+        assert after["external_post_id"] is None
+    finally:
+        shutil.rmtree(jd)
+
+
+def test_youtube_dry_run_missing_mp4_is_blocked():
+    adapter = YouTubeAdapter(_yt_settings(enabled=True))
+    draft = _valid_yt_draft("/does/not/exist.mp4")
+    res = adapter.dry_run(draft)
+    assert res["checks"]["mp4_exists"] is False
+    assert any("MP4" in r for r in res["blocked_reasons"])
+    assert res["would_upload"] is False
+
+
+def test_youtube_dry_run_flags_virality_guarantee():
+    if not _FFMPEG:
+        print("  (übersprungen: ffmpeg fehlt)")
+        return
+    mp4 = tempfile.NamedTemporaryFile(suffix=".mp4", delete=False)
+    mp4.write(b"x"); mp4.close()
+    try:
+        draft = _valid_yt_draft(mp4.name)
+        draft["title"] = "Dieser Clip geht GARANTIERT VIRAL"
+        # gespeicherte Checks entsprechend: no_virality_claim False
+        draft["validation"]["checks"]["no_virality_claim"] = False
+        res = YouTubeAdapter(_yt_settings(enabled=True)).dry_run(draft)
+        assert res["checks"]["no_viral_guarantee"] is False
+        assert any("virality" in r.lower() for r in res["blocked_reasons"])
+    finally:
+        os.unlink(mp4.name)
+
+
+def test_youtube_publish_blocked_when_feature_disabled():
+    adapter = YouTubeAdapter(_yt_settings(enabled=False))
+    res = adapter.publish(_valid_yt_draft("/x.mp4"), confirm="UPLOAD_PRIVATE",
+                          privacy_status="private")
+    assert res["outcome"] == "disabled"
+    assert "disabled" in res["message"].lower()
+
+
+def test_youtube_publish_blocked_without_credentials():
+    adapter = YouTubeAdapter(_yt_settings(enabled=True, creds_path=None))
+    res = adapter.publish(_valid_yt_draft("/x.mp4"), confirm="UPLOAD_PRIVATE",
+                          privacy_status="private")
+    assert res["outcome"] == "not_ready"
+    assert "credentials_not_configured" in res["blocked_reasons"]
+
+
+def test_youtube_publish_public_requires_public_phrase():
+    sec = tempfile.NamedTemporaryFile(suffix=".json", delete=False)
+    sec.write(b"{}"); sec.close()
+    mp4 = tempfile.NamedTemporaryFile(suffix=".mp4", delete=False)
+    mp4.write(b"x"); mp4.close()
+    try:
+        adapter = YouTubeAdapter(_yt_settings(enabled=True, creds_path=sec.name))
+        draft = _valid_yt_draft(mp4.name)
+        # public mit privater Phrase → blockiert
+        res = adapter.publish(draft, confirm="UPLOAD_PRIVATE", privacy_status="public")
+        assert res["outcome"] == "needs_confirmation"
+        assert "confirmation_required" in res["blocked_reasons"]
+        # public mit korrekter Phrase → not_implemented (kein Fake-Erfolg)
+        res2 = adapter.publish(draft, confirm="UPLOAD_PUBLIC", privacy_status="public")
+        assert res2["outcome"] == "not_implemented"
+    finally:
+        os.unlink(sec.name); os.unlink(mp4.name)
+
+
+def test_youtube_publish_never_fakes_success():
+    sec = tempfile.NamedTemporaryFile(suffix=".json", delete=False)
+    sec.write(b"{}"); sec.close()
+    mp4 = tempfile.NamedTemporaryFile(suffix=".mp4", delete=False)
+    mp4.write(b"x"); mp4.close()
+    try:
+        adapter = YouTubeAdapter(_yt_settings(enabled=True, creds_path=sec.name))
+        res = adapter.publish(_valid_yt_draft(mp4.name), confirm="UPLOAD_PRIVATE",
+                              privacy_status="private")
+        assert res["outcome"] == "not_implemented"
+        assert res["external_post_id"] is None
+        assert res["draft_status_changed"] is False
+    finally:
+        os.unlink(sec.name); os.unlink(mp4.name)
+
+
+def test_youtube_publish_idempotency_guard():
+    sec = tempfile.NamedTemporaryFile(suffix=".json", delete=False)
+    sec.write(b"{}"); sec.close()
+    mp4 = tempfile.NamedTemporaryFile(suffix=".mp4", delete=False)
+    mp4.write(b"x"); mp4.close()
+    try:
+        adapter = YouTubeAdapter(_yt_settings(enabled=True, creds_path=sec.name))
+        draft = _valid_yt_draft(mp4.name)
+        draft["external_post_id"] = "already-there"
+        res = adapter.publish(draft, confirm="UPLOAD_PRIVATE", privacy_status="private")
+        assert res["outcome"] == "not_ready"
+        assert "already_uploaded" in res["blocked_reasons"]
+    finally:
+        os.unlink(sec.name); os.unlink(mp4.name)
+
+
+# ---------------------- YouTube API-Endpoints (TestClient) ----------------
+
+def test_api_youtube_dry_run_and_publish_disabled():
+    if not _FFMPEG:
+        print("  (übersprungen: ffmpeg fehlt)")
+        return
+    # Sicherstellen, dass das Feature-Flag AUS ist (Default).
+    os.environ.pop("CLIPFORGE_ENABLE_YOUTUBE_UPLOAD", None)
+    os.environ.pop("CLIPFORGE_YOUTUBE_CLIENT_SECRETS", None)
+    client, tmp = _make_client()
+    try:
+        r = client.post("/api/jobs/pubjob0001/publishing", json={
+            "platform": "youtube_shorts", "source_type": "auto_clip",
+            "source_clip_index": 1})
+        pid = r.json()["publishing_id"]
+
+        # Dry-Run funktioniert, keine Secrets, kein Upload
+        r = client.post(f"/api/jobs/pubjob0001/publishing/{pid}/youtube/dry-run")
+        assert r.status_code == 200, r.text
+        body = r.json()
+        assert body["platform"] == "youtube_shorts"
+        assert body["enabled"] is False
+        _assert_no_secrets(body)
+
+        # Publish bei Feature-Flag aus → 403
+        r = client.post(f"/api/jobs/pubjob0001/publishing/{pid}/youtube/publish",
+                        json={"confirm": "UPLOAD_PRIVATE", "privacy_status": "private"})
+        assert r.status_code == 403, r.text
+        assert "disabled" in r.json()["detail"].lower()
+
+        # Draft-Status ist unverändert (kein published)
+        r = client.get(f"/api/jobs/pubjob0001/publishing/{pid}")
+        assert r.json()["status"] in ("draft", "ready")
+        assert r.json()["external_post_id"] is None
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+        os.environ.pop("CLIPFORGE_JOBS_DIR", None)
+        sys.modules.pop("app", None)
+
+
+def test_api_youtube_publish_enabled_but_blocked_paths():
+    if not _FFMPEG:
+        print("  (übersprungen: ffmpeg fehlt)")
+        return
+    sec = tempfile.NamedTemporaryFile(suffix=".json", delete=False)
+    sec.write(b"{}"); sec.close()
+    os.environ["CLIPFORGE_ENABLE_YOUTUBE_UPLOAD"] = "true"
+    client, tmp = _make_client()
+    try:
+        r = client.post("/api/jobs/pubjob0001/publishing", json={
+            "platform": "youtube_shorts", "source_type": "auto_clip",
+            "source_clip_index": 1})
+        pid = r.json()["publishing_id"]
+        client.post(f"/api/jobs/pubjob0001/publishing/{pid}/validate")
+
+        # Ohne Credentials → 409
+        os.environ.pop("CLIPFORGE_YOUTUBE_CLIENT_SECRETS", None)
+        r = client.post(f"/api/jobs/pubjob0001/publishing/{pid}/youtube/publish",
+                        json={"confirm": "UPLOAD_PRIVATE", "privacy_status": "private"})
+        assert r.status_code == 409, r.text
+
+        # Mit Credentials, aber public ohne UPLOAD_PUBLIC → 400
+        os.environ["CLIPFORGE_YOUTUBE_CLIENT_SECRETS"] = sec.name
+        r = client.post(f"/api/jobs/pubjob0001/publishing/{pid}/youtube/publish",
+                        json={"confirm": "UPLOAD_PRIVATE", "privacy_status": "public"})
+        assert r.status_code == 400, r.text
+
+        # Mit Credentials + korrekter Phrase → 200 not_implemented (kein Fake)
+        r = client.post(f"/api/jobs/pubjob0001/publishing/{pid}/youtube/publish",
+                        json={"confirm": "UPLOAD_PRIVATE", "privacy_status": "private"})
+        assert r.status_code == 200, r.text
+        assert r.json()["status"] == "not_implemented"
+
+        # Status weiterhin nicht published
+        r = client.get(f"/api/jobs/pubjob0001/publishing/{pid}")
+        assert r.json()["status"] in ("draft", "ready")
+        assert r.json()["external_post_id"] is None
+    finally:
+        os.environ.pop("CLIPFORGE_ENABLE_YOUTUBE_UPLOAD", None)
+        os.environ.pop("CLIPFORGE_YOUTUBE_CLIENT_SECRETS", None)
+        os.unlink(sec.name)
+        shutil.rmtree(tmp, ignore_errors=True)
+        os.environ.pop("CLIPFORGE_JOBS_DIR", None)
+        sys.modules.pop("app", None)
+
+
+def test_api_youtube_rejects_non_youtube_draft_and_traversal():
+    if not _FFMPEG:
+        print("  (übersprungen: ffmpeg fehlt)")
+        return
+    client, tmp = _make_client()
+    try:
+        r = client.post("/api/jobs/pubjob0001/publishing", json={
+            "platform": "tiktok", "source_type": "auto_clip",
+            "source_clip_index": 1})
+        pid = r.json()["publishing_id"]
+        # TikTok-Draft am YouTube-Endpoint → 400
+        r = client.post(f"/api/jobs/pubjob0001/publishing/{pid}/youtube/dry-run")
+        assert r.status_code == 400, r.text
+        # Path-Traversal bleibt geblockt
+        r = client.post(
+            "/api/jobs/pubjob0001/publishing/..%2F..%2Fx/youtube/dry-run")
+        assert r.status_code in (400, 404), r.status_code
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
         os.environ.pop("CLIPFORGE_JOBS_DIR", None)

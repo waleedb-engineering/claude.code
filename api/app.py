@@ -37,6 +37,7 @@ from clipforge.brand_kit import (
 )
 from clipforge.captions import STYLES as CAPTION_STYLES
 from clipforge.config import get_settings
+from clipforge.platforms import YouTubeAdapter
 from clipforge.ffmpeg_utils import FFmpegNotFound, ensure_ffmpeg
 from clipforge.publishing import (
     PublishingError,
@@ -1404,6 +1405,61 @@ def publishing_pack_zip(job_id: str, publishing_id: str):
         media_type="application/zip",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
+
+
+# --------------------------------------------------------------------------
+# YouTube Publishing — Phase 1: Dry-Run. KEIN echter Upload, KEIN OAuth,
+# KEINE Token-Speicherung. Siehe docs/YOUTUBE_PUBLISHING.md.
+# --------------------------------------------------------------------------
+
+def _require_youtube_draft(job: Job, publishing_id: str) -> dict:
+    draft = _require_publishing_draft(job, publishing_id)
+    if draft.get("platform") != "youtube_shorts":
+        raise HTTPException(
+            status_code=400,
+            detail="Dieser Draft ist nicht für YouTube Shorts (platform != youtube_shorts).",
+        )
+    return draft
+
+
+@app.post("/api/jobs/{job_id}/publishing/{publishing_id}/youtube/dry-run")
+def youtube_dry_run(job_id: str, publishing_id: str) -> dict:
+    """Plant den YouTube-Upload und gibt eine Vorschau zurück. Löst NIEMALS
+    einen echten Upload aus, enthält keine Secrets/Tokens."""
+    job = _require_job(job_id)
+    draft = _require_youtube_draft(job, publishing_id)
+    adapter = YouTubeAdapter(get_settings())
+    return adapter.dry_run(draft)
+
+
+class YouTubePublishRequest(BaseModel):
+    confirm: str | None = None
+    privacy_status: str = "private"
+
+
+@app.post("/api/jobs/{job_id}/publishing/{publishing_id}/youtube/publish")
+def youtube_publish(
+    job_id: str, publishing_id: str, req: YouTubePublishRequest
+) -> dict:
+    """Sicher blockierter Publish-Endpoint. In dieser Phase findet KEIN echter
+    Upload statt; der Draft-Status wird nicht auf 'published' gesetzt."""
+    job = _require_job(job_id)
+    draft = _require_youtube_draft(job, publishing_id)
+    adapter = YouTubeAdapter(get_settings())
+    result = adapter.publish(
+        draft, confirm=req.confirm, privacy_status=req.privacy_status
+    )
+    outcome = result.get("outcome")
+    if outcome == "disabled":
+        # Feature-Flag aus → klar blockiert.
+        raise HTTPException(status_code=403, detail=result["message"])
+    if outcome == "needs_confirmation":
+        raise HTTPException(status_code=400, detail=result["message"])
+    if outcome == "not_ready":
+        raise HTTPException(status_code=409, detail=result["message"])
+    # not_implemented: alle Vorbedingungen erfüllt, aber kein echter Upload.
+    # Kein Fake-Erfolg, Status bleibt unverändert (draft/ready).
+    return {"status": "not_implemented", **result}
 
 
 @app.get("/api/jobs/{job_id}/files")

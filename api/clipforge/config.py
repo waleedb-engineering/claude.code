@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 
 def _get_float(name: str, default: float) -> float:
@@ -48,9 +48,35 @@ class Settings:
     silence_db: float = _get_float("CLIPFORGE_SILENCE_DB", -30.0)
     silence_min_seconds: float = _get_float("CLIPFORGE_SILENCE_MIN", 0.6)
 
+    # --- YouTube Publishing (Phase 1: Dry-Run; echter Upload standardmäßig AUS) ---
+    # Bewusst als default_factory, damit jedes get_settings() den ENV-Wert LIVE
+    # liest (Feature-Flag lässt sich pro Prozessstart steuern; kein Frozen-Import).
+    # Es werden hier KEINE Tokens gelesen oder gespeichert.
+    enable_youtube_upload: bool = field(
+        default_factory=lambda: os.environ.get(
+            "CLIPFORGE_ENABLE_YOUTUBE_UPLOAD", "false"
+        ).strip().lower() == "true"
+    )
+    # Pfad zu einer OAuth-Client-Secrets-Datei (NUR Existenzprüfung; nie geloggt,
+    # nie in Responses ausgegeben). Ohne diese gilt: credentials nicht konfiguriert.
+    youtube_client_secrets_file: str | None = field(
+        default_factory=lambda: os.environ.get("CLIPFORGE_YOUTUBE_CLIENT_SECRETS") or None
+    )
+    # YouTube-Kategorie (Default 22 = "People & Blogs").
+    youtube_category_id: str = field(
+        default_factory=lambda: os.environ.get("CLIPFORGE_YOUTUBE_CATEGORY_ID", "22")
+    )
+
     @property
     def llm_available(self) -> bool:
         return bool(self.anthropic_api_key) and self.use_llm
+
+    @property
+    def youtube_credentials_configured(self) -> bool:
+        """True nur, wenn eine Client-Secrets-Datei gesetzt ist UND existiert.
+        Es wird NICHTS aus der Datei gelesen — nur die Existenz geprüft."""
+        path = self.youtube_client_secrets_file
+        return bool(path) and os.path.exists(path)
 
 
 def get_settings() -> Settings:

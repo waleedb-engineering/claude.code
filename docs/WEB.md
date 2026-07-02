@@ -200,6 +200,16 @@ App öffnen: <http://127.0.0.1:3000>
     **Publishing-Badge-Zeile** („Publishing Drafts: X · Bereit: Y · Ungültig:
     Z") mit Link „Publishing öffnen", sobald Drafts existieren. Weiterhin
     **kein echtes Posten, keine OAuth-Anzeige als wäre sie aktiv**.
+20. **YouTube Dry-Run (im Planner, nur bei YouTube-Shorts-Drafts):** Button
+    **„YouTube Dry-Run prüfen"** zeigt, was hochgeladen *würde* —
+    Privacy-Status, „würde hochladen ja/nein", Checks (MP4, 9:16, Titel,
+    Beschreibung, keine Viralitätsgarantie, Feature-Flag aktiv, Credentials
+    konfiguriert), Blocker, Hinweise und eine Request-Vorschau (Metadaten,
+    **kein Token, kein Video-Body**). Ist der Upload deaktiviert, steht klar
+    **„🔒 Echter YouTube Upload ist deaktiviert. Dry-Run only."**. Es gibt
+    **keinen „Live veröffentlichen"-Button** und **kein OAuth-UI** in dieser
+    Phase. Nicht-YouTube-Drafts zeigen dieses Panel nicht. Details:
+    [`YOUTUBE_PUBLISHING.md`](YOUTUBE_PUBLISHING.md).
 
 > Echtes Video **ohne** angehängtes Transkript: Die Pipeline transkribiert dann
 > lokal mit faster-whisper. Beim ersten Lauf wird das Modell geladen (~140 MB),
