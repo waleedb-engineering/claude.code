@@ -38,6 +38,16 @@ from clipforge.brand_kit import (
 from clipforge.captions import STYLES as CAPTION_STYLES
 from clipforge.config import get_settings
 from clipforge.ffmpeg_utils import FFmpegNotFound, ensure_ffmpeg
+from clipforge.publishing import (
+    PublishingError,
+    create_draft as create_publishing_draft,
+    delete_draft as delete_publishing_draft,
+    list_drafts as list_publishing_drafts,
+    load_draft as load_publishing_draft,
+    pack_contents as publishing_pack_contents,
+    update_draft as update_publishing_draft,
+    validate_draft as validate_publishing_draft,
+)
 from clipforge.rerender import (
     ManualExportError,
     RerenderError,
@@ -1125,6 +1135,148 @@ def all_exports_zip(job_id: str):
     buf.seek(0)
 
     filename = f"clipforge_{job.id}_all_exports.zip"
+    return StreamingResponse(
+        buf,
+        media_type="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+# --------------------------------------------------------------------------
+# Publishing Planner (nur lokale Drafts — KEIN Upload, KEIN OAuth, KEIN Token)
+# --------------------------------------------------------------------------
+
+class PublishingCreateRequest(BaseModel):
+    platform: str
+    source_type: str  # "auto_clip" | "manual_export"
+    source_clip_index: int | None = None
+    manual_export_id: str | None = None
+    title: str | None = None
+    caption: str | None = None
+    description: str | None = None
+    hashtags: list[str] | None = None
+    pinned_comment: str | None = None
+    scheduled_at: str | None = None
+
+
+class PublishingPatchRequest(BaseModel):
+    platform: str | None = None
+    title: str | None = None
+    caption: str | None = None
+    description: str | None = None
+    hashtags: list[str] | None = None
+    pinned_comment: str | None = None
+    scheduled_at: str | None = None
+    status: str | None = None
+
+
+@app.get("/api/jobs/{job_id}/publishing")
+def get_publishing_drafts(job_id: str) -> dict:
+    """Listet alle lokalen Publishing-Drafts eines Jobs (neueste zuerst)."""
+    job = _require_job(job_id)
+    return {"job_id": job_id, "drafts": list_publishing_drafts(job.job_dir)}
+
+
+@app.post("/api/jobs/{job_id}/publishing")
+def post_publishing_draft(job_id: str, req: PublishingCreateRequest) -> dict:
+    """Legt einen lokalen Publishing-Draft an (kein Plattform-Call)."""
+    job = _require_job(job_id)
+    try:
+        draft = create_publishing_draft(
+            job.job_dir, job_id,
+            platform=req.platform,
+            source_type=req.source_type,
+            source_clip_index=req.source_clip_index,
+            manual_export_id=req.manual_export_id,
+            title=req.title,
+            caption=req.caption,
+            description=req.description,
+            hashtags=req.hashtags,
+            pinned_comment=req.pinned_comment,
+            scheduled_at=req.scheduled_at,
+        )
+    except PublishingError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    return draft
+
+
+def _require_publishing_draft(job: Job, publishing_id: str) -> dict:
+    try:
+        draft = load_publishing_draft(job.job_dir, publishing_id)
+    except PublishingError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    if draft is None:
+        raise HTTPException(
+            status_code=404, detail=f"Publishing-Draft {publishing_id} nicht gefunden."
+        )
+    return draft
+
+
+@app.get("/api/jobs/{job_id}/publishing/{publishing_id}")
+def get_publishing_draft(job_id: str, publishing_id: str) -> dict:
+    job = _require_job(job_id)
+    return _require_publishing_draft(job, publishing_id)
+
+
+@app.patch("/api/jobs/{job_id}/publishing/{publishing_id}")
+def patch_publishing_draft(
+    job_id: str, publishing_id: str, req: PublishingPatchRequest
+) -> dict:
+    job = _require_job(job_id)
+    _require_publishing_draft(job, publishing_id)
+    try:
+        return update_publishing_draft(
+            job.job_dir, publishing_id, req.model_dump(exclude_none=True)
+        )
+    except PublishingError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
+@app.delete("/api/jobs/{job_id}/publishing/{publishing_id}")
+def delete_publishing_draft_endpoint(job_id: str, publishing_id: str) -> dict:
+    job = _require_job(job_id)
+    try:
+        deleted = delete_publishing_draft(job.job_dir, publishing_id)
+    except PublishingError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    if not deleted:
+        raise HTTPException(
+            status_code=404, detail=f"Publishing-Draft {publishing_id} nicht gefunden."
+        )
+    return {"deleted": True, "publishing_id": publishing_id}
+
+
+@app.post("/api/jobs/{job_id}/publishing/{publishing_id}/validate")
+def validate_publishing_draft_endpoint(job_id: str, publishing_id: str) -> dict:
+    """Validiert den Draft lokal (MP4, 9:16, Texte) — kein externer Aufruf."""
+    job = _require_job(job_id)
+    _require_publishing_draft(job, publishing_id)
+    try:
+        return validate_publishing_draft(job.job_dir, publishing_id)
+    except PublishingError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
+@app.get("/api/jobs/{job_id}/publishing/{publishing_id}/pack.zip")
+def publishing_pack_zip(job_id: str, publishing_id: str):
+    """Publishing Pack: MP4 + metadata.json + caption.txt/description.txt +
+    Plattform-Hinweise als lokaler ZIP-Download. Kein Upload."""
+    job = _require_job(job_id)
+    draft = _require_publishing_draft(job, publishing_id)
+    mp4_path, texts, metadata = publishing_pack_contents(draft)
+    if not mp4_path or not os.path.exists(mp4_path):
+        raise HTTPException(
+            status_code=404,
+            detail="MP4 für diesen Draft fehlt — erst validieren/neu rendern.",
+        )
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        zf.write(mp4_path, arcname=os.path.basename(mp4_path))
+        for arcname, text in texts:
+            zf.writestr(arcname, text)
+        zf.writestr("metadata.json", json.dumps(metadata, ensure_ascii=False, indent=2))
+    buf.seek(0)
+    filename = f"publishing_{draft.get('platform')}_{publishing_id}.zip"
     return StreamingResponse(
         buf,
         media_type="application/zip",

@@ -81,6 +81,12 @@ function ExportRow({
         >
           Zum Editor
         </Link>
+        <Link
+          href={`/jobs/${jobId}/publishing?export=${exp.export_id}`}
+          className="rounded-lg border border-indigo-500/40 bg-indigo-500/10 px-3 py-1.5 text-xs font-medium text-indigo-300 transition hover:bg-indigo-500/20"
+        >
+          Publishing vorbereiten
+        </Link>
         <DeleteControl
           label="Löschen"
           confirmLabel="Diesen manuellen Export wirklich löschen?"

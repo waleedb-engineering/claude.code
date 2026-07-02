@@ -12,6 +12,8 @@ import type {
   Job,
   JobSummary,
   ManualExport,
+  PublishingDraft,
+  PublishingPlatform,
   RerenderRequest,
   StorageSummary,
 } from "./types";
@@ -336,3 +338,98 @@ export function allExportsZipUrl(jobId: string): string {
 }
 
 export { ApiError };
+
+// --- Publishing Planner (lokale Drafts — kein echter Upload) ---------------
+
+async function sendJson<T>(
+  path: string,
+  method: "POST" | "PATCH" | "DELETE",
+  body?: unknown,
+): Promise<T> {
+  let res: Response;
+  try {
+    res = await fetch(`${API_BASE}${path}`, {
+      method,
+      headers: body !== undefined ? { "Content-Type": "application/json" } : undefined,
+      body: body !== undefined ? JSON.stringify(body) : undefined,
+    });
+  } catch {
+    throw new ApiError(
+      `Backend nicht erreichbar unter ${API_BASE}. Läuft FastAPI auf Port 8000?`,
+      0,
+    );
+  }
+  if (!res.ok) await parseError(res);
+  return (await res.json()) as T;
+}
+
+export interface PublishingCreateBody {
+  platform: PublishingPlatform;
+  source_type: "auto_clip" | "manual_export";
+  source_clip_index?: number;
+  manual_export_id?: string;
+}
+
+export async function listPublishingDrafts(
+  jobId: string,
+): Promise<PublishingDraft[]> {
+  const data = await getJson<{ drafts: PublishingDraft[] }>(
+    `/api/jobs/${jobId}/publishing`,
+  );
+  return data.drafts;
+}
+
+export async function createPublishingDraft(
+  jobId: string,
+  body: PublishingCreateBody,
+): Promise<PublishingDraft> {
+  return sendJson<PublishingDraft>(`/api/jobs/${jobId}/publishing`, "POST", body);
+}
+
+export async function updatePublishingDraft(
+  jobId: string,
+  publishingId: string,
+  patch: Partial<
+    Pick<
+      PublishingDraft,
+      | "platform"
+      | "title"
+      | "caption"
+      | "description"
+      | "hashtags"
+      | "pinned_comment"
+      | "scheduled_at"
+      | "status"
+    >
+  >,
+): Promise<PublishingDraft> {
+  return sendJson<PublishingDraft>(
+    `/api/jobs/${jobId}/publishing/${publishingId}`,
+    "PATCH",
+    patch,
+  );
+}
+
+export async function deletePublishingDraft(
+  jobId: string,
+  publishingId: string,
+): Promise<void> {
+  await sendJson<{ deleted: boolean }>(
+    `/api/jobs/${jobId}/publishing/${publishingId}`,
+    "DELETE",
+  );
+}
+
+export async function validatePublishingDraft(
+  jobId: string,
+  publishingId: string,
+): Promise<PublishingDraft> {
+  return sendJson<PublishingDraft>(
+    `/api/jobs/${jobId}/publishing/${publishingId}/validate`,
+    "POST",
+  );
+}
+
+export function publishingPackUrl(jobId: string, publishingId: string): string {
+  return `${API_BASE}/api/jobs/${jobId}/publishing/${publishingId}/pack.zip`;
+}

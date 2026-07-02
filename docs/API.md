@@ -585,6 +585,28 @@ Ungültige/nicht existierende `export_id` → `404` (Path-Traversal wird geblock
 
 ---
 
+## Publishing Planner (lokale Drafts — kein Upload)
+
+Plant Veröffentlichungen als **lokale Drafts** unter
+`jobs/{job_id}/publishing/{publishing_id}.json`. **Kein Plattform-Call, kein
+OAuth, keine Tokens** — Konzept, Datenmodell und Roadmap in
+[`PUBLISHING_AGENT_PLAN.md`](PUBLISHING_AGENT_PLAN.md).
+
+| Endpoint | Zweck |
+|---|---|
+| `GET /api/jobs/{job_id}/publishing` | Drafts listen |
+| `POST /api/jobs/{job_id}/publishing` | Draft anlegen (`platform`, `source_type` = `auto_clip`/`manual_export`; Texte werden aus dem Content-Paket vorbefüllt) |
+| `GET/PATCH/DELETE /api/jobs/{job_id}/publishing/{publishing_id}` | lesen / bearbeiten / löschen |
+| `POST …/{publishing_id}/validate` | lokale Checkliste (MP4 da, 9:16 via ffprobe, Titel/Caption, keine Viralitätsversprechen) — setzt `draft`↔`ready` |
+| `GET …/{publishing_id}/pack.zip` | Publishing Pack: MP4 + `metadata.json` + `caption.txt` + `description.txt` + `platform_notes.txt` |
+
+Plattformen: `youtube_shorts` · `tiktok` · `instagram_reels`. Ungültige
+Plattform/ID → `400`, Path-Traversal wird geblockt. Die Status
+`publishing/published/failed` sind für den späteren echten Publisher
+reserviert und per PATCH **nicht** setzbar.
+
+---
+
 ## Löschen / Cleanup
 
 Zwei getrennte Löschvorgänge — ein **ganzer Job** vs. ein **einzelner manueller

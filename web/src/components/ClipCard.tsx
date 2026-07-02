@@ -246,6 +246,12 @@ export default function ClipCard({
           </svg>
           Bearbeiten
         </Link>
+        <Link
+          href={`/jobs/${jobId}/publishing?clip=${index}`}
+          className="inline-flex items-center gap-2 rounded-lg border border-indigo-500/40 bg-indigo-500/10 px-3.5 py-2 text-sm font-medium text-indigo-300 transition hover:bg-indigo-500/20"
+        >
+          Publishing vorbereiten
+        </Link>
       </div>
     </article>
   );

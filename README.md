@@ -49,6 +49,7 @@ npm run dev      # http://127.0.0.1:3000
 | Schritt 18 | **Caption-Styles (5) & Brand Kit** | ✅ fertig & verifiziert |
 | Schritt 19 | **Clip-Analyzer v2 & Performance-Score v2** | ✅ fertig & verifiziert |
 | Schritt 20 | **Score-Kalibrierung & Analyzer-Härtung** | ✅ fertig & verifiziert |
+| Schritt 21 | **Publishing Planner (lokale Drafts + Pack-ZIP, kein Upload)** | ✅ fertig & verifiziert |
 | später | Face-Tracking-Reframe, echtes A/B-Tracking, Direkt-Posten | 🔭 später |
 
 ### Was schon echt funktioniert
@@ -170,6 +171,12 @@ npm run dev      # http://127.0.0.1:3000
   über den Upload-Toggle „Erweiterte Clip-Analyse verwenden" (Default an); alte
   Clips ohne v2-Felder bleiben voll anzeigbar. **Weiterhin keine
   Viralitätsgarantie** — der Score ist eine Heuristik-Einschätzung.
+- **Publishing Planner** (`publishing.py`, `/jobs/{id}/publishing`): plant
+  Veröffentlichungen als **lokale Drafts** (Plattform-Auswahl, Texte aus dem
+  Content-Paket, Checkliste inkl. 9:16-Prüfung, Publishing-Pack-ZIP für den
+  manuellen Upload). **Kein echter Upload, kein OAuth, keine Tokens** — der
+  komplette Plan für die spätere Plattform-Anbindung steht in
+  [`docs/PUBLISHING_AGENT_PLAN.md`](docs/PUBLISHING_AGENT_PLAN.md).
 
 ### Klar als TODO gekennzeichnet (noch nicht echt)
 - Reframe ist **statischer** Smart-Crop (ein Fokuspunkt pro Clip) — **kein

@@ -366,3 +366,56 @@ export interface HealthResponse {
   ffmpeg_error: string | null;
   jobs_dir: string;
 }
+
+// --- Publishing Planner (lokale Drafts — kein echter Upload) ---------------
+
+export type PublishingPlatform = "youtube_shorts" | "tiktok" | "instagram_reels";
+
+export type PublishingStatus =
+  | "draft"
+  | "ready"
+  | "scheduled"
+  | "publishing"
+  | "published"
+  | "failed"
+  | "canceled";
+
+export interface PublishingValidation {
+  passed: boolean;
+  checks: {
+    mp4_exists: boolean;
+    format_9_16: boolean | null;
+    file_size_bytes: number;
+    platform_valid: boolean;
+    title_present: boolean;
+    caption_present: boolean;
+    description_present: boolean;
+    hashtags_present: boolean;
+    no_virality_claim: boolean;
+    required_text_present: boolean;
+  };
+  checked_at: string;
+}
+
+export interface PublishingDraft {
+  publishing_id: string;
+  job_id: string;
+  source_type: "auto_clip" | "manual_export";
+  source_clip_index: number | null;
+  manual_export_id: string | null;
+  mp4_path: string;
+  platform: PublishingPlatform;
+  title: string;
+  caption: string;
+  description: string;
+  hashtags: string[];
+  pinned_comment: string;
+  scheduled_at: string | null;
+  status: PublishingStatus;
+  validation: PublishingValidation | null;
+  created_at: string;
+  updated_at: string;
+  published_at: string | null;
+  external_post_id: string | null;
+  error: string | null;
+}

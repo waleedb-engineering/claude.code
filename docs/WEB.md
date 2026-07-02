@@ -179,6 +179,16 @@ App öffnen: <http://127.0.0.1:3000>
     Editor **„🎨 Brand Kit aktiv: {name}"** und nutzen dessen Default-Style; die
     Marken-Farben/Watermark werden beim Rendern angewandt. Nach einem Re-Render
     zeigen die Export-Metadaten `caption_style` und `Brand Kit an/aus`.
+18. **Publishing Planner (`/jobs/{jobId}/publishing`):** Über **„Publishing
+    vorbereiten"** auf jeder Clip-Karte und bei manuellen Exporten erreichbar
+    (Prefill via `?clip=` / `?export=`). Drafts anlegen (Plattform: YouTube
+    Shorts/TikTok/Instagram Reels; Texte kommen aus dem Content-Paket),
+    bearbeiten (Titel/Caption/Beschreibung/Hashtags/Pinned Comment/geplantes
+    Datum), **Prüfen** (Checkliste: MP4, 9:16, Texte, keine
+    Viralitätsversprechen → Status „Bereit"), **Publishing Pack (ZIP)**
+    herunterladen und löschen. **Kein automatischer Upload, kein
+    Plattform-Login** — Plan für die echte Anbindung:
+    [`PUBLISHING_AGENT_PLAN.md`](PUBLISHING_AGENT_PLAN.md).
 
 > Echtes Video **ohne** angehängtes Transkript: Die Pipeline transkribiert dann
 > lokal mit faster-whisper. Beim ersten Lauf wird das Modell geladen (~140 MB),
