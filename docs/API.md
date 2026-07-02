@@ -594,16 +594,34 @@ OAuth, keine Tokens** — Konzept, Datenmodell und Roadmap in
 
 | Endpoint | Zweck |
 |---|---|
-| `GET /api/jobs/{job_id}/publishing` | Drafts listen |
+| `GET /api/publishing` | **Globale Übersicht** über alle Jobs — Query-Filter `status`, `platform`, `job_id`, `q` (Titel/Caption-Suche), `scheduled_only`; Antwort: `total_drafts`, `by_status`, `by_platform`, `scheduled_count`, `ready_count`, `invalid_count`, `drafts[]`, `warnings[]` |
+| `GET /api/jobs/{job_id}/publishing` | Drafts eines Jobs listen |
 | `POST /api/jobs/{job_id}/publishing` | Draft anlegen (`platform`, `source_type` = `auto_clip`/`manual_export`; Texte werden aus dem Content-Paket vorbefüllt) |
 | `GET/PATCH/DELETE /api/jobs/{job_id}/publishing/{publishing_id}` | lesen / bearbeiten / löschen |
-| `POST …/{publishing_id}/validate` | lokale Checkliste (MP4 da, 9:16 via ffprobe, Titel/Caption, keine Viralitätsversprechen) — setzt `draft`↔`ready` |
+| `POST …/{publishing_id}/validate` | lokale Checkliste (MP4 da, 9:16 via ffprobe, Titel/Caption, keine Viralitätsversprechen) — setzt `draft`↔`ready`, liefert `validation.summary` |
+| `POST …/{publishing_id}/duplicate` | Draft duplizieren (`{platform?, copy_schedule}`) — neue ID, Original unverändert |
 | `GET …/{publishing_id}/pack.zip` | Publishing Pack: MP4 + `metadata.json` + `caption.txt` + `description.txt` + `platform_notes.txt` |
 
 Plattformen: `youtube_shorts` · `tiktok` · `instagram_reels`. Ungültige
-Plattform/ID → `400`, Path-Traversal wird geblockt. Die Status
-`publishing/published/failed` sind für den späteren echten Publisher
-reserviert und per PATCH **nicht** setzbar.
+Plattform/ID → `400`, unbekannte `publishing_id` → `404`, Path-Traversal wird
+geblockt. Die Status `publishing/published/failed` sind für den späteren
+echten Publisher reserviert und per PATCH **nicht** setzbar.
+
+**`validation.summary`** (in jedem validierten Draft und in jeder Zeile von
+`GET /api/publishing`): `is_valid`, `blocking_issues_count`,
+`blocking_issues[]`, `warnings_count`, `checklist` (8 Booleans/`null`),
+`quality_hints[]` (`title_too_long`, `caption_too_long`, `too_many_hashtags`,
+`missing_pinned_comment`, `scheduled_in_past`, `weak_metadata` — grobe lokale
+Richtwerte, **keine offiziellen Plattform-Limits**).
+
+`GET /api/publishing` scannt `jobs/*/publishing/` read-only; ein defekter Job-
+oder Draft-Ordner lässt den Endpoint nicht crashen (Skip + `warnings[]`).
+
+`POST …/duplicate`: Ändert sich die Plattform, werden Titel/Caption/Hashtags
+möglichst aus dem Content-Paket der ursprünglichen Quelle für die neue
+Plattform neu abgeleitet; gelingt das nicht, werden die Original-Texte
+übernommen und der neue Draft bekommt ein `warning`-Feld. `copy_schedule:
+false` (Default) setzt `scheduled_at` im Duplikat auf `null`.
 
 ---
 

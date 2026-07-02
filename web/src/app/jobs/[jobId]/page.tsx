@@ -11,8 +11,14 @@ import {
   getClips,
   getJob,
   getManualExports,
+  getPublishingOverview,
 } from "@/lib/api";
-import type { ClipsJson, Job, ManualExport } from "@/lib/types";
+import type {
+  ClipsJson,
+  Job,
+  ManualExport,
+  PublishingOverview,
+} from "@/lib/types";
 import StatusBadge from "@/components/StatusBadge";
 import Spinner from "@/components/Spinner";
 import ClipCard from "@/components/ClipCard";
@@ -31,6 +37,7 @@ export default function JobDetailPage() {
   const [clips, setClips] = useState<ClipsJson | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [manualExports, setManualExports] = useState<ManualExport[]>([]);
+  const [publishing, setPublishing] = useState<PublishingOverview | null>(null);
   const clipsLoaded = useRef(false);
 
   const fetchClips = useCallback(async () => {
@@ -45,6 +52,11 @@ export default function JobDetailPage() {
       setManualExports(await getManualExports(jobId));
     } catch {
       /* manuelle Exporte optional — kein harter Fehler */
+    }
+    try {
+      setPublishing(await getPublishingOverview({ job_id: jobId }));
+    } catch {
+      /* Publishing-Drafts optional — kein harter Fehler */
     }
   }, [jobId]);
 
@@ -317,6 +329,46 @@ export default function JobDetailPage() {
               <ProgressLog lines={job.progress} />
             </div>
           </details>
+
+          {/* Publishing-Badges */}
+          {publishing && publishing.total_drafts > 0 && (
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-neutral-800 bg-neutral-900/40 px-4 py-3 text-sm">
+              <div className="flex flex-wrap items-center gap-3 text-neutral-400">
+                <span>
+                  Publishing Drafts:{" "}
+                  <span className="text-neutral-200">
+                    {publishing.total_drafts}
+                  </span>
+                </span>
+                <span>
+                  Bereit:{" "}
+                  <span className="text-emerald-400">
+                    {publishing.ready_count}
+                  </span>
+                </span>
+                <span>
+                  Ungültig:{" "}
+                  <span className="text-amber-400">
+                    {publishing.invalid_count}
+                  </span>
+                </span>
+                {publishing.scheduled_count > 0 && (
+                  <span>
+                    Geplant:{" "}
+                    <span className="text-indigo-400">
+                      {publishing.scheduled_count}
+                    </span>
+                  </span>
+                )}
+              </div>
+              <Link
+                href={`/jobs/${jobId}/publishing`}
+                className="rounded-lg border border-indigo-500/40 bg-indigo-500/10 px-3 py-1.5 text-xs font-medium text-indigo-300 hover:bg-indigo-500/20"
+              >
+                Publishing öffnen
+              </Link>
+            </div>
+          )}
 
           {/* Clip-Karten */}
           {clips && clips.clips.length > 0 ? (

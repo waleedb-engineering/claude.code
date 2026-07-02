@@ -42,6 +42,8 @@ from clipforge.publishing import (
     PublishingError,
     create_draft as create_publishing_draft,
     delete_draft as delete_publishing_draft,
+    draft_list_summary as publishing_draft_list_summary,
+    duplicate_draft as duplicate_publishing_draft,
     list_drafts as list_publishing_drafts,
     load_draft as load_publishing_draft,
     pack_contents as publishing_pack_contents,
@@ -1146,6 +1148,104 @@ def all_exports_zip(job_id: str):
 # Publishing Planner (nur lokale Drafts — KEIN Upload, KEIN OAuth, KEIN Token)
 # --------------------------------------------------------------------------
 
+@app.get("/api/publishing")
+def get_all_publishing(
+    status: str | None = None,
+    platform: str | None = None,
+    job_id: str | None = None,
+    q: str | None = None,
+    scheduled_only: bool = False,
+) -> dict:
+    """Globale Publishing-Übersicht über ALLE Jobs (nur lokale Drafts).
+
+    Scannt jobs/*/publishing/ read-only. Ein defekter Draft oder Job-Ordner
+    lässt den Endpoint nicht crashen — er wird übersprungen und landet in
+    `warnings`. Kein externer Aufruf, keine Secrets in der Antwort.
+    """
+    warnings_list: list[str] = []
+    rows: list[dict] = []
+    for job in registry.list():
+        if job_id and job.id != job_id:
+            continue
+        try:
+            drafts = list_publishing_drafts(job.job_dir)
+        except Exception as exc:  # noqa: BLE001 — Übersicht darf nie crashen
+            warnings_list.append(
+                f"Job {job.id}: Drafts konnten nicht gelesen werden "
+                f"({type(exc).__name__})."
+            )
+            continue
+        for d in drafts:
+            try:
+                row = publishing_draft_list_summary(d)
+            except Exception as exc:  # noqa: BLE001
+                warnings_list.append(
+                    f"Draft in Job {job.id} übersprungen (defekt: {type(exc).__name__})."
+                )
+                continue
+            row["job_filename"] = job.filename
+            if row.get("source_type") == "manual_export" and row.get("manual_export_id"):
+                row["source_preview_url"] = (
+                    f"/api/jobs/{job.id}/manual-exports/"
+                    f"{row['manual_export_id']}/preview"
+                )
+            elif row.get("source_clip_index"):
+                row["source_preview_url"] = (
+                    f"/api/jobs/{job.id}/clips/{row['source_clip_index']}/preview"
+                )
+            else:
+                row["source_preview_url"] = None
+            row["pack_url"] = (
+                f"/api/jobs/{job.id}/publishing/{row['publishing_id']}/pack.zip"
+            )
+            row["job_url"] = f"/jobs/{job.id}"
+            row["planner_url"] = f"/jobs/{job.id}/publishing"
+            rows.append(row)
+
+    if status:
+        rows = [r for r in rows if r["status"] == status]
+    if platform:
+        rows = [r for r in rows if r["platform"] == platform]
+    if q:
+        ql = q.lower()
+        rows = [
+            r for r in rows
+            if ql in (r.get("title") or "").lower()
+            or ql in (r.get("caption") or "").lower()
+        ]
+    if scheduled_only:
+        rows = [r for r in rows if r.get("scheduled_at")]
+
+    # Sortierung: scheduled_at aufsteigend zuerst, Rest nach updated_at absteigend.
+    scheduled = sorted(
+        (r for r in rows if r.get("scheduled_at")), key=lambda r: r["scheduled_at"]
+    )
+    unscheduled = sorted(
+        (r for r in rows if not r.get("scheduled_at")),
+        key=lambda r: r.get("updated_at") or "", reverse=True,
+    )
+    rows = scheduled + unscheduled
+
+    by_status: dict[str, int] = {}
+    by_platform: dict[str, int] = {}
+    for r in rows:
+        by_status[r["status"]] = by_status.get(r["status"], 0) + 1
+        by_platform[r["platform"]] = by_platform.get(r["platform"], 0) + 1
+
+    return {
+        "total_drafts": len(rows),
+        "by_status": by_status,
+        "by_platform": by_platform,
+        "scheduled_count": sum(1 for r in rows if r.get("scheduled_at")),
+        "ready_count": by_status.get("ready", 0),
+        "invalid_count": sum(
+            1 for r in rows if not r["validation_summary"]["is_valid"]
+        ),
+        "drafts": rows,
+        "warnings": warnings_list,
+    }
+
+
 class PublishingCreateRequest(BaseModel):
     platform: str
     source_type: str  # "auto_clip" | "manual_export"
@@ -1253,6 +1353,28 @@ def validate_publishing_draft_endpoint(job_id: str, publishing_id: str) -> dict:
     _require_publishing_draft(job, publishing_id)
     try:
         return validate_publishing_draft(job.job_dir, publishing_id)
+    except PublishingError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
+class PublishingDuplicateRequest(BaseModel):
+    platform: str | None = None
+    copy_schedule: bool = False
+
+
+@app.post("/api/jobs/{job_id}/publishing/{publishing_id}/duplicate")
+def duplicate_publishing_draft_endpoint(
+    job_id: str, publishing_id: str, req: PublishingDuplicateRequest
+) -> dict:
+    """Dupliziert einen Draft (z. B. für eine andere Plattform). Original
+    bleibt unverändert; kein Plattform-Call, keine echte Veröffentlichung."""
+    job = _require_job(job_id)
+    _require_publishing_draft(job, publishing_id)
+    try:
+        return duplicate_publishing_draft(
+            job.job_dir, job_id, publishing_id,
+            platform=req.platform, copy_schedule=req.copy_schedule,
+        )
     except PublishingError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
 

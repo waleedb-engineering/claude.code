@@ -312,6 +312,105 @@ def delete_draft(job_dir: str, publishing_id: str) -> bool:
     return True
 
 
+def _find_source_clip(job_dir: str, draft: dict) -> dict | None:
+    """Rekonstruiert den Quell-Clip (für Content-Paket-Texte) — bestmöglich."""
+    if draft.get("source_type") == "auto_clip" and draft.get("source_clip_index"):
+        cj = _load_clips_json(job_dir) or {}
+        clips = cj.get("clips") or []
+        idx = draft["source_clip_index"]
+        if 1 <= idx <= len(clips):
+            return clips[idx - 1]
+    elif draft.get("source_type") == "manual_export" and draft.get("manual_export_id"):
+        for exp in list_manual_exports(job_dir):
+            if exp.get("export_id") == draft["manual_export_id"]:
+                idx = exp.get("source_clip_index")
+                if isinstance(idx, int):
+                    cj = _load_clips_json(job_dir) or {}
+                    clips = cj.get("clips") or []
+                    if 1 <= idx <= len(clips):
+                        return clips[idx - 1]
+                break
+    return None
+
+
+def duplicate_draft(
+    job_dir: str,
+    job_id: str,
+    publishing_id: str,
+    *,
+    platform: str | None = None,
+    copy_schedule: bool = False,
+) -> dict:
+    """Dupliziert einen Draft (neue publishing_id, Original bleibt unverändert).
+
+    Wechselt die Plattform, versucht dafür die Texte aus dem Content-Paket
+    der Quelle neu abzuleiten; ist die Quelle nicht rekonstruierbar, werden
+    die Original-Texte übernommen und ein `warning` gesetzt.
+    """
+    original = load_draft(job_dir, publishing_id)
+    if original is None:
+        raise FileNotFoundError(publishing_id)
+
+    new_platform = platform or original["platform"]
+    if new_platform not in PLATFORMS:
+        raise PublishingError(
+            f"Ungültige Plattform {new_platform!r} (erlaubt: {', '.join(PLATFORMS)})."
+        )
+
+    warning: str | None = None
+    if new_platform != original["platform"]:
+        clip = _find_source_clip(job_dir, original)
+        cp = (clip or {}).get("content_package") or {}
+        if cp.get(new_platform):
+            pre = _prefill_from_content_package(clip, new_platform)
+            title, caption = pre["title"], pre["caption"]
+            description, hashtags = pre["description"], pre["hashtags"]
+            pinned_comment = pre["pinned_comment"]
+        else:
+            title, caption = original["title"], original["caption"]
+            description, hashtags = original["description"], original["hashtags"]
+            pinned_comment = original["pinned_comment"]
+            warning = (
+                "Konnte Texte nicht plattformspezifisch neu ableiten (Quelle/"
+                "Content-Paket nicht rekonstruierbar) — Original-Texte übernommen."
+            )
+    else:
+        title, caption = original["title"], original["caption"]
+        description, hashtags = original["description"], original["hashtags"]
+        pinned_comment = original["pinned_comment"]
+
+    now = _now()
+    new_draft = {
+        "publishing_id": uuid.uuid4().hex[:12],
+        "job_id": job_id,
+        "source_type": original.get("source_type"),
+        "source_clip_index": original.get("source_clip_index"),
+        "manual_export_id": original.get("manual_export_id"),
+        "mp4_path": original.get("mp4_path"),
+        "platform": new_platform,
+        "title": title,
+        "caption": caption,
+        "description": description,
+        "hashtags": list(hashtags or []),
+        "pinned_comment": pinned_comment,
+        "scheduled_at": original.get("scheduled_at") if copy_schedule else None,
+        "status": "draft",
+        "validation": None,
+        "created_at": now,
+        "updated_at": now,
+        "published_at": None,
+        "external_post_id": None,
+        "error": None,
+        "duplicated_from": original["publishing_id"],
+    }
+    if warning:
+        new_draft["warning"] = warning
+    os.makedirs(publishing_dir(job_dir), exist_ok=True)
+    with open(_draft_path(job_dir, new_draft["publishing_id"]), "w", encoding="utf-8") as fh:
+        json.dump(new_draft, fh, ensure_ascii=False, indent=2)
+    return validate_draft(job_dir, new_draft["publishing_id"])
+
+
 # ==========================================================================
 # Validierung
 # ==========================================================================
@@ -335,6 +434,114 @@ def _probe_dimensions(mp4_path: str) -> tuple[int, int] | None:
 def _contains_forbidden_claim(*texts: str) -> bool:
     joined = " ".join(t or "" for t in texts).lower()
     return any(claim in joined for claim in _FORBIDDEN_CLAIMS)
+
+
+# --- Qualitäts-Richtwerte -------------------------------------------------
+# Bewusst GROBE lokale Richtwerte (keine offiziellen Plattform-Limits!).
+# Sollen nur auf ungewöhnlich lange/leere Texte hinweisen, nicht Plattform-
+# regeln vorschreiben. Vor echtem Upload gelten die jeweiligen offiziellen
+# Grenzen (siehe docs/PUBLISHING_AGENT_PLAN.md, TODOs).
+_TITLE_SOFT_LIMIT = 100
+_CAPTION_SOFT_LIMIT = 2200
+_HASHTAGS_SOFT_LIMIT = 15
+
+
+def _quality_hints(draft: dict) -> list[str]:
+    hints: list[str] = []
+    title = (draft.get("title") or "").strip()
+    caption = (draft.get("caption") or "").strip()
+    hashtags = draft.get("hashtags") or []
+    if len(title) > _TITLE_SOFT_LIMIT:
+        hints.append("title_too_long")
+    if len(caption) > _CAPTION_SOFT_LIMIT:
+        hints.append("caption_too_long")
+    if len(hashtags) > _HASHTAGS_SOFT_LIMIT:
+        hints.append("too_many_hashtags")
+    if draft.get("platform") in ("tiktok", "instagram_reels") and not (
+        draft.get("pinned_comment") or ""
+    ).strip():
+        hints.append("missing_pinned_comment")
+    scheduled = draft.get("scheduled_at")
+    if scheduled:
+        try:
+            dt = datetime.datetime.fromisoformat(str(scheduled).replace("Z", "+00:00"))
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=datetime.timezone.utc)
+            if dt < datetime.datetime.now(datetime.timezone.utc):
+                hints.append("scheduled_in_past")
+        except ValueError:
+            pass
+    if not title and not caption:
+        hints.append("weak_metadata")
+    return hints
+
+
+def build_validation_summary(draft: dict, checks: dict | None = None) -> dict:
+    """Fasst Checkliste + Qualitäts-Hinweise zusammen (für UI + globale Liste).
+
+    Nutzt gespeicherte `checks` (aus `validate_draft`), falls vorhanden;
+    sonst best-effort ohne ffprobe-Aufruf (nur Dateipräsenz + Textfelder).
+    `format_9_16` bleibt `None`, wenn es nie geprüft wurde (nicht blockierend).
+    """
+    checks = checks or {}
+    mp4_path = draft.get("mp4_path") or ""
+    mp4_exists = checks.get("mp4_exists")
+    if mp4_exists is None:
+        mp4_exists = bool(mp4_path) and os.path.exists(mp4_path)
+    format_9_16 = checks.get("format_9_16")
+    platform = draft.get("platform")
+    platform_selected = platform in PLATFORMS
+    title_present = checks.get("title_present")
+    if title_present is None:
+        title_present = bool((draft.get("title") or "").strip())
+    caption_present = checks.get("caption_present")
+    if caption_present is None:
+        caption_present = bool((draft.get("caption") or "").strip())
+    hashtags_present = checks.get("hashtags_present")
+    if hashtags_present is None:
+        hashtags_present = bool(draft.get("hashtags"))
+    no_viral_guarantee = checks.get("no_virality_claim")
+    if no_viral_guarantee is None:
+        no_viral_guarantee = not _contains_forbidden_claim(
+            draft.get("title", ""), draft.get("caption", ""),
+            draft.get("description", ""), " ".join(draft.get("hashtags") or []),
+        )
+    safe_status = draft.get("status") not in ("publishing", "published", "failed")
+    required_text_ok = title_present if platform == "youtube_shorts" else caption_present
+
+    checklist = {
+        "mp4_exists": mp4_exists,
+        "format_9_16": format_9_16,
+        "title_present": title_present,
+        "caption_present": caption_present,
+        "hashtags_present": hashtags_present,
+        "platform_selected": platform_selected,
+        "no_viral_guarantee": no_viral_guarantee,
+        "safe_status": safe_status,
+    }
+    blocking: list[str] = []
+    if not mp4_exists:
+        blocking.append("mp4_exists")
+    if not platform_selected:
+        blocking.append("platform_selected")
+    if not required_text_ok:
+        blocking.append("required_text_present")
+    if not no_viral_guarantee:
+        blocking.append("no_viral_guarantee")
+    if format_9_16 is False:
+        blocking.append("format_9_16")
+    if not safe_status:
+        blocking.append("safe_status")
+
+    quality_hints = _quality_hints(draft)
+    return {
+        "is_valid": len(blocking) == 0,
+        "blocking_issues_count": len(blocking),
+        "blocking_issues": blocking,
+        "warnings_count": len(quality_hints),
+        "checklist": checklist,
+        "quality_hints": quality_hints,
+    }
 
 
 def validate_draft(job_dir: str, publishing_id: str) -> dict:
@@ -383,10 +590,12 @@ def validate_draft(job_dir: str, publishing_id: str) -> dict:
         "no_virality_claim": no_virality_claim,
         "required_text_present": text_ok,
     }
-    hard = [mp4_exists, platform_valid, text_ok, no_virality_claim,
-            format_9_16 is not False]
-    passed = all(hard)
-    validation = {"passed": passed, "checks": checks, "checked_at": _now()}
+    summary = build_validation_summary(draft, checks)
+    passed = summary["is_valid"]
+    validation = {
+        "passed": passed, "checks": checks, "checked_at": _now(),
+        "summary": summary,
+    }
     draft["validation"] = validation
     if passed and draft.get("status") == "draft":
         draft["status"] = "ready"
@@ -396,6 +605,33 @@ def validate_draft(job_dir: str, publishing_id: str) -> dict:
     with open(_draft_path(job_dir, publishing_id), "w", encoding="utf-8") as fh:
         json.dump(draft, fh, ensure_ascii=False, indent=2)
     return draft
+
+
+def draft_list_summary(draft: dict) -> dict:
+    """Kompakte Zusammenfassung eines Drafts für Listen-Ansichten (job- und
+    jobübergreifend). Läuft ohne ffprobe-Aufruf (nutzt gespeicherte Checks,
+    falls vorhanden)."""
+    validation = draft.get("validation") or {}
+    checks = validation.get("checks") or {}
+    summary = build_validation_summary(draft, checks)
+    mp4_path = draft.get("mp4_path") or ""
+    return {
+        "publishing_id": draft["publishing_id"],
+        "job_id": draft["job_id"],
+        "source_type": draft.get("source_type"),
+        "source_clip_index": draft.get("source_clip_index"),
+        "manual_export_id": draft.get("manual_export_id"),
+        "platform": draft.get("platform"),
+        "title": draft.get("title"),
+        "caption": draft.get("caption"),
+        "hashtags": draft.get("hashtags") or [],
+        "status": draft.get("status"),
+        "scheduled_at": draft.get("scheduled_at"),
+        "validation_summary": summary,
+        "mp4_exists": bool(mp4_path) and os.path.exists(mp4_path),
+        "created_at": draft.get("created_at"),
+        "updated_at": draft.get("updated_at"),
+    }
 
 
 # ==========================================================================

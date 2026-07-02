@@ -13,6 +13,7 @@ import type {
   JobSummary,
   ManualExport,
   PublishingDraft,
+  PublishingOverview,
   PublishingPlatform,
   RerenderRequest,
   StorageSummary,
@@ -432,4 +433,42 @@ export async function validatePublishingDraft(
 
 export function publishingPackUrl(jobId: string, publishingId: string): string {
   return `${API_BASE}/api/jobs/${jobId}/publishing/${publishingId}/pack.zip`;
+}
+
+export interface PublishingDuplicateBody {
+  platform?: PublishingPlatform;
+  copy_schedule?: boolean;
+}
+
+export async function duplicatePublishingDraft(
+  jobId: string,
+  publishingId: string,
+  body: PublishingDuplicateBody,
+): Promise<PublishingDraft> {
+  return sendJson<PublishingDraft>(
+    `/api/jobs/${jobId}/publishing/${publishingId}/duplicate`,
+    "POST",
+    body,
+  );
+}
+
+export interface PublishingOverviewFilters {
+  status?: string;
+  platform?: string;
+  job_id?: string;
+  q?: string;
+  scheduled_only?: boolean;
+}
+
+export async function getPublishingOverview(
+  filters: PublishingOverviewFilters = {},
+): Promise<PublishingOverview> {
+  const params = new URLSearchParams();
+  if (filters.status) params.set("status", filters.status);
+  if (filters.platform) params.set("platform", filters.platform);
+  if (filters.job_id) params.set("job_id", filters.job_id);
+  if (filters.q) params.set("q", filters.q);
+  if (filters.scheduled_only) params.set("scheduled_only", "true");
+  const qs = params.toString();
+  return getJson<PublishingOverview>(`/api/publishing${qs ? `?${qs}` : ""}`);
 }

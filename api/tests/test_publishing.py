@@ -342,6 +342,257 @@ def test_api_invalid_platform_and_traversal():
         sys.modules.pop("app", None)
 
 
+# ---------------------- API: globale Übersicht + Duplizieren --------------
+
+def _make_multi_client(n_jobs: int = 2):
+    """Baut eine App-Instanz mit `n_jobs` fabrizierten Job-Ordnern."""
+    tmp = tempfile.mkdtemp(prefix="pub_multi_")
+    jobs_dir = os.path.join(tmp, "jobs")
+    os.makedirs(jobs_dir)
+    job_ids = []
+    for i in range(n_jobs):
+        src = _make_job_dir()
+        job_id = f"pubjob{i:04d}"
+        job_dir = os.path.join(jobs_dir, job_id)
+        shutil.move(src, job_dir)
+        cp = os.path.join(job_dir, "clips.json")
+        data = json.load(open(cp, encoding="utf-8"))
+        data["clips"][0]["output_path"] = os.path.join(job_dir, "clip_01_score80.mp4")
+        json.dump(data, open(cp, "w", encoding="utf-8"))
+        job_ids.append(job_id)
+
+    os.environ["CLIPFORGE_JOBS_DIR"] = jobs_dir
+    sys.modules.pop("app", None)
+    from fastapi.testclient import TestClient
+    import app as app_module
+
+    return TestClient(app_module.app), tmp, job_ids
+
+
+def test_global_listing_spans_multiple_jobs():
+    if not _FFMPEG:
+        print("  (übersprungen: ffmpeg fehlt)")
+        return
+    client, tmp, job_ids = _make_multi_client(2)
+    try:
+        for jid in job_ids:
+            client.post(f"/api/jobs/{jid}/publishing", json={
+                "platform": "tiktok", "source_type": "auto_clip",
+                "source_clip_index": 1})
+        r = client.get("/api/publishing")
+        assert r.status_code == 200, r.text
+        data = r.json()
+        assert data["total_drafts"] == 2
+        assert {d["job_id"] for d in data["drafts"]} == set(job_ids)
+        assert data["by_platform"].get("tiktok") == 2
+        for d in data["drafts"]:
+            assert d["pack_url"].endswith("/pack.zip")
+            assert d["job_url"] == f"/jobs/{d['job_id']}"
+            assert d["planner_url"] == f"/jobs/{d['job_id']}/publishing"
+            assert "job_filename" in d
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+        os.environ.pop("CLIPFORGE_JOBS_DIR", None)
+        sys.modules.pop("app", None)
+
+
+def test_global_listing_filters_status_platform_q_scheduled():
+    if not _FFMPEG:
+        print("  (übersprungen: ffmpeg fehlt)")
+        return
+    client, tmp, job_ids = _make_multi_client(1)
+    jid = job_ids[0]
+    try:
+        r1 = client.post(f"/api/jobs/{jid}/publishing", json={
+            "platform": "tiktok", "source_type": "auto_clip",
+            "source_clip_index": 1})
+        pid1 = r1.json()["publishing_id"]
+        client.post(f"/api/jobs/{jid}/publishing", json={
+            "platform": "youtube_shorts", "source_type": "auto_clip",
+            "source_clip_index": 1})
+        client.post(f"/api/jobs/{jid}/publishing/{pid1}/validate")
+        client.patch(f"/api/jobs/{jid}/publishing/{pid1}",
+                     json={"scheduled_at": "2099-05-01T10:00:00Z"})
+
+        # status filter
+        r = client.get("/api/publishing", params={"status": "ready"})
+        assert all(d["status"] == "ready" for d in r.json()["drafts"])
+        assert any(d["publishing_id"] == pid1 for d in r.json()["drafts"])
+
+        # platform filter
+        r = client.get("/api/publishing", params={"platform": "youtube_shorts"})
+        assert all(d["platform"] == "youtube_shorts" for d in r.json()["drafts"])
+
+        # search
+        r = client.get("/api/publishing", params={"q": "warum"})
+        assert len(r.json()["drafts"]) >= 1
+        r = client.get("/api/publishing", params={"q": "xyz-not-present"})
+        assert len(r.json()["drafts"]) == 0
+
+        # scheduled_only
+        r = client.get("/api/publishing", params={"scheduled_only": "true"})
+        drafts = r.json()["drafts"]
+        assert all(d.get("scheduled_at") for d in drafts)
+        assert any(d["publishing_id"] == pid1 for d in drafts)
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+        os.environ.pop("CLIPFORGE_JOBS_DIR", None)
+        sys.modules.pop("app", None)
+
+
+def test_global_listing_survives_broken_draft_file():
+    if not _FFMPEG:
+        print("  (übersprungen: ffmpeg fehlt)")
+        return
+    client, tmp, job_ids = _make_multi_client(1)
+    jid = job_ids[0]
+    try:
+        client.post(f"/api/jobs/{jid}/publishing", json={
+            "platform": "tiktok", "source_type": "auto_clip",
+            "source_clip_index": 1})
+        # kaputte Draft-Datei direkt ins publishing/-Verzeichnis legen
+        pdir = os.path.join(tmp, "jobs", jid, "publishing")
+        with open(os.path.join(pdir, "deadbeef0000.json"), "w") as fh:
+            fh.write("{not valid json::")
+        r = client.get("/api/publishing")
+        assert r.status_code == 200, r.text
+        # kaputte Datei wird von list_drafts() selbst schon übersprungen
+        assert r.json()["total_drafts"] == 1
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+        os.environ.pop("CLIPFORGE_JOBS_DIR", None)
+        sys.modules.pop("app", None)
+
+
+def test_duplicate_creates_new_draft_with_platform_switch():
+    if not _FFMPEG:
+        print("  (übersprungen: ffmpeg fehlt)")
+        return
+    client, tmp, job_ids = _make_multi_client(1)
+    jid = job_ids[0]
+    try:
+        r = client.post(f"/api/jobs/{jid}/publishing", json={
+            "platform": "tiktok", "source_type": "auto_clip",
+            "source_clip_index": 1})
+        original = r.json()
+        pid = original["publishing_id"]
+
+        r = client.post(f"/api/jobs/{jid}/publishing/{pid}/duplicate",
+                        json={"platform": "youtube_shorts", "copy_schedule": False})
+        assert r.status_code == 200, r.text
+        dup = r.json()
+        assert dup["publishing_id"] != pid
+        assert dup["platform"] == "youtube_shorts"
+        assert dup["duplicated_from"] == pid
+        assert dup["status"] == "draft" or dup["status"] == "ready"
+        # Content-Paket für youtube_shorts war vorhanden -> Titel übernommen
+        assert dup["title"] == "Warum die meisten scheitern"
+        assert "warning" not in dup or dup.get("warning") is None
+
+        # Original unverändert
+        r = client.get(f"/api/jobs/{jid}/publishing/{pid}")
+        assert r.json()["platform"] == "tiktok"
+
+        # beide Drafts jetzt vorhanden
+        r = client.get(f"/api/jobs/{jid}/publishing")
+        assert len(r.json()["drafts"]) == 2
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+        os.environ.pop("CLIPFORGE_JOBS_DIR", None)
+        sys.modules.pop("app", None)
+
+
+def test_duplicate_copy_schedule_true_false():
+    if not _FFMPEG:
+        print("  (übersprungen: ffmpeg fehlt)")
+        return
+    client, tmp, job_ids = _make_multi_client(1)
+    jid = job_ids[0]
+    try:
+        r = client.post(f"/api/jobs/{jid}/publishing", json={
+            "platform": "tiktok", "source_type": "auto_clip",
+            "source_clip_index": 1})
+        pid = r.json()["publishing_id"]
+        client.patch(f"/api/jobs/{jid}/publishing/{pid}",
+                     json={"scheduled_at": "2099-06-01T12:00:00Z"})
+
+        r = client.post(f"/api/jobs/{jid}/publishing/{pid}/duplicate",
+                        json={"copy_schedule": False})
+        assert r.json()["scheduled_at"] is None
+
+        r = client.post(f"/api/jobs/{jid}/publishing/{pid}/duplicate",
+                        json={"copy_schedule": True})
+        assert r.json()["scheduled_at"] == "2099-06-01T12:00:00Z"
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+        os.environ.pop("CLIPFORGE_JOBS_DIR", None)
+        sys.modules.pop("app", None)
+
+
+def test_duplicate_invalid_platform_and_missing_draft():
+    if not _FFMPEG:
+        print("  (übersprungen: ffmpeg fehlt)")
+        return
+    client, tmp, job_ids = _make_multi_client(1)
+    jid = job_ids[0]
+    try:
+        r = client.post(f"/api/jobs/{jid}/publishing", json={
+            "platform": "tiktok", "source_type": "auto_clip",
+            "source_clip_index": 1})
+        pid = r.json()["publishing_id"]
+
+        r = client.post(f"/api/jobs/{jid}/publishing/{pid}/duplicate",
+                        json={"platform": "myspace"})
+        assert r.status_code == 400, r.text
+
+        r = client.post(f"/api/jobs/{jid}/publishing/deadbeef0000/duplicate",
+                        json={"platform": "tiktok"})
+        assert r.status_code == 404, r.status_code
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+        os.environ.pop("CLIPFORGE_JOBS_DIR", None)
+        sys.modules.pop("app", None)
+
+
+def test_validation_summary_has_blocking_warnings_checklist_hints():
+    if not _FFMPEG:
+        print("  (übersprungen: ffmpeg fehlt)")
+        return
+    client, tmp, job_ids = _make_multi_client(1)
+    jid = job_ids[0]
+    try:
+        r = client.post(f"/api/jobs/{jid}/publishing", json={
+            "platform": "tiktok", "source_type": "auto_clip",
+            "source_clip_index": 1})
+        pid = r.json()["publishing_id"]
+        client.patch(f"/api/jobs/{jid}/publishing/{pid}", json={
+            "title": "x" * 150,  # -> title_too_long hint
+            "scheduled_at": "2000-01-01T00:00:00Z",  # -> scheduled_in_past
+        })
+        r = client.post(f"/api/jobs/{jid}/publishing/{pid}/validate")
+        summary = r.json()["validation"]["summary"]
+        assert set(summary.keys()) >= {
+            "is_valid", "blocking_issues_count", "warnings_count",
+            "checklist", "quality_hints",
+        }
+        for key in ("mp4_exists", "format_9_16", "title_present",
+                    "caption_present", "hashtags_present", "platform_selected",
+                    "no_viral_guarantee", "safe_status"):
+            assert key in summary["checklist"], key
+        assert "title_too_long" in summary["quality_hints"]
+        assert "scheduled_in_past" in summary["quality_hints"]
+        assert summary["warnings_count"] >= 2
+
+        # globale Liste liefert dieselbe Struktur ohne erneute Validierung nötig
+        r = client.get("/api/publishing")
+        row = next(d for d in r.json()["drafts"] if d["publishing_id"] == pid)
+        assert "title_too_long" in row["validation_summary"]["quality_hints"]
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+        os.environ.pop("CLIPFORGE_JOBS_DIR", None)
+        sys.modules.pop("app", None)
+
+
 def _run_all():
     fns = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
     for fn in fns:

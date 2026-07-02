@@ -94,6 +94,10 @@ Lokal, ohne jedes API-Risiko:
    `description.txt` + `platform_notes.txt` (Hinweise für den manuellen Upload).
 8. **Kein echter Plattform-Upload.**
 
+**Erweiterung (Prompt 22) ✅:** Der Planner ist jetzt auch **jobübergreifend**
+nutzbar — eine globale Übersicht listet, filtert und dupliziert Drafts über
+alle Jobs hinweg, ohne den Scope zu erweitern (weiterhin kein Upload/OAuth/Token).
+
 ## 6. Datenmodell (lokal, ohne Datenbank) ✅
 
 Speicherort: `jobs/{job_id}/publishing/{publishing_id}.json` (eine Datei pro
@@ -102,8 +106,11 @@ Draft; IDs sind 12-stellige Hex-Strings, Path-Traversal wird geblockt).
 Felder: `publishing_id`, `job_id`, `source_type` (auto_clip|manual_export),
 `source_clip_index?`, `manual_export_id?`, `mp4_path`, `platform`, `title`,
 `caption`, `description`, `hashtags[]`, `pinned_comment?`, `scheduled_at?`,
-`status`, `validation` (passed + checks + checked_at), `created_at`,
-`updated_at`, `published_at?`, `external_post_id?` (erst später), `error?`.
+`status`, `validation` (passed + checks + checked_at + **`summary`**, s. u.),
+`created_at`, `updated_at`, `published_at?`, `external_post_id?` (erst später),
+`error?`, `duplicated_from?` (gesetzt bei Duplikaten), `warning?` (z. B. wenn
+beim Duplizieren die Texte nicht plattformspezifisch neu abgeleitet werden
+konnten).
 
 Status: `draft → ready → scheduled → publishing → published | failed |
 canceled`. Im Planner sind nur `draft/ready/scheduled/canceled` setzbar;
@@ -111,28 +118,57 @@ canceled`. Im Planner sind nur `draft/ready/scheduled/canceled` setzbar;
 (verhindert vorgetäuschte Veröffentlichungen). `ready` wird von der
 Validierung gesetzt/entzogen.
 
+**`validation.summary`** (Prompt 22) fasst die Checkliste zusammen:
+`is_valid`, `blocking_issues_count`, `blocking_issues[]`, `warnings_count`,
+`checklist` (`mp4_exists`, `format_9_16`, `title_present`, `caption_present`,
+`hashtags_present`, `platform_selected`, `no_viral_guarantee`, `safe_status`),
+`quality_hints[]` (`title_too_long`, `caption_too_long`, `too_many_hashtags`,
+`missing_pinned_comment`, `scheduled_in_past`, `weak_metadata`). Die
+Quality-Hints sind **grobe lokale Richtwerte, keine offiziellen
+Plattform-Limits** (siehe TODOs in §4).
+
 ## 7. API-Plan ✅ (umgesetzt, nur lokal)
 
 | Endpoint | Zweck |
 |---|---|
-| `GET /api/jobs/{job_id}/publishing` | Drafts listen |
+| `GET /api/publishing` | **Globale Übersicht** über alle Jobs — Filter `status`, `platform`, `job_id`, `q`, `scheduled_only` |
+| `GET /api/jobs/{job_id}/publishing` | Drafts eines Jobs listen |
 | `POST /api/jobs/{job_id}/publishing` | Draft anlegen (Prefill aus Content Package) |
 | `GET /api/jobs/{job_id}/publishing/{publishing_id}` | Draft lesen |
 | `PATCH /api/jobs/{job_id}/publishing/{publishing_id}` | Texte/Plattform/Status bearbeiten |
 | `DELETE /api/jobs/{job_id}/publishing/{publishing_id}` | Draft löschen |
-| `POST …/{publishing_id}/validate` | lokale Validierung (MP4, 9:16 via ffprobe, Texte, Claims) |
+| `POST …/{publishing_id}/validate` | lokale Validierung (MP4, 9:16 via ffprobe, Texte, Claims) + `summary` |
+| `POST …/{publishing_id}/duplicate` | **Draft duplizieren** (neue ID, optional andere Plattform, optional Zeitplan übernehmen) |
 | `GET …/{publishing_id}/pack.zip` | Publishing Pack (ZIP) |
 
-Kein Endpoint macht externe Aufrufe.
+Kein Endpoint macht externe Aufrufe. `GET /api/publishing` scannt
+`jobs/*/publishing/` read-only; defekte Draft-Dateien oder Job-Ordner lassen
+den Endpoint nicht crashen (Skip + `warnings[]` in der Antwort).
+
+`POST …/duplicate` (Body: `{platform?, copy_schedule}`) — beim
+Plattformwechsel wird versucht, Titel/Caption/Hashtags aus dem Content-Paket
+der ursprünglichen Quelle für die neue Plattform abzuleiten; gelingt das
+nicht, werden die Original-Texte übernommen und ein `warning` gesetzt. Ohne
+`copy_schedule: true` wird `scheduled_at` nicht übernommen. Das Original
+bleibt unverändert.
 
 ## 8. UI-Plan ✅ (umgesetzt)
 
 - Job-Detailseite: Button **„Publishing vorbereiten"** auf jeder Clip-Karte
-  und bei jedem manuellen Export (Prefill via `?clip=` / `?export=`).
-- Neue Seite **`/jobs/{jobId}/publishing`**: Draft-Liste, Neuer-Draft-Formular
+  und bei jedem manuellen Export (Prefill via `?clip=` / `?export=`); dazu
+  eine kompakte **Publishing-Badge-Zeile** (Drafts/Bereit/Ungültig/Geplant +
+  Button „Publishing öffnen"), wenn für den Job Drafts existieren.
+- Seite **`/jobs/{jobId}/publishing`**: Draft-Liste, Neuer-Draft-Formular
   (Quelle + Plattform), Editierfelder (Titel/Caption/Beschreibung/Hashtags/
-  Pinned Comment/geplantes Datum), Clip-Preview, Validierungs-Checkliste,
-  Status-Chips, Pack-Download. Deutlicher Hinweis: *kein automatischer Upload*.
+  Pinned Comment/geplantes Datum), Clip-Preview, **erweiterte
+  Validierungs-Checkliste** (blockierende Probleme + Warnhinweise getrennt,
+  inkl. Warnung bei Termin in der Vergangenheit), **Duplizieren**-Funktion,
+  Status-Chips, Pack-Download, „🔒 lokal"-Badge pro Draft. Deutlicher Hinweis:
+  *kein automatischer Upload*.
+- **Neue globale Seite `/publishing`** (Nav-Link „Publishing"): Summary-Cards
+  (Gesamt/Bereit/Geplant/Ungültig/Plattform-Zähler), Filter (Plattform, Status,
+  Suche, „nur geplante"), Draft-Karten mit Quelle (Job + Clip/Export),
+  Vorschau, Validierungsstatus, Zum-Planner-/Pack-/Duplizieren-Buttons.
 
 ## 9. Architektur-Zielbild (späterer echter Publisher)
 
@@ -176,8 +212,22 @@ vor jedem Upload `external_post_id` prüfen — gesetzt ⇒ niemals erneut poste
 
 | Phase | Inhalt | Voraussetzung |
 |---|---|---|
-| **1 (✅ jetzt)** | Publishing Planner lokal (Drafts, Validierung, Pack-ZIP) | — |
+| **1 (✅ jetzt)** | Publishing Planner lokal (Drafts, Validierung, Pack-ZIP, **globale Übersicht + Duplizieren**, Prompt 21+22) | — |
 | 2 | YouTube-Upload über offizielle API (Privacy-Status wählbar, `publishAt`) | OAuth-Konzept + verschlüsselte Token-Ablage + ggf. API-Audit |
 | 3 | Instagram/TikTok nach offizieller Prüfung (App-Review/Audit, Hosting-Frage für IG klären) | Meta-/TikTok-Review bestanden |
 | 4 | Scheduling/Queue (lokaler Worker verarbeitet `scheduled`-Drafts) | Phase 2 stabil |
 | 5 | Analytics/Rückmeldung (Views/Likes zurück in ClipForge, Score-Feedback) | offizielle Analytics-APIs |
+
+## 12. Grenzen (weiterhin gültig, Prompt 22 ändert daran nichts)
+
+- Alle Drafts sind **rein lokal** — es gibt keine Server-Synchronisierung,
+  keine Cloud, keine Datenbank.
+- **Keine automatische Veröffentlichung.** Der Planner erzeugt Text/Metadaten
+  und ein Pack für den manuellen Upload — kein Endpoint spricht mit
+  YouTube/TikTok/Instagram.
+- `scheduled_at` ist **nur ein gespeichertes Metadatum**, kein Hintergrund-Job.
+  Es passiert nichts automatisch zum geplanten Zeitpunkt.
+- Bevor in Phase 2/3 echte Uploads gebaut werden, müssen die jeweiligen
+  Plattformregeln (Limits, Review-Prozesse, Quotas) **erneut anhand der dann
+  aktuellen offiziellen Dokumentation geprüft werden** — die Angaben in §4
+  sind ein Snapshot vom 2026-07-02.

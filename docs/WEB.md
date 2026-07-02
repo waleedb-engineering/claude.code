@@ -184,11 +184,22 @@ App öffnen: <http://127.0.0.1:3000>
     (Prefill via `?clip=` / `?export=`). Drafts anlegen (Plattform: YouTube
     Shorts/TikTok/Instagram Reels; Texte kommen aus dem Content-Paket),
     bearbeiten (Titel/Caption/Beschreibung/Hashtags/Pinned Comment/geplantes
-    Datum), **Prüfen** (Checkliste: MP4, 9:16, Texte, keine
-    Viralitätsversprechen → Status „Bereit"), **Publishing Pack (ZIP)**
-    herunterladen und löschen. **Kein automatischer Upload, kein
-    Plattform-Login** — Plan für die echte Anbindung:
+    Datum), **Prüfen** (erweiterte Checkliste: blockierende Probleme getrennt
+    von Qualitäts-Hinweisen wie „Titel zu lang" oder „Termin liegt in der
+    Vergangenheit" → Status „Bereit"), **Duplizieren** (auch mit
+    Plattformwechsel), **Publishing Pack (ZIP)** herunterladen und löschen.
+    Jeder Draft trägt ein **„🔒 lokal"**-Badge. **Kein automatischer Upload,
+    kein Plattform-Login** — Plan für die echte Anbindung:
     [`PUBLISHING_AGENT_PLAN.md`](PUBLISHING_AGENT_PLAN.md).
+19. **Globale Publishing-Übersicht (`/publishing`, Nav-Link „Publishing"):**
+    alle Drafts über alle Jobs zentral, mit Summary-Cards (Gesamt/Bereit/
+    Geplant/Ungültig/Plattform-Zähler) und Filtern (Plattform, Status, Suche,
+    „nur geplante"). Jede Draft-Karte zeigt Quelle (Job + Auto-Clip/Export),
+    kleine Vorschau, Validierungsstatus, und Buttons „Zum Planner", „Pack
+    (ZIP)", „Duplizieren". Die Job-Detailseite zeigt dazu eine kompakte
+    **Publishing-Badge-Zeile** („Publishing Drafts: X · Bereit: Y · Ungültig:
+    Z") mit Link „Publishing öffnen", sobald Drafts existieren. Weiterhin
+    **kein echtes Posten, keine OAuth-Anzeige als wäre sie aktiv**.
 
 > Echtes Video **ohne** angehängtes Transkript: Die Pipeline transkribiert dann
 > lokal mit faster-whisper. Beim ersten Lauf wird das Modell geladen (~140 MB),

@@ -50,6 +50,7 @@ npm run dev      # http://127.0.0.1:3000
 | Schritt 19 | **Clip-Analyzer v2 & Performance-Score v2** | ✅ fertig & verifiziert |
 | Schritt 20 | **Score-Kalibrierung & Analyzer-Härtung** | ✅ fertig & verifiziert |
 | Schritt 21 | **Publishing Planner (lokale Drafts + Pack-ZIP, kein Upload)** | ✅ fertig & verifiziert |
+| Schritt 22 | **Globale Publishing-Übersicht & Draft-Duplizieren** | ✅ fertig & verifiziert |
 | später | Face-Tracking-Reframe, echtes A/B-Tracking, Direkt-Posten | 🔭 später |
 
 ### Was schon echt funktioniert
@@ -177,6 +178,11 @@ npm run dev      # http://127.0.0.1:3000
   manuellen Upload). **Kein echter Upload, kein OAuth, keine Tokens** — der
   komplette Plan für die spätere Plattform-Anbindung steht in
   [`docs/PUBLISHING_AGENT_PLAN.md`](docs/PUBLISHING_AGENT_PLAN.md).
+- **Globale Publishing-Übersicht** (`GET /api/publishing`, Seite `/publishing`):
+  alle Drafts über alle Jobs zentral filterbar (Plattform/Status/Suche/nur
+  geplante), mit Summary-Cards und **Draft-Duplizieren** (auch für eine andere
+  Plattform, mit Texten aus dem Content-Paket neu abgeleitet). Job-Detailseite
+  zeigt dazu passende Publishing-Badges. Weiterhin **kein Upload, keine Tokens**.
 
 ### Klar als TODO gekennzeichnet (noch nicht echt)
 - Reframe ist **statischer** Smart-Crop (ein Fokuspunkt pro Clip) — **kein

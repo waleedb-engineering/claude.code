@@ -18,6 +18,7 @@ import {
   updatePublishingDraft,
   validatePublishingDraft,
 } from "@/lib/api";
+import DuplicateDraftButton from "@/components/DuplicateDraftButton";
 import type {
   ClipsJson,
   ManualExport,
@@ -50,7 +51,28 @@ const STATUS_COLORS: Record<string, string> = {
   canceled: "bg-neutral-700/40 text-neutral-500",
 };
 
-const CHECK_LABELS: [string, string][] = [
+const CHECKLIST_LABELS: [string, string][] = [
+  ["mp4_exists", "MP4 bereit"],
+  ["format_9_16", "9:16-Format"],
+  ["title_present", "Titel vorhanden"],
+  ["caption_present", "Caption vorhanden"],
+  ["hashtags_present", "Hashtags vorhanden"],
+  ["platform_selected", "Plattform gewählt"],
+  ["no_viral_guarantee", "Keine Viralitätsversprechen"],
+  ["safe_status", "Sicherer Status (kein Upload aktiv)"],
+];
+
+const QUALITY_HINT_LABELS: Record<string, string> = {
+  title_too_long: "Titel ist ungewöhnlich lang",
+  caption_too_long: "Caption ist ungewöhnlich lang",
+  too_many_hashtags: "Viele Hashtags — ggf. reduzieren",
+  missing_pinned_comment: "Kein Pinned Comment gesetzt",
+  scheduled_in_past: "Geplanter Termin liegt in der Vergangenheit",
+  weak_metadata: "Titel und Caption sind beide leer",
+};
+
+// Fallback für alte, gespeicherte Checks ohne `summary` (Rückwärtskompatibilität).
+const LEGACY_CHECK_LABELS: [string, string][] = [
   ["mp4_exists", "MP4 bereit"],
   ["format_9_16", "9:16-Format"],
   ["platform_valid", "Plattform gewählt"],
@@ -59,6 +81,29 @@ const CHECK_LABELS: [string, string][] = [
   ["hashtags_present", "Hashtags vorhanden"],
   ["no_virality_claim", "Keine Viralitätsversprechen"],
 ];
+
+function CheckRow({
+  label,
+  val,
+}: {
+  label: string;
+  val: boolean | null | undefined;
+}) {
+  const icon = val === true ? "✓" : val === false ? "✗" : "•";
+  const color =
+    val === true
+      ? "text-emerald-400"
+      : val === false
+        ? "text-red-400"
+        : "text-neutral-500";
+  return (
+    <li className={`flex items-center gap-1.5 ${color}`}>
+      <span>{icon}</span>
+      <span className="text-neutral-400">{label}</span>
+      {val === null && <span className="text-neutral-600">(nicht prüfbar)</span>}
+    </li>
+  );
+}
 
 function Checklist({ draft }: { draft: PublishingDraft }) {
   const v = draft.validation;
@@ -69,29 +114,63 @@ function Checklist({ draft }: { draft: PublishingDraft }) {
       </p>
     );
   }
-  const checks = v.checks as unknown as Record<string, boolean | null>;
+  const summary = v.summary;
+  if (!summary) {
+    // Rückwärtskompatibel: alte Drafts ohne summary zeigen die Rohchecks.
+    const checks = v.checks as unknown as Record<string, boolean | null>;
+    return (
+      <ul className="grid gap-x-4 gap-y-0.5 text-xs sm:grid-cols-2">
+        {LEGACY_CHECK_LABELS.map(([key, label]) => (
+          <CheckRow key={key} label={label} val={checks[key]} />
+        ))}
+      </ul>
+    );
+  }
+  const checklist = summary.checklist as unknown as Record<
+    string,
+    boolean | null
+  >;
   return (
-    <ul className="grid gap-x-4 gap-y-0.5 text-xs sm:grid-cols-2">
-      {CHECK_LABELS.map(([key, label]) => {
-        const val = checks[key];
-        const icon = val === true ? "✓" : val === false ? "✗" : "•";
-        const color =
-          val === true
-            ? "text-emerald-400"
-            : val === false
-              ? "text-red-400"
-              : "text-neutral-500";
-        return (
-          <li key={key} className={`flex items-center gap-1.5 ${color}`}>
-            <span>{icon}</span>
-            <span className="text-neutral-400">{label}</span>
-            {key === "format_9_16" && val === null && (
-              <span className="text-neutral-600">(nicht prüfbar)</span>
-            )}
-          </li>
-        );
-      })}
-    </ul>
+    <div className="space-y-2">
+      <div className="flex flex-wrap items-center gap-2 text-xs">
+        <span
+          className={
+            summary.is_valid ? "text-emerald-400" : "text-red-400"
+          }
+        >
+          {summary.is_valid
+            ? "✓ Gültig — bereit fürs Pack"
+            : `✗ ${summary.blocking_issues_count} blockierende(s) Problem(e)`}
+        </span>
+        {summary.warnings_count > 0 && (
+          <span className="text-amber-400">
+            ⚠ {summary.warnings_count} Hinweis(e)
+          </span>
+        )}
+      </div>
+      <ul className="grid gap-x-4 gap-y-0.5 text-xs sm:grid-cols-2">
+        {CHECKLIST_LABELS.map(([key, label]) => (
+          <CheckRow key={key} label={label} val={checklist[key]} />
+        ))}
+      </ul>
+      {summary.quality_hints.length > 0 && (
+        <ul className="space-y-0.5 text-xs">
+          {summary.quality_hints.map((h) => (
+            <li
+              key={h}
+              className={
+                h === "scheduled_in_past"
+                  ? "flex items-center gap-1.5 rounded-md bg-amber-500/10 px-2 py-1 text-amber-300"
+                  : "flex items-center gap-1.5 text-amber-400"
+              }
+            >
+              <span>⚠</span>
+              <span>{QUALITY_HINT_LABELS[h] ?? h}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
   );
 }
 
@@ -100,11 +179,13 @@ function DraftCard({
   draft,
   onChanged,
   onDeleted,
+  highlighted,
 }: {
   jobId: string;
   draft: PublishingDraft;
   onChanged: (d: PublishingDraft) => void;
   onDeleted: (id: string) => void;
+  highlighted?: boolean;
 }) {
   const [edit, setEdit] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -140,7 +221,14 @@ function DraftCard({
   }
 
   return (
-    <article className="space-y-3 rounded-2xl border border-neutral-800 bg-neutral-900/50 p-4">
+    <article
+      id={`draft-${draft.publishing_id}`}
+      className={`space-y-3 rounded-2xl border p-4 transition ${
+        highlighted
+          ? "border-indigo-500/70 bg-indigo-500/5 ring-1 ring-indigo-500/40"
+          : "border-neutral-800 bg-neutral-900/50"
+      }`}
+    >
       <div className="flex flex-wrap items-center gap-2">
         <span className="rounded-md bg-indigo-500/15 px-2 py-0.5 text-xs font-medium text-indigo-300">
           {PLATFORM_LABELS[draft.platform] ?? draft.platform}
@@ -149,6 +237,12 @@ function DraftCard({
           className={`rounded-md px-2 py-0.5 text-xs ${STATUS_COLORS[draft.status] ?? "bg-neutral-700/40 text-neutral-300"}`}
         >
           {STATUS_LABELS[draft.status] ?? draft.status}
+        </span>
+        <span
+          className="rounded-md border border-neutral-700 px-2 py-0.5 text-xs text-neutral-500"
+          title="Lokaler Draft — kein automatischer Plattform-Upload"
+        >
+          🔒 lokal
         </span>
         <span className="text-xs text-neutral-500">
           {draft.source_type === "auto_clip"
@@ -161,6 +255,11 @@ function DraftCard({
           </span>
         )}
       </div>
+      {draft.warning && (
+        <p className="rounded-md bg-amber-500/10 px-2 py-1 text-xs text-amber-300">
+          ⚠ {draft.warning}
+        </p>
+      )}
 
       {previewSrc && (
         <video
@@ -298,6 +397,12 @@ function DraftCard({
         >
           Publishing Pack (ZIP)
         </a>
+        <DuplicateDraftButton
+          jobId={jobId}
+          publishingId={draft.publishing_id}
+          currentPlatform={draft.platform}
+          onDuplicated={onChanged}
+        />
         <button
           type="button"
           disabled={busy}
@@ -337,6 +442,7 @@ export default function PublishingPage() {
     return "";
   });
   const [platform, setPlatform] = useState<PublishingPlatform>("youtube_shorts");
+  const highlightId = search.get("draft");
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -363,6 +469,13 @@ export default function PublishingPage() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => {
+    if (!highlightId || drafts.length === 0) return;
+    document
+      .getElementById(`draft-${highlightId}`)
+      ?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, [highlightId, drafts]);
 
   const sourceOptions = useMemo(() => {
     const opts: { value: string; label: string }[] = [];
@@ -487,11 +600,14 @@ export default function PublishingPage() {
               draft={d}
               onChanged={(nd) =>
                 setDrafts((prev) =>
-                  prev.map((x) =>
-                    x.publishing_id === nd.publishing_id ? nd : x,
-                  ),
+                  prev.some((x) => x.publishing_id === nd.publishing_id)
+                    ? prev.map((x) =>
+                        x.publishing_id === nd.publishing_id ? nd : x,
+                      )
+                    : [nd, ...prev],
                 )
               }
+              highlighted={highlightId === d.publishing_id}
               onDeleted={(id) =>
                 setDrafts((prev) => prev.filter((x) => x.publishing_id !== id))
               }

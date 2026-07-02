@@ -380,6 +380,34 @@ export type PublishingStatus =
   | "failed"
   | "canceled";
 
+export interface PublishingChecklist {
+  mp4_exists: boolean;
+  format_9_16: boolean | null;
+  title_present: boolean;
+  caption_present: boolean;
+  hashtags_present: boolean;
+  platform_selected: boolean;
+  no_viral_guarantee: boolean;
+  safe_status: boolean;
+}
+
+export type PublishingQualityHint =
+  | "title_too_long"
+  | "caption_too_long"
+  | "too_many_hashtags"
+  | "missing_pinned_comment"
+  | "scheduled_in_past"
+  | "weak_metadata";
+
+export interface PublishingValidationSummary {
+  is_valid: boolean;
+  blocking_issues_count: number;
+  blocking_issues: string[];
+  warnings_count: number;
+  checklist: PublishingChecklist;
+  quality_hints: PublishingQualityHint[];
+}
+
 export interface PublishingValidation {
   passed: boolean;
   checks: {
@@ -395,6 +423,7 @@ export interface PublishingValidation {
     required_text_present: boolean;
   };
   checked_at: string;
+  summary?: PublishingValidationSummary;
 }
 
 export interface PublishingDraft {
@@ -418,4 +447,41 @@ export interface PublishingDraft {
   published_at: string | null;
   external_post_id: string | null;
   error: string | null;
+  duplicated_from?: string | null;
+  warning?: string | null;
+}
+
+// Kompakte Zeile für die globale Übersicht (GET /api/publishing).
+export interface PublishingDraftRow {
+  publishing_id: string;
+  job_id: string;
+  job_filename: string;
+  source_type: "auto_clip" | "manual_export";
+  source_clip_index: number | null;
+  manual_export_id: string | null;
+  platform: PublishingPlatform;
+  title: string;
+  caption: string;
+  hashtags: string[];
+  status: PublishingStatus;
+  scheduled_at: string | null;
+  validation_summary: PublishingValidationSummary;
+  mp4_exists: boolean;
+  created_at: string;
+  updated_at: string;
+  source_preview_url: string | null;
+  pack_url: string;
+  job_url: string;
+  planner_url: string;
+}
+
+export interface PublishingOverview {
+  total_drafts: number;
+  by_status: Record<string, number>;
+  by_platform: Record<string, number>;
+  scheduled_count: number;
+  ready_count: number;
+  invalid_count: number;
+  drafts: PublishingDraftRow[];
+  warnings: string[];
 }
