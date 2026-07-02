@@ -8,3 +8,7 @@ pydantic>=2.0.0
 # Smart-Reframe: lokale Gesichtserkennung (OpenCV Haar-Cascade), headless ohne
 # GUI-/System-GL-Abhängigkeiten. Optional: fehlt es, fällt Reframe auf Center.
 opencv-python-headless>=4.8.0
+# YouTube-OAuth-Token-Ablage (Phase 2, Option B): OS-Keychain via keyring.
+# OPTIONAL & defensiv importiert — fehlt keyring oder ein nutzbares Backend,
+# meldet die Readiness sauber "blocked" (kein Plaintext-Fallback, kein Crash).
+keyring>=24.0.0

@@ -1462,6 +1462,38 @@ def youtube_publish(
     return {"status": "not_implemented", **result}
 
 
+# --- YouTube OAuth-Readiness (Phase 2) — KEIN echter Upload, KEIN Token in
+#     Responses/Logs. Nur sichere Status-Metadaten. -------------------------
+
+@app.get("/api/jobs/{job_id}/publishing/{publishing_id}/youtube/readiness")
+def youtube_readiness(job_id: str, publishing_id: str) -> dict:
+    """Sichere Readiness-Übersicht (Feature-Flag, Credentials-Metadaten,
+    Token-Store-Status). Gibt NIE Token/Secrets zurück, löst nichts aus."""
+    job = _require_job(job_id)
+    _require_youtube_draft(job, publishing_id)
+    adapter = YouTubeAdapter(get_settings())
+    return adapter.overall_readiness()
+
+
+@app.post("/api/jobs/{job_id}/publishing/{publishing_id}/youtube/auth/start")
+def youtube_auth_start(job_id: str, publishing_id: str) -> dict:
+    """Startet den OAuth-Flow — in dieser Phase bewusst NICHT ausgeführt.
+    Öffnet keinen Browser, kontaktiert Google nicht, speichert nichts."""
+    job = _require_job(job_id)
+    _require_youtube_draft(job, publishing_id)
+    adapter = YouTubeAdapter(get_settings())
+    return adapter.start_auth()
+
+
+@app.post("/api/jobs/{job_id}/publishing/{publishing_id}/youtube/auth/logout")
+def youtube_auth_logout(job_id: str, publishing_id: str) -> dict:
+    """Löscht ein evtl. gespeichertes YouTube-Token (idempotent, ohne Leak)."""
+    job = _require_job(job_id)
+    _require_youtube_draft(job, publishing_id)
+    adapter = YouTubeAdapter(get_settings())
+    return adapter.logout()
+
+
 @app.get("/api/jobs/{job_id}/files")
 def list_files(job_id: str) -> dict:
     """Listet alle Dateien im Job-Ordner."""

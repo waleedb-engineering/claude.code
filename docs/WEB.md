@@ -210,6 +210,15 @@ App öffnen: <http://127.0.0.1:3000>
     **keinen „Live veröffentlichen"-Button** und **kein OAuth-UI** in dieser
     Phase. Nicht-YouTube-Drafts zeigen dieses Panel nicht. Details:
     [`YOUTUBE_PUBLISHING.md`](YOUTUBE_PUBLISHING.md).
+21. **YouTube OAuth-Readiness (Phase 2, nur bei YouTube-Drafts):** Button
+    **„YouTube-Readiness prüfen"** zeigt Feature-Flag, OAuth-Flag, Credentials
+    (konfiguriert/vorhanden, nur **Dateiname**), Token-Store-Verfügbarkeit,
+    Token-Status (`blocked`/`not_authenticated`/`authenticated`/
+    `invalid_token`), benötigten Scope `youtube.upload`, Blocker und nächste
+    Schritte. Optionaler Button **„YouTube-Token löschen"** (nur wenn ein
+    Token-Store verfügbar ist). Es werden **nie** Token/Client-Secrets
+    angezeigt; es gibt **keinen** Live-Upload-Button und **kein** „bereit zu
+    veröffentlichen" — der Upload bleibt `not_implemented`.
 
 > Echtes Video **ohne** angehängtes Transkript: Die Pipeline transkribiert dann
 > lokal mit faster-whisper. Beim ersten Lauf wird das Modell geladen (~140 MB),

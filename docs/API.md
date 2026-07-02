@@ -625,17 +625,23 @@ false` (Default) setzt `scheduled_at` im Duplikat auf `null`.
 
 ---
 
-## YouTube Publishing — Phase 1: Dry-Run (KEIN echter Upload)
+## YouTube Publishing — Phase 1: Dry-Run + Phase 2: OAuth-Readiness (KEIN Upload)
 
-Erste echte Plattform, aber standardmäßig nur Dry-Run. **Kein OAuth, keine
-Token-Speicherung, kein externer Upload.** Konzept + API-Realität in
-[`YOUTUBE_PUBLISHING.md`](YOUTUBE_PUBLISHING.md). Beide Endpoints gelten nur für
+Erste echte Plattform, aber standardmäßig nur Dry-Run + Readiness. **Kein
+echter Upload, kein interaktiver OAuth-Flow, keine Token/Secrets in Responses
+oder Logs.** Konzept + API-Realität in
+[`YOUTUBE_PUBLISHING.md`](YOUTUBE_PUBLISHING.md). Alle Endpoints gelten nur für
 `platform = youtube_shorts` (sonst `400`) und sind path-traversal-sicher.
 
 | Endpoint | Zweck |
 |---|---|
-| `POST /api/jobs/{job_id}/publishing/{publishing_id}/youtube/dry-run` | Upload-Vorschau: `enabled`, `would_upload`, `video_file` (nur Dateiname), `title`, `description`, `hashtags`, `privacy_status`, `scheduled_at`, `checks`, `warnings`, `blocked_reasons`, `request_preview` (Metadaten für `videos.insert` — **ohne** Token/Secrets/Binär-Body). Löst **nie** einen Upload aus. |
-| `POST /api/jobs/{job_id}/publishing/{publishing_id}/youtube/publish` | Sicher blockiert. Body `{confirm, privacy_status}`. |
+| `POST …/youtube/dry-run` | Upload-Vorschau: `enabled`, `would_upload`, `video_file` (nur Dateiname), `title`, `description`, `hashtags`, `privacy_status`, `scheduled_at`, `checks`, `warnings`, `blocked_reasons`, `request_preview` (Metadaten für `videos.insert` — **ohne** Token/Secrets/Binär-Body). Löst **nie** einen Upload aus. |
+| `POST …/youtube/publish` | Sicher blockiert. Body `{confirm, privacy_status}`. |
+| `GET …/youtube/readiness` | Phase 2: `enabled`, `oauth_enabled`, `credentials_configured`, `credentials_file_exists`, `credentials_file_basename` (nur Dateiname), `token_store_available`, `token_present`, `token_status` (`blocked`/`not_authenticated`/`authenticated`/`invalid_token`), `required_scope`, `can_attempt_oauth`, `can_attempt_upload` (immer `false`), `blocked_reasons`, `warnings`, `next_steps`, `upload_status: "not_implemented"`. **Nie Token/Secrets.** |
+| `POST …/youtube/auth/start` | OAuth starten — `oauth_disabled` (Flag aus) bzw. `not_implemented_auth_flow`. Kein Browser, kein Token. |
+| `POST …/youtube/auth/logout` | Löscht Token über Keychain (idempotent, ohne Leak): `{deleted, reason?}`. |
+
+(Pfad-Präfix überall: `/api/jobs/{job_id}/publishing/{publishing_id}`.)
 
 Publish-Verhalten:
 
@@ -649,8 +655,12 @@ Publish-Verhalten:
   **Kein echter Upload, kein Fake-Erfolg**, Draft-Status bleibt `draft`/`ready`.
 
 Konfiguration: `CLIPFORGE_ENABLE_YOUTUBE_UPLOAD` (Default `false`),
-`CLIPFORGE_YOUTUBE_CLIENT_SECRETS` (Pfad, nur Existenzprüfung — Inhalt wird nie
-gelesen oder geloggt), `CLIPFORGE_YOUTUBE_CATEGORY_ID` (Default `22`).
+`CLIPFORGE_ENABLE_YOUTUBE_OAUTH` (Default `false`; gated `auth/start`, der
+Readiness-Check läuft immer), `CLIPFORGE_YOUTUBE_CLIENT_SECRETS` (Pfad, nur
+Existenzprüfung — Inhalt wird nie gelesen oder geloggt),
+`CLIPFORGE_YOUTUBE_TOKEN_SERVICE_NAME`/`CLIPFORGE_YOUTUBE_TOKEN_ACCOUNT`
+(Keyring-Koordinaten), `CLIPFORGE_YOUTUBE_CATEGORY_ID` (Default `22`).
+**Token leben nur im OS-Keychain (`keyring`), nie in ENV/Datei/Response.**
 
 ---
 

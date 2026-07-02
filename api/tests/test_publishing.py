@@ -14,6 +14,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import types
 import zipfile
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -877,6 +878,238 @@ def test_api_youtube_rejects_non_youtube_draft_and_traversal():
         # Path-Traversal bleibt geblockt
         r = client.post(
             "/api/jobs/pubjob0001/publishing/..%2F..%2Fx/youtube/dry-run")
+        assert r.status_code in (400, 404), r.status_code
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+        os.environ.pop("CLIPFORGE_JOBS_DIR", None)
+        sys.modules.pop("app", None)
+
+
+# ---------------------- YouTube OAuth Readiness (Phase 2) -----------------
+
+from clipforge.platforms.youtube_auth import YouTubeTokenStore
+
+# Marker, die auf ein geleaktes Secret HINWEISEN (Werte, keine Var-Namen).
+_VALUE_MARKERS = ("access_token", "refresh_token", "bearer ")
+
+
+def _assert_no_secret_values(obj, *forbidden: str):
+    blob = json.dumps(obj, ensure_ascii=False).lower()
+    for m in _VALUE_MARKERS:
+        assert m not in blob, f"möglicher Secret-Wert in Antwort: {m}"
+    for f in forbidden:
+        assert f.lower() not in blob, f"geleakter Wert in Antwort: {f}"
+
+
+def _install_fake_keyring(token: dict | None = None, corrupt: bool = False,
+                          service: str = "clipforge-youtube",
+                          account: str = "default"):
+    """Injiziert ein Fake-`keyring`-Modul (kein echtes OS-Keychain, kein Netz)."""
+    fake = types.ModuleType("keyring")
+    store: dict = {}
+    if corrupt:
+        store[(service, account)] = "not-json{"
+    elif token is not None:
+        store[(service, account)] = json.dumps(token)
+
+    class _Backend:  # nicht das 'fail'-Backend → gilt als verfügbar
+        pass
+
+    fake.get_keyring = lambda: _Backend()
+    fake.get_password = lambda s, a: store.get((s, a))
+    fake.set_password = lambda s, a, v: store.__setitem__((s, a), v)
+
+    def _del(s, a):
+        if (s, a) in store:
+            del store[(s, a)]
+        else:
+            raise RuntimeError("no password")
+
+    fake.delete_password = _del
+    sys.modules["keyring"] = fake
+    return store
+
+
+def test_token_store_unavailable_without_keyring():
+    sys.modules.pop("keyring", None)
+    ts = YouTubeTokenStore("svc", "acct")
+    assert ts.is_available() is False
+    assert ts.has_token() is False
+    assert ts.get_status() == "blocked"
+    assert ts.delete_token()["deleted"] is False
+
+
+def test_token_store_states_with_fake_keyring():
+    _install_fake_keyring(service="svc", account="acct")
+    try:
+        ts = YouTubeTokenStore("svc", "acct")
+        assert ts.is_available() is True
+        assert ts.get_status() == "not_authenticated"
+        ts.save_token({"refresh_token": "SENTINEL_TOKEN_VALUE"})
+        assert ts.get_status() == "authenticated"
+        assert ts.has_token() is True
+        assert ts.delete_token() == {"deleted": True}
+        # idempotent
+        assert ts.delete_token()["deleted"] is False
+    finally:
+        sys.modules.pop("keyring", None)
+
+
+def test_token_store_corrupt_is_invalid():
+    _install_fake_keyring(corrupt=True, service="svc", account="acct")
+    try:
+        ts = YouTubeTokenStore("svc", "acct")
+        assert ts.get_status() == "invalid_token"
+    finally:
+        sys.modules.pop("keyring", None)
+
+
+def test_readiness_default_blocked_and_safe():
+    sys.modules.pop("keyring", None)
+    adapter = YouTubeAdapter(_yt_settings(enabled=False))
+    r = adapter.overall_readiness()
+    assert r["enabled"] is False
+    assert r["credentials_configured"] is False
+    assert r["token_store_available"] is False
+    assert r["token_status"] == "blocked"
+    assert r["can_attempt_upload"] is False
+    assert r["upload_status"] == "not_implemented"
+    assert r["required_scope"].endswith("youtube.upload")
+    assert "credentials_not_configured" in r["blocked_reasons"]
+    assert "token_store_unavailable" in r["blocked_reasons"]
+    _assert_no_secret_values(r)
+
+
+def test_readiness_reports_basename_only_not_full_path():
+    d = tempfile.mkdtemp(prefix="yt_creds_")
+    secret_path = os.path.join(d, "my_client_secrets.json")
+    with open(secret_path, "w") as fh:
+        fh.write('{"installed": {"client_id": "SENTINEL_CONTENT_XYZ"}}')
+    try:
+        adapter = YouTubeAdapter(
+            Settings(enable_youtube_upload=True,
+                     youtube_client_secrets_file=secret_path))
+        r = adapter.overall_readiness()
+        assert r["credentials_configured"] is True
+        assert r["credentials_file_exists"] is True
+        assert r["credentials_file_basename"] == "my_client_secrets.json"
+        # weder voller Pfad noch Dateiinhalt dürfen auftauchen
+        blob = json.dumps(r)
+        assert d not in blob
+        _assert_no_secret_values(r, "SENTINEL_CONTENT_XYZ")
+    finally:
+        shutil.rmtree(d, ignore_errors=True)
+
+
+def test_readiness_token_missing_then_present_no_leak():
+    # kein Token
+    store = _install_fake_keyring()
+    try:
+        adapter = YouTubeAdapter(_yt_settings(enabled=True))
+        r = adapter.overall_readiness()
+        assert r["token_store_available"] is True
+        assert r["token_present"] is False
+        assert r["token_status"] == "not_authenticated"
+    finally:
+        sys.modules.pop("keyring", None)
+    # Token vorhanden (Wert darf nie leaken)
+    _install_fake_keyring(token={"refresh_token": "SENTINEL_TOKEN_VALUE"})
+    try:
+        adapter = YouTubeAdapter(_yt_settings(enabled=True))
+        r = adapter.overall_readiness()
+        assert r["token_present"] is True
+        assert r["token_status"] == "authenticated"
+        _assert_no_secret_values(r, "SENTINEL_TOKEN_VALUE")
+    finally:
+        sys.modules.pop("keyring", None)
+
+
+def test_adapter_logout_idempotent():
+    _install_fake_keyring(token={"refresh_token": "x"})
+    try:
+        adapter = YouTubeAdapter(_yt_settings(enabled=True))
+        assert adapter.logout() == {"deleted": True}
+        assert adapter.logout()["deleted"] is False
+    finally:
+        sys.modules.pop("keyring", None)
+
+
+def test_start_auth_never_runs_real_flow():
+    sys.modules.pop("keyring", None)
+    # OAuth aus → oauth_disabled
+    a_off = YouTubeAdapter(Settings(enable_youtube_oauth=False))
+    r = a_off.start_auth()
+    assert r["started"] is False
+    assert r["status"] == "oauth_disabled"
+    # OAuth an → not_implemented_auth_flow (kein Browser, kein Token)
+    a_on = YouTubeAdapter(Settings(enable_youtube_oauth=True))
+    r = a_on.start_auth()
+    assert r["started"] is False
+    assert r["status"] == "not_implemented_auth_flow"
+    _assert_no_secret_values(r)
+
+
+# ---------------------- YouTube Readiness API (TestClient) ----------------
+
+def test_api_youtube_readiness_logout_and_guards():
+    if not _FFMPEG:
+        print("  (übersprungen: ffmpeg fehlt)")
+        return
+    sys.modules.pop("keyring", None)
+    client, tmp = _make_client()
+    try:
+        r = client.post("/api/jobs/pubjob0001/publishing", json={
+            "platform": "youtube_shorts", "source_type": "auto_clip",
+            "source_clip_index": 1})
+        pid = r.json()["publishing_id"]
+
+        # Readiness: sicher, kein Secret, upload_status not_implemented
+        r = client.get(f"/api/jobs/pubjob0001/publishing/{pid}/youtube/readiness")
+        assert r.status_code == 200, r.text
+        body = r.json()
+        assert body["upload_status"] == "not_implemented"
+        assert body["can_attempt_upload"] is False
+        assert body["token_store_available"] is False  # kein keyring
+        _assert_no_secret_values(body)
+
+        # Logout: idempotent, kein Fehler, kein Secret
+        r = client.post(f"/api/jobs/pubjob0001/publishing/{pid}/youtube/auth/logout")
+        assert r.status_code == 200, r.text
+        _assert_no_secret_values(r.json())
+
+        # auth/start: OAuth aus (Default) → oauth_disabled, kein Upload
+        r = client.post(f"/api/jobs/pubjob0001/publishing/{pid}/youtube/auth/start")
+        assert r.status_code == 200, r.text
+        assert r.json()["status"] in ("oauth_disabled", "not_implemented_auth_flow")
+        assert r.json()["started"] is False
+
+        # Publish weiterhin sicher blockiert, Status unverändert
+        r = client.post(f"/api/jobs/pubjob0001/publishing/{pid}/youtube/publish",
+                        json={"confirm": "UPLOAD_PRIVATE", "privacy_status": "private"})
+        assert r.status_code == 403
+        r = client.get(f"/api/jobs/pubjob0001/publishing/{pid}")
+        assert r.json()["status"] in ("draft", "ready")
+        assert r.json()["external_post_id"] is None
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+        os.environ.pop("CLIPFORGE_JOBS_DIR", None)
+        sys.modules.pop("app", None)
+
+
+def test_api_youtube_readiness_rejects_non_youtube_and_traversal():
+    if not _FFMPEG:
+        print("  (übersprungen: ffmpeg fehlt)")
+        return
+    client, tmp = _make_client()
+    try:
+        r = client.post("/api/jobs/pubjob0001/publishing", json={
+            "platform": "tiktok", "source_type": "auto_clip",
+            "source_clip_index": 1})
+        pid = r.json()["publishing_id"]
+        r = client.get(f"/api/jobs/pubjob0001/publishing/{pid}/youtube/readiness")
+        assert r.status_code == 400, r.text
+        r = client.post(
+            "/api/jobs/pubjob0001/publishing/..%2F..%2Fx/youtube/auth/logout")
         assert r.status_code in (400, 404), r.status_code
     finally:
         shutil.rmtree(tmp, ignore_errors=True)

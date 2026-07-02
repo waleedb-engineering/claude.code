@@ -22,6 +22,7 @@ import os
 from ..config import Settings
 from ..publishing import build_validation_summary
 from .base import PlatformAdapter
+from .youtube_auth import REQUIRED_SCOPE, YouTubeTokenStore
 
 # Offiziell dokumentierte privacyStatus-Werte (YouTube Data API v3).
 YOUTUBE_PRIVACY_STATUSES = ("private", "unlisted", "public")
@@ -45,16 +46,27 @@ _UPLOAD_ENDPOINT = (
 class YouTubeAdapter(PlatformAdapter):
     platform = "youtube_shorts"
 
-    def __init__(self, settings: Settings):
+    def __init__(self, settings: Settings, token_store: YouTubeTokenStore | None = None):
         self.settings = settings
+        # Token-Store injizierbar (Tests mocken keyring); Default aus Settings.
+        self.token_store = token_store or YouTubeTokenStore(
+            settings.youtube_token_service_name, settings.youtube_token_account
+        )
 
     # ---- interne Helfer --------------------------------------------------
 
     def _feature_enabled(self) -> bool:
         return bool(self.settings.enable_youtube_upload)
 
+    def _oauth_enabled(self) -> bool:
+        return bool(self.settings.enable_youtube_oauth)
+
     def _credentials_configured(self) -> bool:
         return bool(self.settings.youtube_credentials_configured)
+
+    def _credentials_basename(self) -> str | None:
+        path = self.settings.youtube_client_secrets_file
+        return os.path.basename(path) if path else None
 
     def _build_request_metadata(self, draft: dict, privacy_status: str) -> dict:
         """Baut die snippet/status-Metadaten für `videos.insert`.
@@ -249,3 +261,130 @@ class YouTubeAdapter(PlatformAdapter):
             "and the draft status is unchanged."
         )
         return result
+
+    # ---- OAuth-Readiness (Phase 2) --------------------------------------
+    # Rein informativ & sicher: prüft, OB ein OAuth/Upload später möglich wäre.
+    # Es werden NIE Secrets/Tokens gelesen, ausgegeben oder geloggt.
+
+    def credentials_readiness(self) -> dict:
+        return {
+            "configured": self._credentials_configured(),
+            "file_exists": bool(self.settings.youtube_credentials_configured),
+            "basename": self._credentials_basename(),  # nur Dateiname, nie Pfad
+        }
+
+    def token_readiness(self) -> dict:
+        """Token-Store-Status (nur Status-Strings, keine Token-Werte)."""
+        return self.token_store.get_summary()
+
+    def overall_readiness(self) -> dict:
+        """Vollständige, sichere Readiness-Übersicht für die API/UI."""
+        enabled = self._feature_enabled()
+        oauth_enabled = self._oauth_enabled()
+        creds = self.credentials_readiness()
+        tok = self.token_readiness()
+
+        blocked_reasons: list[str] = []
+        warnings: list[str] = []
+        next_steps: list[str] = []
+
+        if not creds["configured"]:
+            blocked_reasons.append("credentials_not_configured")
+            next_steps.append(
+                "Set CLIPFORGE_YOUTUBE_CLIENT_SECRETS to your OAuth client "
+                "secrets file path."
+            )
+        elif not creds["file_exists"]:
+            blocked_reasons.append("credentials_file_missing")
+            next_steps.append(
+                "Client secrets file not found at the configured path."
+            )
+
+        if not tok["store_available"]:
+            blocked_reasons.append("token_store_unavailable")
+            next_steps.append(
+                "Install the 'keyring' package and configure an OS keychain "
+                "backend — there is no plaintext fallback."
+            )
+        else:
+            status = tok["token_status"]
+            if status == "not_authenticated":
+                next_steps.append(
+                    "Authorize via the YouTube OAuth flow "
+                    "(Phase 2: flow not yet implemented)."
+                )
+            elif status == "invalid_token":
+                warnings.append("stored_token_unreadable_or_corrupt")
+                next_steps.append(
+                    "Clear the stored YouTube token and re-authorize."
+                )
+
+        if not oauth_enabled:
+            warnings.append("oauth_actions_disabled")
+            next_steps.append(
+                "Set CLIPFORGE_ENABLE_YOUTUBE_OAUTH=true to enable OAuth actions."
+            )
+
+        # OAuth darf nur *versucht* werden, wenn alle Vorbedingungen stehen
+        # UND das OAuth-Flag an ist. Der Flow selbst ist noch nicht gebaut.
+        can_attempt_oauth = (
+            oauth_enabled
+            and creds["configured"]
+            and creds["file_exists"]
+            and tok["store_available"]
+        )
+
+        # Echter Upload bleibt in Phase 2 IMMER unmöglich.
+        next_steps.append("Real upload stays disabled until Phase 3.")
+
+        return {
+            "platform": self.platform,
+            "enabled": enabled,
+            "oauth_enabled": oauth_enabled,
+            "credentials_configured": creds["configured"],
+            "credentials_file_exists": creds["file_exists"],
+            "credentials_file_basename": creds["basename"],
+            "token_store_available": tok["store_available"],
+            "token_present": tok["token_present"],
+            "token_status": tok["token_status"],
+            "required_scope": REQUIRED_SCOPE,
+            "can_attempt_oauth": can_attempt_oauth,
+            "can_attempt_upload": False,  # Phase 2: niemals
+            "blocked_reasons": blocked_reasons,
+            "warnings": warnings,
+            "next_steps": next_steps,
+            "upload_status": "not_implemented",
+            "oauth_flow_status": "not_implemented_auth_flow",
+        }
+
+    def start_auth(self) -> dict:
+        """OAuth-Flow starten — in Phase 2 bewusst NICHT ausgeführt.
+
+        Öffnet KEINEN Browser, kontaktiert Google NICHT, speichert nichts.
+        Gibt nur sichere Anweisungen/Status zurück (keine Secrets)."""
+        readiness = self.overall_readiness()
+        if not self._oauth_enabled():
+            return {
+                "started": False,
+                "status": "oauth_disabled",
+                "message": (
+                    "YouTube OAuth is disabled. Set CLIPFORGE_ENABLE_YOUTUBE_OAUTH="
+                    "true to work on the OAuth flow."
+                ),
+                "readiness": readiness,
+            }
+        return {
+            "started": False,
+            "status": "not_implemented_auth_flow",
+            "message": (
+                "OAuth prerequisites are checked, but the interactive Google "
+                "OAuth flow is not implemented in this phase. No browser was "
+                "opened and no token was created."
+            ),
+            "required_scope": REQUIRED_SCOPE,
+            "readiness": readiness,
+        }
+
+    def logout(self) -> dict:
+        """Löscht ein evtl. gespeichertes Token (idempotent, ohne Leak)."""
+        return self.token_store.delete_token()

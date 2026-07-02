@@ -102,26 +102,69 @@ Umgesetzt im Adapter `api/clipforge/platforms/youtube.py`:
 11. **`external_post_id` nur bei echtem Erfolg** — heute nie gesetzt.
 12. **Fehler sauber, ohne Secrets** (`blocked_reasons`, `message`).
 
-### Token-Konzept (geplant, NICHT implementiert)
+### Token-Konzept — Entscheidung: Option B (umgesetzt in Phase 2)
 
 - **Option A — keine Speicherung:** Nutzer authentifiziert pro Session manuell.
   Sicherer, aber unbequem. Kein Token liegt je auf der Platte.
-- **Option B — lokale Speicherung:** OS-Keychain via `keyring` (falls
-  verfügbar); Fallback: keine Speicherung oder verschlüsselte Datei mit
-  Passphrase. **Nie Plaintext-Tokens.**
-- `keyring` ist **noch keine Dependency** und wird **nicht ungefragt
-  installiert**. Entscheidung + Sicherheitsreview stehen vor Phase 2 an.
+- **Option B — lokale Speicherung (gewählt):** OS-Keychain via `keyring`.
+  **Kein Plaintext-Fallback.** Ist `keyring` nicht installiert oder kein
+  nutzbares Backend vorhanden, meldet die Readiness `token_store_available:
+  false` / `token_status: "blocked"` — es wird **nichts** unverschlüsselt
+  abgelegt.
+- `keyring` steht als **optionale** Dependency in `api/requirements.txt`. Der
+  Import ist defensiv: fehlt das Paket, crasht nichts — die Readiness meldet
+  einfach „blocked". In dieser Umgebung ist `keyring` nicht installiert, daher
+  ist der Token-Store hier korrekt nicht verfügbar.
+
+## 7b. Phase 2 — OAuth-Readiness (umgesetzt)
+
+Phase 2 baut **keinen** echten Upload und **keinen** interaktiven OAuth-Flow.
+Sie prüft nur **sicher**, ob ein späterer OAuth/Upload möglich wäre, und
+verwaltet die Token-Ablage über das Keychain.
+
+- **`YouTubeTokenStore`** (`platforms/youtube_auth.py`): keyring-gestützt,
+  `is_available()`, `has_token()`, `get_status()`, `save_token()` (für Phase 3),
+  `delete_token()` (idempotent). Gibt **nie** Token-Werte zurück/loggt sie.
+  Status: `blocked` (kein Keychain) · `not_authenticated` (kein Token) ·
+  `authenticated` (Token da & lesbar) · `invalid_token` (defekt/korrupt).
+- **`YouTubeAdapter.overall_readiness()`**: fasst Feature-Flag, Credentials-
+  **Metadaten** (nur `configured`/`exists`/`basename`), Token-Store-Status,
+  `required_scope`, `blocked_reasons`, `warnings`, `next_steps` zusammen.
+  `can_attempt_upload` ist in Phase 2 **immer `false`**, `upload_status`
+  immer `"not_implemented"`.
+- **`start_auth()`**: startet **keinen** Browser und kontaktiert Google nicht.
+  Bei OAuth-Flag aus → `oauth_disabled`; an → `not_implemented_auth_flow`.
+- **`logout()`**: löscht ein evtl. gespeichertes Token über das Keychain
+  (idempotent, ohne Leak).
+
+**Was Readiness NICHT bedeutet:** kein „bereit zu veröffentlichen". Selbst bei
+`authenticated` + Credentials bleibt der Upload deaktiviert (`not_implemented`).
 
 ## 8. Feature Flags & Konfiguration
 
 | Variable | Zweck | Default |
 |---|---|---|
 | `CLIPFORGE_ENABLE_YOUTUBE_UPLOAD` | schaltet echte Uploads frei (`true`) | `false` |
+| `CLIPFORGE_ENABLE_YOUTUBE_OAUTH` | schaltet OAuth-**Aktionen** frei (`auth/start`); der reine Readiness-Check läuft immer | `false` |
 | `CLIPFORGE_YOUTUBE_CLIENT_SECRETS` | Pfad zur OAuth-Client-Secrets-Datei (nur Existenzprüfung, nie gelesen/geloggt) | leer |
+| `CLIPFORGE_YOUTUBE_TOKEN_SERVICE_NAME` | Keyring-Service-Name für die Token-Ablage | `clipforge-youtube` |
+| `CLIPFORGE_YOUTUBE_TOKEN_ACCOUNT` | Keyring-Account-Name | `default` |
 | `CLIPFORGE_YOUTUBE_CATEGORY_ID` | YouTube-Kategorie | `22` |
 
 `credentials_configured` ist genau dann `true`, wenn die Secrets-Datei gesetzt
-ist **und** existiert. Der Inhalt wird nicht gelesen.
+ist **und** existiert. Der Inhalt wird nicht gelesen. **Es gibt keine
+ENV-Variable für ein Token** — Tokens leben ausschließlich im Keychain.
+
+### Lokales Entwickler-Setup (Phase 2)
+
+1. `pip install keyring` und ein OS-Keychain-Backend bereitstellen.
+2. Google-Cloud-Projekt anlegen, „YouTube Data API v3" aktivieren, OAuth-
+   Client (Typ „Desktop/Installed App") erstellen, `client_secrets.json`
+   herunterladen.
+3. `export CLIPFORGE_YOUTUBE_CLIENT_SECRETS=/pfad/zu/client_secrets.json`.
+4. Readiness prüfen (UI-Button oder `GET …/youtube/readiness`).
+5. **Token löschen:** UI „YouTube-Token löschen" oder
+   `POST …/youtube/auth/logout` (idempotent).
 
 ## 9. Dry-Run Workflow
 
@@ -135,8 +178,8 @@ ist **und** existiert. Der Inhalt wird nicht gelesen.
 
 ## 10. Warum echte Uploads noch deaktiviert sind
 
-- Kein sicheres, reviewtes **Token-Speicher-Konzept** vorhanden (§7).
-- OAuth-Flow ist noch nicht gebaut.
+- Der interaktive **OAuth-Flow ist bewusst nicht gebaut** (Phase 2 = nur
+  Readiness + Token-Ablage/-Löschung).
 - Quota-/Verifizierungs-Themen und mehrere API-Details sind **TODO** (§2, §6).
 - Sicherheit vor Bequemlichkeit: ein versehentlicher (ggf. öffentlicher)
   Upload wäre schwer rückgängig zu machen.
@@ -145,22 +188,40 @@ Der Publish-Endpoint existiert, ist aber **sicher blockiert**: bei
 `CLIPFORGE_ENABLE_YOUTUBE_UPLOAD=false` → `403`; selbst mit Flag+Credentials
 + Bestätigung liefert er `not_implemented` und ändert den Draft-Status nicht.
 
+### Voraussetzungen für Phase 3 (echter privater Upload)
+
+1. Interaktiver **OAuth-Installed-App-Flow** (Scope `youtube.upload`), Token
+   **nur** ins Keychain (`YouTubeTokenStore.save_token`).
+2. Token-**Refresh**-Logik + Behandlung von `invalid_token`.
+3. Verifizierung der TODO-API-Details aus §2 (u. a. `publishAt`-Bedingung,
+   Description-Limit, `categoryId`).
+4. Resumable-Upload-Client (`google-api-python-client`/`google-auth`) —
+   neue Dependencies, vor Installation begründen.
+5. `videos.insert` real aufrufen, `external_post_id` **nur bei Erfolg** setzen,
+   Status `publishing → published`/`failed` transaktional, Idempotenz-Guard.
+6. Backoff/Retry für `403`/`429`.
+
 ## 11. Roadmap
 
 | Phase | Inhalt | Status |
 |---|---|---|
-| 1 | Dry-Run + sicher blockierter Publish-Endpoint | ✅ jetzt |
-| 2 | OAuth lokal (Scope `youtube.upload`) + Token-Konzept (Option A/B) | geplant |
-| 3 | Privater Upload (`privacyStatus=private`) hinter Flag + Bestätigung | geplant |
+| 1 | Dry-Run + sicher blockierter Publish-Endpoint | ✅ fertig |
+| 2 | OAuth-**Readiness** + keyring-Token-Ablage/-Löschung (Scope `youtube.upload`, Option B) — **kein echter Upload, kein interaktiver Flow** | ✅ fertig |
+| 3 | Interaktiver OAuth-Flow + privater Upload (`privacyStatus=private`) hinter Flag + Bestätigung | geplant |
 | 4 | Geplante Uploads via `publishAt` (nach TODO-Verifizierung) | geplant |
 | 5 | Public Upload mit extra Bestätigung (`UPLOAD_PUBLIC`) + Verifizierung | geplant |
 
-## 12. API-Endpoints (Phase 1)
+## 12. API-Endpoints (Phase 1 + 2)
 
 | Endpoint | Zweck |
 |---|---|
-| `POST /api/jobs/{job_id}/publishing/{publishing_id}/youtube/dry-run` | Upload-Vorschau, kein Upload, keine Secrets |
-| `POST /api/jobs/{job_id}/publishing/{publishing_id}/youtube/publish` | sicher blockiert: `403` (Flag aus), `400` (fehlende/falsche Bestätigung), `409` (keine Credentials / nicht validiert), sonst `200 not_implemented` |
+| `POST …/youtube/dry-run` | Upload-Vorschau, kein Upload, keine Secrets |
+| `POST …/youtube/publish` | sicher blockiert: `403` (Flag aus), `400` (fehlende/falsche Bestätigung), `409` (keine Credentials / nicht validiert / bereits hochgeladen), sonst `200 not_implemented` |
+| `GET …/youtube/readiness` | sichere Readiness (Flag, Credentials-Metadaten, Token-Store-Status, Scope) — **nie Token/Secrets**, `upload_status: not_implemented` |
+| `POST …/youtube/auth/start` | OAuth starten — `oauth_disabled` (Flag aus) bzw. `not_implemented_auth_flow`; kein Browser, kein Token |
+| `POST …/youtube/auth/logout` | löscht Token über Keychain (idempotent, ohne Leak) |
 
-Beide Endpoints gelten nur für `platform = youtube_shorts` (sonst `400`) und
-sind path-traversal-sicher (unbekannte ID → `404`).
+(Pfad-Präfix: `/api/jobs/{job_id}/publishing/{publishing_id}`.) Alle Endpoints
+gelten nur für `platform = youtube_shorts` (sonst `400`) und sind
+path-traversal-sicher (unbekannte ID → `404`). **Kein Endpoint gibt jemals
+`access_token`, `refresh_token`, `client_secret` oder Bearer-Werte zurück.**

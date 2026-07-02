@@ -66,6 +66,24 @@ class Settings:
     youtube_category_id: str = field(
         default_factory=lambda: os.environ.get("CLIPFORGE_YOUTUBE_CATEGORY_ID", "22")
     )
+    # OAuth-Readiness (Phase 2): separates Flag für Auth-Aktionen. Default AUS.
+    # Der READ-ONLY Readiness-Check läuft immer; nur auth/start ist gegated.
+    enable_youtube_oauth: bool = field(
+        default_factory=lambda: os.environ.get(
+            "CLIPFORGE_ENABLE_YOUTUBE_OAUTH", "false"
+        ).strip().lower() == "true"
+    )
+    # Keyring-Koordinaten für die Token-Ablage (nie das Token selbst im ENV!).
+    youtube_token_service_name: str = field(
+        default_factory=lambda: os.environ.get(
+            "CLIPFORGE_YOUTUBE_TOKEN_SERVICE_NAME", "clipforge-youtube"
+        )
+    )
+    youtube_token_account: str = field(
+        default_factory=lambda: os.environ.get(
+            "CLIPFORGE_YOUTUBE_TOKEN_ACCOUNT", "default"
+        )
+    )
 
     @property
     def llm_available(self) -> bool:

@@ -52,6 +52,7 @@ npm run dev      # http://127.0.0.1:3000
 | Schritt 21 | **Publishing Planner (lokale Drafts + Pack-ZIP, kein Upload)** | ✅ fertig & verifiziert |
 | Schritt 22 | **Globale Publishing-Übersicht & Draft-Duplizieren** | ✅ fertig & verifiziert |
 | Schritt 23 | **YouTube Publishing Adapter (Dry-Run, kein echter Upload)** | ✅ fertig & verifiziert |
+| Schritt 24 | **YouTube OAuth-Readiness & sichere Token-Ablage (keyring, kein Upload)** | ✅ fertig & verifiziert |
 | später | Face-Tracking-Reframe, echtes A/B-Tracking, Direkt-Posten | 🔭 später |
 
 ### Was schon echt funktioniert
@@ -190,8 +191,16 @@ npm run dev      # http://127.0.0.1:3000
   **löst nie einen Upload aus**. Der Publish-Endpoint ist sicher blockiert:
   ohne `CLIPFORGE_ENABLE_YOUTUBE_UPLOAD=true` → `403`, `public` nur mit
   Extra-Bestätigung, ohne Credentials → `409`; selbst bei grünem Licht
-  `not_implemented` (kein Fake-Erfolg, kein Statuswechsel). **Kein OAuth, keine
-  Token-Speicherung.** Sicherheitsmodell + API-Realität in
+  `not_implemented` (kein Fake-Erfolg, kein Statuswechsel).
+- **YouTube OAuth-Readiness — Phase 2** (`platforms/youtube_auth.py`): prüft
+  **sicher**, ob ein späterer OAuth/Upload möglich *wäre* (Feature-Flag,
+  Credentials-Metadaten — nur `basename`, nie Inhalt/Pfad — und Token-Store-
+  Status). Token-Ablage **ausschließlich über OS-Keychain (`keyring`), kein
+  Plaintext-Fallback**; fehlt keyring/Backend → `token_status: blocked`.
+  Endpoints: `…/youtube/readiness`, `…/auth/start` (kein Browser, kein Token →
+  `not_implemented_auth_flow`), `…/auth/logout` (idempotent). **Kein echter
+  Upload, kein interaktiver OAuth-Flow, keine Token/Secrets in Responses oder
+  Logs.** Sicherheitsmodell + API-Realität in
   [`docs/YOUTUBE_PUBLISHING.md`](docs/YOUTUBE_PUBLISHING.md).
 
 ### Klar als TODO gekennzeichnet (noch nicht echt)

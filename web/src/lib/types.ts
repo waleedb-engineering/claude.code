@@ -519,3 +519,36 @@ export interface YouTubeDryRun {
   };
   upload_implemented: boolean;
 }
+
+// --- YouTube OAuth Readiness (Phase 2 — kein echter Upload) ----------------
+
+export type YouTubeTokenStatus =
+  | "blocked"
+  | "not_authenticated"
+  | "authenticated"
+  | "invalid_token";
+
+export interface YouTubeReadiness {
+  platform: "youtube_shorts";
+  enabled: boolean;
+  oauth_enabled: boolean;
+  credentials_configured: boolean;
+  credentials_file_exists: boolean;
+  credentials_file_basename: string | null;
+  token_store_available: boolean;
+  token_present: boolean;
+  token_status: YouTubeTokenStatus;
+  required_scope: string;
+  can_attempt_oauth: boolean;
+  can_attempt_upload: boolean;
+  blocked_reasons: string[];
+  warnings: string[];
+  next_steps: string[];
+  upload_status: "not_implemented";
+  oauth_flow_status: string;
+}
+
+export interface YouTubeLogoutResult {
+  deleted: boolean;
+  reason?: string;
+}

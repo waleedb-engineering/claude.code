@@ -18,6 +18,8 @@ import type {
   RerenderRequest,
   StorageSummary,
   YouTubeDryRun,
+  YouTubeLogoutResult,
+  YouTubeReadiness,
 } from "./types";
 
 export const API_BASE =
@@ -481,6 +483,26 @@ export async function youtubeDryRun(
 ): Promise<YouTubeDryRun> {
   return sendJson<YouTubeDryRun>(
     `/api/jobs/${jobId}/publishing/${publishingId}/youtube/dry-run`,
+    "POST",
+  );
+}
+
+// YouTube OAuth-Readiness (Phase 2) — nur Status, nie Tokens/Secrets.
+export async function youtubeReadiness(
+  jobId: string,
+  publishingId: string,
+): Promise<YouTubeReadiness> {
+  return getJson<YouTubeReadiness>(
+    `/api/jobs/${jobId}/publishing/${publishingId}/youtube/readiness`,
+  );
+}
+
+export async function youtubeLogout(
+  jobId: string,
+  publishingId: string,
+): Promise<YouTubeLogoutResult> {
+  return sendJson<YouTubeLogoutResult>(
+    `/api/jobs/${jobId}/publishing/${publishingId}/youtube/auth/logout`,
     "POST",
   );
 }
