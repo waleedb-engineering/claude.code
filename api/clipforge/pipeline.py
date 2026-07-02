@@ -196,6 +196,8 @@ def run_pipeline(
         "analyzer_mode": analysis_meta.get("analyzer_mode"),
         "candidate_count": analysis_meta.get("candidate_count"),
         "deduplicated_count": analysis_meta.get("deduplicated_count"),
+        "filled_up": analysis_meta.get("filled_up"),
+        "llm_latency_ms": analysis_meta.get("llm_latency_ms"),
         "remove_silence": remove_silence,
         "audio_smoothing": any_smoothing,
         "total_removed_silence_seconds": total_removed,

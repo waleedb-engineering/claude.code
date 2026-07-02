@@ -254,6 +254,8 @@ export interface ClipsJson {
   analyzer_mode?: string | null;
   candidate_count?: number | null;
   deduplicated_count?: number | null;
+  filled_up?: number | null;
+  llm_latency_ms?: number | null;
   clips: ScoredClipDict[];
 }
 

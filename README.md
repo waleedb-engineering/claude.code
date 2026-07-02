@@ -48,6 +48,7 @@ npm run dev      # http://127.0.0.1:3000
 | Schritt 17 | **Job abbrechen (kooperativ) & Upload-Limits** | ✅ fertig & verifiziert |
 | Schritt 18 | **Caption-Styles (5) & Brand Kit** | ✅ fertig & verifiziert |
 | Schritt 19 | **Clip-Analyzer v2 & Performance-Score v2** | ✅ fertig & verifiziert |
+| Schritt 20 | **Score-Kalibrierung & Analyzer-Härtung** | ✅ fertig & verifiziert |
 | später | Face-Tracking-Reframe, echtes A/B-Tracking, Direkt-Posten | 🔭 später |
 
 ### Was schon echt funktioniert
@@ -148,21 +149,27 @@ npm run dev      # http://127.0.0.1:3000
   `brand_kit_name`) landen in `clips.json`, Manual-Export-Metadaten und ZIPs.
 - **Clip-Analyzer v2 & Performance-Score v2** (`analyzer.py`): bessere
   Kandidaten-Erkennung (saubere Satz-/Startgrenzen, hook-orientierte Starts,
-  ideale Länge 15–60 s, harte Grenzen 8–90 s), **Deduplizierung** ähnlicher/
-  überlappender Clips und **diverse** Top-N-Auswahl (nicht 5× dieselbe Stelle).
-  Der **Performance-Potential-Score (0–100)** hat 10 nachvollziehbare
-  Komponenten (hook_strength, context_independence, retention_potential,
-  clarity, emotional_intensity, information_density, share_comment_potential,
-  platform_fit, uniqueness, editability) plus pro Clip `score_reason`,
+  ideale Länge 15–60 s, harte Grenzen 8–90 s), **stärkere Deduplizierung**
+  ähnlicher/überlappender Clips (bevorzugt saubere Satzenden), **diverse**
+  Top-N-Auswahl (nicht 5× dieselbe Stelle) und Auffüll-Markierung (`filled_up` +
+  `duplicate_like`), wenn zu wenig Vielfalt da ist. Der **Performance-Potential-Score
+  (0–100)** ist in **Bänder kalibriert** (schwach 35–59 · solide 60–74 · gut
+  75–84 · sehr stark 85–94 · 95+ extrem selten; siehe
+  [`docs/ANALYZER_CALIBRATION.md`](docs/ANALYZER_CALIBRATION.md)) und hat 10
+  nachvollziehbare Komponenten plus pro Clip `score_reason`,
   `improvement_suggestions`, `risk_flags`, `best_platform`, `hook_type`,
-  `clip_type`, `language`. **Default regelbasiert** (DE+EN, kein API-Key nötig);
+  `clip_type`, `language`, `duplicate_group`. **Risk-Flags** haben stabile
+  englische Keys (`needs_context`, `slow_start`, `too_generic`, `weak_hook`,
+  `too_long`, `too_short`, `low_information_density`, `unclear_takeaway`,
+  `duplicate_like`, `language_mixed`, `transcript_quality_low`) und steuern die
+  Verbesserungsvorschläge. **Default regelbasiert** (DE+EN, kein API-Key nötig);
   mit `ANTHROPIC_API_KEY` optionaler LLM-Modus, der die **timestamp-basierten**
-  Kandidaten re-rankt (halluziniert keine neuen), JSON-validiert, bei jedem
-  Fehler (Timeout/Rate-Limit/ungültiges JSON) sauberer **Fallback**. `analyzer_mode`
-  ∈ `rule_based` / `llm` / `fallback`. Umschaltbar über den Upload-Toggle
-  „Erweiterte Clip-Analyse verwenden" (Default an); alte Clips ohne v2-Felder
-  bleiben voll anzeigbar. **Weiterhin keine Viralitätsgarantie** — der Score ist
-  eine Heuristik-Einschätzung.
+  Kandidaten per Index re-rankt (halluziniert keine neuen Zeitfenster), robust
+  JSON-parst (Fences/Clamp/Schema), mit Timeout, und bei jedem Fehler sauberer
+  **Fallback**. `analyzer_mode` ∈ `rule_based` / `llm` / `fallback`. Umschaltbar
+  über den Upload-Toggle „Erweiterte Clip-Analyse verwenden" (Default an); alte
+  Clips ohne v2-Felder bleiben voll anzeigbar. **Weiterhin keine
+  Viralitätsgarantie** — der Score ist eine Heuristik-Einschätzung.
 
 ### Klar als TODO gekennzeichnet (noch nicht echt)
 - Reframe ist **statischer** Smart-Crop (ein Fokuspunkt pro Clip) — **kein

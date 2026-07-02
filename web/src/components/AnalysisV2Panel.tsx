@@ -15,6 +15,28 @@ const MODE_LABELS: Record<string, string> = {
   llm: "KI (Claude)",
   fallback: "Fallback",
 };
+const CLIP_TYPE_LABELS: Record<string, string> = {
+  how_to: "How-To",
+  story: "Story",
+  problem_solution: "Problem→Lösung",
+  opinion: "Meinung",
+  insight_number: "Insight (Zahl)",
+  insight: "Insight",
+};
+// Stabile englische Risk-Keys → lesbare deutsche Labels (Analyzer v2).
+const RISK_LABELS: Record<string, string> = {
+  needs_context: "braucht Kontext",
+  slow_start: "langsamer Einstieg",
+  too_generic: "zu generisch",
+  weak_hook: "schwacher Hook",
+  too_long: "zu lang",
+  too_short: "zu kurz",
+  low_information_density: "geringe Infodichte",
+  unclear_takeaway: "unklarer Payoff",
+  duplicate_like: "ähnelt anderem Clip",
+  language_mixed: "Sprachmix",
+  transcript_quality_low: "viel Füllwort/Rauschen",
+};
 
 const COMPONENT_LABELS: { key: string; label: string }[] = [
   { key: "hook_strength", label: "Hook" },
@@ -50,7 +72,9 @@ export default function AnalysisV2Panel({ clip }: { clip: ScoredClipDict }) {
     <div className="space-y-2 rounded-lg border border-neutral-800 bg-neutral-900/40 p-3">
       <div className="flex flex-wrap items-center gap-1.5">
         {clip.hook_type && <Chip>{HOOK_LABELS[clip.hook_type] ?? clip.hook_type}</Chip>}
-        {clip.clip_type && <Chip>{clip.clip_type}</Chip>}
+        {clip.clip_type && (
+          <Chip>{CLIP_TYPE_LABELS[clip.clip_type] ?? clip.clip_type}</Chip>
+        )}
         {clip.best_platform && (
           <span className="rounded-md bg-indigo-500/15 px-1.5 py-0.5 text-[11px] text-indigo-300">
             📱 {clip.best_platform}
@@ -59,6 +83,15 @@ export default function AnalysisV2Panel({ clip }: { clip: ScoredClipDict }) {
         {clip.analyzer_mode && (
           <span className="rounded-md border border-neutral-700 px-1.5 py-0.5 text-[11px] text-neutral-400">
             {MODE_LABELS[clip.analyzer_mode] ?? clip.analyzer_mode}
+            <span className="ml-1 text-neutral-600">v2</span>
+          </span>
+        )}
+        {typeof clip.duplicate_group === "number" && (
+          <span
+            className="rounded-md border border-neutral-700 px-1.5 py-0.5 text-[11px] text-neutral-500"
+            title="Vertritt eine Gruppe sehr ähnlicher Fundstellen"
+          >
+            Gruppe #{clip.duplicate_group + 1}
           </span>
         )}
       </div>
@@ -69,8 +102,9 @@ export default function AnalysisV2Panel({ clip }: { clip: ScoredClipDict }) {
             <span
               key={f}
               className="rounded-md bg-amber-500/10 px-1.5 py-0.5 text-[11px] text-amber-300"
+              title={f}
             >
-              ⚠ {f}
+              ⚠ {RISK_LABELS[f] ?? f}
             </span>
           ))}
         </div>

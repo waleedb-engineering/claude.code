@@ -358,6 +358,23 @@ export default function JobDetailPage() {
                       </span>
                     </span>
                   )}
+                  {typeof clips.filled_up === "number" && clips.filled_up > 0 && (
+                    <span
+                      className="text-amber-300"
+                      title="Zu wenig eigenständige Fundstellen — mit ähnlichen Clips aufgefüllt"
+                    >
+                      aufgefüllt:{" "}
+                      <span className="text-amber-200">{clips.filled_up}</span>
+                    </span>
+                  )}
+                  {typeof clips.llm_latency_ms === "number" && (
+                    <span>
+                      LLM:{" "}
+                      <span className="text-neutral-200">
+                        {Math.round(clips.llm_latency_ms)} ms
+                      </span>
+                    </span>
+                  )}
                 </div>
               )}
               <div className="grid gap-4 sm:grid-cols-2">

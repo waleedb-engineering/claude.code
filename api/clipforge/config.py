@@ -38,6 +38,8 @@ class Settings:
     anthropic_api_key: str | None = os.environ.get("ANTHROPIC_API_KEY")
     llm_model: str = os.environ.get("CLIPFORGE_LLM_MODEL", "claude-sonnet-4-6")
     use_llm: bool = os.environ.get("CLIPFORGE_USE_LLM", "auto") != "off"
+    # Timeout (Sekunden) für den optionalen LLM-Aufruf; danach → Fallback.
+    llm_timeout_seconds: float = _get_float("CLIPFORGE_LLM_TIMEOUT", 30.0)
 
     # --- Rendering ---
     output_width: int = _get_int("CLIPFORGE_OUT_WIDTH", 1080)

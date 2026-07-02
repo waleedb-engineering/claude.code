@@ -392,25 +392,40 @@ Die automatische Clip-Auswahl läuft über einen modularen Analyzer
 - **RuleBasedClipAnalyzer** (Default, ohne API-Key): erkennt Kandidaten aus
   `transcript.json` mit sauberen Satz-/Startgrenzen, hook-orientierten Starts
   (Frage/These/Zahl/Überraschung, DE+EN), idealer Länge 15–60 s (harte Grenzen
-  8–90 s), **dedupliziert** ähnliche/überlappende Clips (Zeit-Overlap ODER
-  Text-Jaccard) und wählt **diverse** Top-N.
+  8–90 s), **dedupliziert** ähnliche/überlappende Clips (Zeit-Overlap ≥ 0.5 ODER
+  Text-Jaccard ≥ 0.55), bevorzugt saubere Satzenden und wählt **diverse** Top-N
+  (max. 0.35 Zeit-Overlap zwischen Auswahl). Bei zu wenig Vielfalt wird
+  aufgefüllt (`filled_up`) und der Clip als `duplicate_like` markiert.
 - **OptionalLLMClipAnalyzer** (nur mit `ANTHROPIC_API_KEY`): re-rankt die bereits
-  erzeugten **timestamp-basierten** Kandidaten (erfindet keine neuen), sendet nur
-  die Kandidaten-Fenster (nicht das ganze Video), JSON-validiert.
+  erzeugten **timestamp-basierten** Kandidaten per Index (erfindet keine neuen
+  Zeitfenster; unbekannte Indizes werden verworfen), sendet nur die
+  Kandidaten-Fenster (nicht das ganze Video), robustes JSON-Parsing
+  (Markdown-Fences weg, Text um das JSON ignoriert, Schema geprüft, Werte
+  geclampt), Timeout (`CLIPFORGE_LLM_TIMEOUT`, Default 30 s).
 - **FallbackChain**: LLM → bei jedem Fehler (Timeout, Rate-Limit, ungültiges
-  JSON) zurück auf regelbasiert.
+  JSON, nur erfundene Indizes) zurück auf regelbasiert.
 
 `analyzer_mode` ∈ `rule_based` | `llm` | `fallback`. Steuerbar per Upload-Feld
-`advanced_analysis` (Default `true`; `false` = Legacy-Analyzer v1).
+`advanced_analysis` (Default `true`; `false` = Legacy-Analyzer v1). **Ohne Key
+immer `rule_based`** — der Key ist nie Pflicht.
 
 **Performance-Score (0–100)** mit 10 gewichteten Komponenten: `hook_strength`,
 `context_independence`, `retention_potential`, `clarity`,
 `emotional_intensity`, `information_density`, `share_comment_potential`,
-`platform_fit`, `uniqueness`, `editability`. Kalibriert gegen Inflation
-(gute Clips 70–85, sehr starke 85–95, schwache < 60).
+`platform_fit`, `uniqueness`, `editability`. Kalibriert gegen Inflation in
+**Bänder**: schwach 35–59 · solide 60–74 · gut 75–84 · sehr stark 85–94 ·
+95+ extrem selten. Details + Referenzwerte in
+[`ANALYZER_CALIBRATION.md`](ANALYZER_CALIBRATION.md).
+
+**Risk-Flags** (stabile englische Keys): `needs_context`, `slow_start`,
+`too_generic`, `weak_hook`, `too_long`, `too_short`,
+`low_information_density`, `unclear_takeaway`, `duplicate_like`,
+`language_mixed`, `transcript_quality_low`. Sie steuern die
+`improvement_suggestions` und werden im Frontend als lesbare Labels gezeigt.
 
 `clips.json` (Top-Level): `analyzer_version`, `analyzer_mode`,
-`candidate_count`, `deduplicated_count`. Pro Clip zusätzlich:
+`candidate_count`, `deduplicated_count`, `filled_up`, `llm_latency_ms`
+(nur LLM-Lauf). Pro Clip zusätzlich:
 `performance_score`, `score_breakdown` (10 Komponenten), `score_reason`,
 `improvement_suggestions[]`, `risk_flags[]`, `best_platform`, `platform_reason`,
 `hook_type`, `clip_type`, `language`, `duplicate_group` (optional),
