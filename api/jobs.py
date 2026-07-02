@@ -88,6 +88,7 @@ class Job:
     caption_mode: str = "karaoke"
     caption_style: str = "high_energy"
     reframe_mode: str = "smart"
+    advanced_analysis: bool = True
     progress: list[str] = field(default_factory=list)  # dient auch als Log
     error: str | None = None
     result: dict | None = None
@@ -152,6 +153,7 @@ class JobRegistry:
         caption_mode: str = "karaoke",
         caption_style: str = "high_energy",
         reframe_mode: str = "smart",
+        advanced_analysis: bool = True,
     ) -> Job:
         job_id = uuid.uuid4().hex[:12]
         job_dir = os.path.join(self.base_dir, job_id)
@@ -166,6 +168,7 @@ class JobRegistry:
             caption_mode=caption_mode,
             caption_style=caption_style,
             reframe_mode=reframe_mode,
+            advanced_analysis=advanced_analysis,
             created_at=_now(),
             updated_at=_now(),
         )
@@ -565,6 +568,7 @@ class JobRegistry:
                 caption_style=job.caption_style,
                 reframe_mode=job.reframe_mode,
                 brand_overrides=brand_overrides,
+                advanced_analysis=job.advanced_analysis,
                 progress=progress,
                 should_cancel=should_cancel,
             )

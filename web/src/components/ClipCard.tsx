@@ -4,6 +4,7 @@ import { clipDownloadUrl, clipPreviewUrl } from "@/lib/api";
 import { clipTitle, fmtTime, fmtDuration } from "@/lib/format";
 import ScoreRing from "./ScoreRing";
 import ContentPackagePanel from "./ContentPackagePanel";
+import AnalysisV2Panel from "./AnalysisV2Panel";
 
 const BREAKDOWN_LABELS: { key: keyof BreakdownVals; label: string }[] = [
   { key: "hook", label: "Hook" },
@@ -177,6 +178,8 @@ export default function ClipCard({
           {clip.reason}
         </p>
       )}
+
+      <AnalysisV2Panel clip={clip} />
 
       <div>
         <p className="mb-1 text-[11px] uppercase tracking-wide text-neutral-500">

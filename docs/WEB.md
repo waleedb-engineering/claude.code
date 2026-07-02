@@ -157,7 +157,17 @@ App öffnen: <http://127.0.0.1:3000>
     bold_creator, high_energy, podcast, minimal) mit **Beschreibung** und einer
     kleinen **CSS-Vorschau** (nur Näherung — die FFmpeg-Ausgabe ist maßgeblich).
     Bei Batch gilt der gewählte Style für alle Jobs.
-15. **Brand Kit (`/settings/brand-kit`, Nav-Link „Brand Kit"):** Brand Name,
+16. **Clip-Analyzer v2 (Clip-Karten + Job-Seite):** Der Score bleibt prominent
+    (Ring). Jede Clip-Karte zeigt kompakt **Hook-Typ**, **Clip-Typ**, **beste
+    Plattform** und **Analyzer-Modus** (Regelbasiert/KI/Fallback), dazu
+    **Risk-Flags** (z. B. „braucht Kontext", „langsamer Einstieg", „zu
+    generisch") und ausklappbar den **10-Komponenten-Score** +
+    **Verbesserungsvorschläge**. Die Job-Detailseite zeigt oben eine Zeile
+    „Analyzer: v2 · Modus · Kandidaten · nach Dedup". Auf `/upload` gibt es den
+    Toggle **„Erweiterte Clip-Analyse verwenden"** (Default an; ohne API-Key
+    läuft es regelbasiert). Alte Clips ohne v2-Felder werden weiter angezeigt
+    (ohne v2-Panel), nichts crasht.
+17. **Brand Kit (`/settings/brand-kit`, Nav-Link „Brand Kit"):** Brand Name,
     Primary/Secondary Color (Color-Picker + Hex), Default-Caption-Style,
     Highlight-Keywords (Komma-Liste), Watermark-Text + An/Aus, **Speichern** mit
     Erfolgs-/Fehlermeldung. Ist ein Brand Kit gespeichert, zeigen Upload und

@@ -31,6 +31,10 @@ export interface ClipForgeConfig {
   max_batch_files: number;
   max_workers: number;
   supported_video_types: string[];
+  analyzer_version?: string;
+  llm_analysis_available?: boolean;
+  default_analyzer_mode?: string;
+  advanced_analysis_enabled?: boolean;
 }
 
 export interface CaptionStyleInfo {
@@ -225,12 +229,31 @@ export interface ScoredClipDict {
   caption_info?: CaptionInfo | null;
   reframe_info?: ReframeInfo | null;
   content_package?: ContentPackage | null;
+  // Analyzer v2 (optional — alte Clips haben diese Felder nicht)
+  analyzer_version?: string | null;
+  analyzer_mode?: string | null;
+  performance_score?: number | null;
+  score_breakdown?: Record<string, number> | null;
+  score_reason?: string | null;
+  improvement_suggestions?: string[];
+  risk_flags?: string[];
+  best_platform?: string | null;
+  platform_reason?: string | null;
+  hook_type?: string | null;
+  clip_type?: string | null;
+  language?: string | null;
+  duplicate_group?: number | null;
+  transcript_excerpt?: string | null;
 }
 
 export interface ClipsJson {
   source: string;
   scorer: string;
   disclaimer: string;
+  analyzer_version?: string | null;
+  analyzer_mode?: string | null;
+  candidate_count?: number | null;
+  deduplicated_count?: number | null;
   clips: ScoredClipDict[];
 }
 

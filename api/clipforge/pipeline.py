@@ -15,6 +15,7 @@ import os
 from dataclasses import dataclass, field
 from typing import Callable
 
+from .analyzer import analyze_clips
 from .config import Settings, get_settings
 from .content import generate_content_package
 from .models import ScoredClip, Transcript
@@ -71,6 +72,7 @@ def run_pipeline(
     caption_style: str = "high_energy",
     reframe_mode: str = "smart",
     brand_overrides: dict | None = None,
+    advanced_analysis: bool = True,
     progress: ProgressFn = _noop,
     should_cancel: CancelFn | None = None,
 ) -> PipelineResult:
@@ -99,17 +101,30 @@ def run_pipeline(
     # Checkpoint: nach Transkription
     _checkpoint(should_cancel, progress)
 
-    # 2) Kandidaten
-    candidates = build_candidates(transcript, settings)
-    progress(f"{len(candidates)} Kandidaten-Clips gebildet")
-
-    # 3) Scoring
-    scorer = "Claude" if settings.llm_available else "Heuristik"
-    progress(f"Bewerte Clips ({scorer}) …")
-    scored = score_clips(candidates, settings)
-
-    # Top-N auswählen
-    top = scored[: max(0, top_n)]
+    # 2+3) Kandidaten-Erkennung + Scoring
+    if advanced_analysis:
+        top, analysis_meta = analyze_clips(transcript, settings, max(0, top_n))
+        scorer = analysis_meta["analyzer_mode"]
+        progress(
+            f"Analyzer {analysis_meta['analyzer_version']} "
+            f"({analysis_meta['analyzer_mode']}): "
+            f"{analysis_meta['candidate_count']} Kandidaten → "
+            f"{analysis_meta['deduplicated_count']} nach Dedup → "
+            f"{len(top)} ausgewählt"
+        )
+    else:
+        candidates = build_candidates(transcript, settings)
+        progress(f"{len(candidates)} Kandidaten-Clips gebildet")
+        scorer = "Claude" if settings.llm_available else "Heuristik"
+        progress(f"Bewerte Clips ({scorer}) …")
+        scored = score_clips(candidates, settings)
+        top = scored[: max(0, top_n)]
+        analysis_meta = {
+            "analyzer_version": "v1",
+            "analyzer_mode": scorer,
+            "candidate_count": len(candidates),
+            "deduplicated_count": len(candidates),
+        }
 
     # Checkpoint: vor Content-Paketen
     _checkpoint(should_cancel, progress)
@@ -177,6 +192,10 @@ def run_pipeline(
     clips_json = {
         "source": os.path.abspath(video_path),
         "scorer": scorer,
+        "analyzer_version": analysis_meta.get("analyzer_version"),
+        "analyzer_mode": analysis_meta.get("analyzer_mode"),
+        "candidate_count": analysis_meta.get("candidate_count"),
+        "deduplicated_count": analysis_meta.get("deduplicated_count"),
         "remove_silence": remove_silence,
         "audio_smoothing": any_smoothing,
         "total_removed_silence_seconds": total_removed,

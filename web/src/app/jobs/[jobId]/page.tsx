@@ -322,6 +322,44 @@ export default function JobDetailPage() {
           {clips && clips.clips.length > 0 ? (
             <div className="space-y-4">
               <Disclaimer text={clips.disclaimer} />
+              {clips.analyzer_version && (
+                <div className="flex flex-wrap items-center gap-x-4 gap-y-1 rounded-xl border border-neutral-800 bg-neutral-900/40 px-4 py-2.5 text-xs text-neutral-400">
+                  <span>
+                    Analyzer:{" "}
+                    <span className="text-neutral-200">
+                      {clips.analyzer_version}
+                    </span>
+                  </span>
+                  <span>
+                    Modus:{" "}
+                    <span className="text-neutral-200">
+                      {clips.analyzer_mode === "llm"
+                        ? "KI (Claude)"
+                        : clips.analyzer_mode === "fallback"
+                          ? "Fallback"
+                          : clips.analyzer_mode === "rule_based"
+                            ? "Regelbasiert"
+                            : clips.analyzer_mode}
+                    </span>
+                  </span>
+                  {typeof clips.candidate_count === "number" && (
+                    <span>
+                      Kandidaten:{" "}
+                      <span className="text-neutral-200">
+                        {clips.candidate_count}
+                      </span>
+                    </span>
+                  )}
+                  {typeof clips.deduplicated_count === "number" && (
+                    <span>
+                      nach Dedup:{" "}
+                      <span className="text-neutral-200">
+                        {clips.deduplicated_count}
+                      </span>
+                    </span>
+                  )}
+                </div>
+              )}
               <div className="grid gap-4 sm:grid-cols-2">
                 {clips.clips.map((c, i) => (
                   <ClipCard

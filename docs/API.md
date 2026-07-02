@@ -307,6 +307,7 @@ Jeder Clip enthält ein `content_package`-Feld mit publizierfertigem Text:
 | `caption_mode` | string | nein | `karaoke` | `karaoke` (wortgenaue Hervorhebung) oder `standard` |
 | `caption_style` | string | nein | `high_energy` | `high_energy` oder `clean` |
 | `reframe_mode` | string | nein | `smart` | `smart`/`face` (auf Gesicht ausrichten) oder `center` |
+| `advanced_analysis` | bool | nein | `true` | Analyzer v2 (bessere Auswahl + Score); `false` = Legacy v1 |
 | `transcript` | Datei | nein | – | Vorhandenes Transkript-JSON; überspringt Whisper (spiegelt CLI-Flag `--transcript`, ideal für schnelle Tests) |
 
 Der gewählte `remove_silence`-Wert ist im Job-Status sichtbar (Feld
@@ -327,6 +328,7 @@ funktionieren identisch). Der Batch nutzt **kein** Transkript.
 | `caption_mode` | string | nein | `karaoke` | `karaoke` / `standard` |
 | `caption_style` | string | nein | `high_energy` | `high_energy` / `clean` |
 | `reframe_mode` | string | nein | `smart` | `smart` / `face` / `center` |
+| `advanced_analysis` | bool | nein | `true` | Analyzer v2 (bessere Auswahl + Score); `false` = Legacy v1 |
 
 **Robust:** eine ungültige/fehlerhafte Datei bricht den Batch **nicht** ab —
 jede Datei bekommt ein eigenes Ergebnis. `files` leer → `400`.
@@ -376,7 +378,48 @@ ein — die tatsächliche Nebenläufigkeit bestimmt der Pool.
 
 Liefert die Frontend-relevanten Limits/Optionen, damit die UI keine Werte
 doppelt pflegt: `{ max_upload_mb, max_batch_files, max_workers,
-supported_video_types }`.
+supported_video_types, analyzer_version, llm_analysis_available,
+default_analyzer_mode, advanced_analysis_enabled }`. **Keine Secrets** —
+`llm_analysis_available` sagt nur, *ob* ein API-Key vorhanden ist.
+
+---
+
+## Clip-Analyzer v2 & Performance-Score v2
+
+Die automatische Clip-Auswahl läuft über einen modularen Analyzer
+(`clipforge/analyzer.py`):
+
+- **RuleBasedClipAnalyzer** (Default, ohne API-Key): erkennt Kandidaten aus
+  `transcript.json` mit sauberen Satz-/Startgrenzen, hook-orientierten Starts
+  (Frage/These/Zahl/Überraschung, DE+EN), idealer Länge 15–60 s (harte Grenzen
+  8–90 s), **dedupliziert** ähnliche/überlappende Clips (Zeit-Overlap ODER
+  Text-Jaccard) und wählt **diverse** Top-N.
+- **OptionalLLMClipAnalyzer** (nur mit `ANTHROPIC_API_KEY`): re-rankt die bereits
+  erzeugten **timestamp-basierten** Kandidaten (erfindet keine neuen), sendet nur
+  die Kandidaten-Fenster (nicht das ganze Video), JSON-validiert.
+- **FallbackChain**: LLM → bei jedem Fehler (Timeout, Rate-Limit, ungültiges
+  JSON) zurück auf regelbasiert.
+
+`analyzer_mode` ∈ `rule_based` | `llm` | `fallback`. Steuerbar per Upload-Feld
+`advanced_analysis` (Default `true`; `false` = Legacy-Analyzer v1).
+
+**Performance-Score (0–100)** mit 10 gewichteten Komponenten: `hook_strength`,
+`context_independence`, `retention_potential`, `clarity`,
+`emotional_intensity`, `information_density`, `share_comment_potential`,
+`platform_fit`, `uniqueness`, `editability`. Kalibriert gegen Inflation
+(gute Clips 70–85, sehr starke 85–95, schwache < 60).
+
+`clips.json` (Top-Level): `analyzer_version`, `analyzer_mode`,
+`candidate_count`, `deduplicated_count`. Pro Clip zusätzlich:
+`performance_score`, `score_breakdown` (10 Komponenten), `score_reason`,
+`improvement_suggestions[]`, `risk_flags[]`, `best_platform`, `platform_reason`,
+`hook_type`, `clip_type`, `language`, `duplicate_group` (optional),
+`transcript_excerpt`. Die Legacy-Felder `score`/`breakdown` bleiben erhalten
+(Rückwärtskompatibilität) — alte Clips ohne v2-Felder werden weiter angezeigt.
+
+> **Grenzen / ehrlich:** keine Viralitätsgarantie — der Score ist eine
+> Heuristik-Einschätzung. Der LLM-Modus kann irren; die Qualität hängt stark vom
+> Transkript ab.
 
 ---
 

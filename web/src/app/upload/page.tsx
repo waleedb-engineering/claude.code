@@ -59,6 +59,7 @@ export default function UploadPage() {
   const [removeSilence, setRemoveSilence] = useState(true);
   const [captionStyle, setCaptionStyle] = useState("high_energy");
   const [reframeMode, setReframeMode] = useState("smart");
+  const [advancedAnalysis, setAdvancedAnalysis] = useState(true);
   const [dragging, setDragging] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -133,6 +134,7 @@ export default function UploadPage() {
             removeSilence,
             captionStyle,
             reframeMode,
+            advancedAnalysis,
           });
           setRows([{ ...rows[0], status: "angenommen", jobId: job_id }]);
         } catch (e) {
@@ -152,6 +154,7 @@ export default function UploadPage() {
           removeSilence,
           captionStyle,
           reframeMode,
+          advancedAnalysis,
         });
         setRows((prev) =>
           prev.map((r, i) => {
@@ -298,6 +301,39 @@ export default function UploadPage() {
           Marken-Farben/Watermark werden auf die Clips angewandt.
         </div>
       )}
+
+      {/* Erweiterte Clip-Analyse (Analyzer v2) */}
+      <button
+        type="button"
+        onClick={() => setAdvancedAnalysis((v) => !v)}
+        className="flex w-full items-start justify-between gap-4 rounded-2xl border border-neutral-800 bg-neutral-900/40 p-5 text-left transition hover:border-neutral-700"
+      >
+        <div>
+          <p className="font-medium text-neutral-100">
+            Erweiterte Clip-Analyse verwenden
+          </p>
+          <p className="mt-1 text-sm text-neutral-400">
+            Analyzer v2: bessere Kandidaten-Erkennung, Deduplizierung und ein
+            nachvollziehbarer Performance-Score.
+            {config?.llm_analysis_available
+              ? " KI-Modus aktiv (API-Key erkannt)."
+              : " Läuft regelbasiert (kein API-Key nötig)."}
+          </p>
+        </div>
+        <span
+          role="switch"
+          aria-checked={advancedAnalysis}
+          className={`mt-1 inline-flex h-6 w-11 shrink-0 items-center rounded-full transition ${
+            advancedAnalysis ? "bg-indigo-500" : "bg-neutral-700"
+          }`}
+        >
+          <span
+            className={`inline-block h-5 w-5 transform rounded-full bg-white transition ${
+              advancedAnalysis ? "translate-x-5" : "translate-x-0.5"
+            }`}
+          />
+        </span>
+      </button>
 
       {/* Caption-Style (mit Beschreibung + Vorschau) */}
       {styles.length > 0 && (

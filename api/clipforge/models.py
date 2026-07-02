@@ -138,6 +138,21 @@ class ScoredClip:
     caption_info: dict[str, Any] | None = None   # Caption-Metriken (nach Render)
     reframe_info: dict[str, Any] | None = None   # Reframe-Metriken (nach Render)
     content_package: dict[str, Any] | None = None  # Plattform-Texte (Content-Paket)
+    # --- Analyzer v2 (additiv; alte Clients ignorieren diese Felder) ---
+    analyzer_version: str | None = None          # z.B. "v2"
+    analyzer_mode: str | None = None             # "rule_based" | "llm" | "fallback"
+    performance_score: float | None = None       # 0–100 (== score bei v2)
+    score_breakdown: dict[str, Any] | None = None  # 10 Komponenten (v2)
+    score_reason: str | None = None
+    improvement_suggestions: list[str] = field(default_factory=list)
+    risk_flags: list[str] = field(default_factory=list)
+    best_platform: str | None = None
+    platform_reason: str | None = None
+    hook_type: str | None = None
+    clip_type: str | None = None
+    language: str | None = None
+    duplicate_group: int | None = None
+    transcript_excerpt: str | None = None
 
     @property
     def duration(self) -> float:

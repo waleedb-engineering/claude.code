@@ -202,6 +202,7 @@ export interface CreateJobInput {
   captionMode?: string;
   captionStyle?: string;
   reframeMode?: string;
+  advancedAnalysis?: boolean;
 }
 
 export async function createJob({
@@ -212,6 +213,7 @@ export async function createJob({
   captionMode = "karaoke",
   captionStyle = "high_energy",
   reframeMode = "smart",
+  advancedAnalysis = true,
 }: CreateJobInput): Promise<{ job_id: string; status: string }> {
   const form = new FormData();
   form.append("file", file);
@@ -220,6 +222,7 @@ export async function createJob({
   form.append("caption_mode", captionMode);
   form.append("caption_style", captionStyle);
   form.append("reframe_mode", reframeMode);
+  form.append("advanced_analysis", String(advancedAnalysis));
   if (transcript) form.append("transcript", transcript);
 
   let res: Response;
@@ -242,6 +245,7 @@ export interface BatchUploadInput {
   captionMode?: string;
   captionStyle?: string;
   reframeMode?: string;
+  advancedAnalysis?: boolean;
 }
 
 export async function batchUpload({
@@ -251,6 +255,7 @@ export async function batchUpload({
   captionMode = "karaoke",
   captionStyle = "high_energy",
   reframeMode = "smart",
+  advancedAnalysis = true,
 }: BatchUploadInput): Promise<BatchUploadResult> {
   const form = new FormData();
   for (const f of files) form.append("files", f);
@@ -259,6 +264,7 @@ export async function batchUpload({
   form.append("caption_mode", captionMode);
   form.append("caption_style", captionStyle);
   form.append("reframe_mode", reframeMode);
+  form.append("advanced_analysis", String(advancedAnalysis));
 
   let res: Response;
   try {

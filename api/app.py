@@ -36,6 +36,7 @@ from clipforge.brand_kit import (
     save_brand_kit,
 )
 from clipforge.captions import STYLES as CAPTION_STYLES
+from clipforge.config import get_settings
 from clipforge.ffmpeg_utils import FFmpegNotFound, ensure_ffmpeg
 from clipforge.rerender import (
     ManualExportError,
@@ -307,6 +308,7 @@ async def create_job(
     caption_mode: str = Form(default="karaoke"),
     caption_style: str = Form(default="high_energy"),
     reframe_mode: str = Form(default="smart"),
+    advanced_analysis: bool = Form(default=True),
 ) -> dict:
     """Lädt ein Video hoch, legt einen Job an und startet die Analyse im Hintergrund.
 
@@ -346,6 +348,7 @@ async def create_job(
         caption_mode=caption_mode,
         caption_style=caption_style,
         reframe_mode=reframe_mode,
+        advanced_analysis=advanced_analysis,
     )
 
     # Upload speichern: jobs/<id>/input.<ext>
@@ -379,6 +382,7 @@ async def create_jobs_batch(
     caption_mode: str = Form(default="karaoke"),
     caption_style: str = Form(default="high_energy"),
     reframe_mode: str = Form(default="smart"),
+    advanced_analysis: bool = Form(default=True),
 ) -> dict:
     """Legt für mehrere hochgeladene Videos je einen Job an.
 
@@ -436,7 +440,7 @@ async def create_jobs_batch(
             job = registry.create(
                 filename=filename, top_n=top_n, remove_silence=remove_silence,
                 caption_mode=caption_mode, caption_style=caption_style,
-                reframe_mode=reframe_mode,
+                reframe_mode=reframe_mode, advanced_analysis=advanced_analysis,
             )
             input_path = os.path.join(job.job_dir, f"input{ext}")
             with open(input_path, "wb") as out:
@@ -466,11 +470,18 @@ async def create_jobs_batch(
 @app.get("/api/config")
 def get_config() -> dict:
     """Frontend-relevante Limits/Optionen — damit die UI keine Werte doppelt pflegt."""
+    settings = get_settings()
+    llm = bool(settings.llm_available)
     return {
         "max_upload_mb": _max_upload_mb(),
         "max_batch_files": _max_batch_files(),
         "max_workers": _max_workers(),
         "supported_video_types": sorted(ALLOWED_EXT),
+        # Analyzer v2 (keine Secrets — nur ob LLM verfügbar ist)
+        "analyzer_version": "v2",
+        "llm_analysis_available": llm,
+        "default_analyzer_mode": "llm" if llm else "rule_based",
+        "advanced_analysis_enabled": True,
     }
 
 
