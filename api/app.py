@@ -38,6 +38,14 @@ from clipforge.brand_kit import (
 from clipforge.captions import STYLES as CAPTION_STYLES
 from clipforge.config import get_settings
 from clipforge.platforms import YouTubeAdapter
+from clipforge.platforms.youtube_auth import YouTubeTokenStore
+from clipforge.platforms.youtube_oauth import (
+    CALLBACK_BAD_REQUEST_REASONS,
+    OAuthExchangeUnavailable,
+    OAuthStateStore,
+    YouTubeOAuthConfig,
+    YouTubeOAuthService,
+)
 from clipforge.ffmpeg_utils import FFmpegNotFound, ensure_ffmpeg
 from clipforge.publishing import (
     PublishingError,
@@ -1492,6 +1500,71 @@ def youtube_auth_logout(job_id: str, publishing_id: str) -> dict:
     _require_youtube_draft(job, publishing_id)
     adapter = YouTubeAdapter(get_settings())
     return adapter.logout()
+
+
+# --------------------------------------------------------------------------
+# YouTube OAuth-Flow-Skelett (Phase 2b) — Consent-URL + State/CSRF + Callback.
+# WEITERHIN KEIN echter Upload, KEIN echter Google-Token-Exchange (Phase 3).
+# Der Flow ist app-global (eine YouTube-Verbindung), daher nicht draft-gebunden.
+# --------------------------------------------------------------------------
+
+# Prozessweiter State-Store (muss zwischen /oauth/start und /oauth/callback
+# überleben). Enthält nur kurzlebige States/PKCE-Verifier — nie Tokens.
+_OAUTH_STATE_STORE = OAuthStateStore()
+
+
+def _youtube_token_exchanger(config: YouTubeOAuthConfig, code: str, code_verifier: str) -> dict:
+    """Phase-3-Naht für den echten Google-Token-Exchange (offizielle Library,
+    Token-Endpoint https://oauth2.googleapis.com/token).
+
+    In dieser Phase bewusst NICHT implementiert → blockiert sauber, ohne
+    Netzwerk-Call und ohne Secret-Leak. Tests ersetzen diese Funktion."""
+    raise OAuthExchangeUnavailable("token_exchange_not_implemented")
+
+
+def build_youtube_oauth_service() -> YouTubeOAuthService:
+    """Baut den OAuth-Service mit dem prozessweiten State-Store. Der
+    Token-Exchanger wird als Modul-Attribut aufgelöst (in Tests ersetzbar)."""
+    s = get_settings()
+    return YouTubeOAuthService(
+        config=YouTubeOAuthConfig.from_settings(s),
+        token_store=YouTubeTokenStore(
+            s.youtube_token_service_name, s.youtube_token_account
+        ),
+        state_store=_OAUTH_STATE_STORE,
+        exchanger=_youtube_token_exchanger,
+    )
+
+
+@app.get("/api/youtube/oauth/status")
+def youtube_oauth_status() -> dict:
+    """Sicherer OAuth-Status (Flag, Credentials-Metadaten, Token-Store,
+    can_start_auth). Gibt NIE Token/Secrets zurück; can_attempt_upload=false."""
+    return build_youtube_oauth_service().readiness()
+
+
+@app.post("/api/youtube/oauth/start")
+def youtube_oauth_start() -> dict:
+    """Erzeugt eine Consent-URL + kurzlebigen State (kein Browser, kein
+    Netzwerk-Call). Blockiert sauber, wenn Voraussetzungen fehlen."""
+    return build_youtube_oauth_service().start_auth()
+
+
+@app.get("/api/youtube/oauth/callback")
+def youtube_oauth_callback(
+    code: str | None = None,
+    state: str | None = None,
+    error: str | None = None,
+) -> dict:
+    """Verarbeitet den OAuth-Callback. Speichert ein Token NUR über den
+    sicheren Token-Store und NUR bei gültigem State + gültiger Payload.
+    Antwort enthält niemals Token/Secrets."""
+    result = build_youtube_oauth_service().handle_callback(
+        code=code, state=state, error=error
+    )
+    if not result["success"] and result.get("reason") in CALLBACK_BAD_REQUEST_REASONS:
+        raise HTTPException(status_code=400, detail=result["message"])
+    return result
 
 
 @app.get("/api/jobs/{job_id}/files")

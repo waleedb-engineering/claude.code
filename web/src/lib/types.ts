@@ -539,7 +539,9 @@ export interface YouTubeReadiness {
   token_present: boolean;
   token_status: YouTubeTokenStatus;
   required_scope: string;
+  redirect_uri: string;
   can_attempt_oauth: boolean;
+  can_start_auth: boolean;
   can_attempt_upload: boolean;
   blocked_reasons: string[];
   warnings: string[];
@@ -551,4 +553,36 @@ export interface YouTubeReadiness {
 export interface YouTubeLogoutResult {
   deleted: boolean;
   reason?: string;
+}
+
+// --- YouTube OAuth-Flow-Skelett (Phase 2b — kein echter Upload) ------------
+
+// Globaler OAuth-Status (nicht draft-gebunden). Enthält NIE Token/Secrets.
+export interface YouTubeOAuthStatus {
+  oauth_enabled: boolean;
+  client_secrets_configured: boolean;
+  client_secrets_basename: string | null;
+  redirect_uri: string;
+  scopes: string[];
+  required_scope: string;
+  state_ttl_seconds: number;
+  token_store_available: boolean;
+  token_present: boolean;
+  token_status: YouTubeTokenStatus;
+  can_start_auth: boolean;
+  can_attempt_upload: boolean;
+  blocked_reasons: string[];
+  warnings: string[];
+  no_secrets: boolean;
+}
+
+export interface YouTubeOAuthStart {
+  enabled: boolean;
+  state_created: boolean;
+  auth_url: string | null;
+  expires_at: number | null;
+  blocked_reasons: string[];
+  warnings: string[];
+  message: string;
+  no_secrets: boolean;
 }

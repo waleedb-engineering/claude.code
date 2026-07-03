@@ -19,6 +19,8 @@ import type {
   StorageSummary,
   YouTubeDryRun,
   YouTubeLogoutResult,
+  YouTubeOAuthStart,
+  YouTubeOAuthStatus,
   YouTubeReadiness,
 } from "./types";
 
@@ -505,4 +507,14 @@ export async function youtubeLogout(
     `/api/jobs/${jobId}/publishing/${publishingId}/youtube/auth/logout`,
     "POST",
   );
+}
+
+// YouTube OAuth-Flow-Skelett (Phase 2b) — app-global, nicht draft-gebunden.
+// Gibt NIE Tokens/Secrets zurück; kein echter Upload, kein Browser-Auto-Open.
+export async function youtubeOAuthStatus(): Promise<YouTubeOAuthStatus> {
+  return getJson<YouTubeOAuthStatus>(`/api/youtube/oauth/status`);
+}
+
+export async function youtubeOAuthStart(): Promise<YouTubeOAuthStart> {
+  return sendJson<YouTubeOAuthStart>(`/api/youtube/oauth/start`, "POST");
 }

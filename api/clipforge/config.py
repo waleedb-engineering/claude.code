@@ -84,6 +84,21 @@ class Settings:
             "CLIPFORGE_YOUTUBE_TOKEN_ACCOUNT", "default"
         )
     )
+    # OAuth-Flow-Skelett (Phase 2b): Redirect-URI für den lokalen Installed-App-
+    # Loopback-Callback. Default lokal & sicher; enthält KEIN Secret. Muss mit den
+    # in der Google-Cloud-Console autorisierten Redirect-URIs übereinstimmen.
+    youtube_oauth_redirect_uri: str = field(
+        default_factory=lambda: os.environ.get(
+            "CLIPFORGE_YOUTUBE_REDIRECT_URI",
+            "http://127.0.0.1:8000/api/youtube/oauth/callback",
+        )
+    )
+    # Lebensdauer eines kurzlebigen OAuth-State (CSRF-Schutz), in Sekunden.
+    youtube_oauth_state_ttl_seconds: int = field(
+        default_factory=lambda: _get_int(
+            "CLIPFORGE_YOUTUBE_OAUTH_STATE_TTL_SECONDS", 600
+        )
+    )
 
     @property
     def llm_available(self) -> bool:

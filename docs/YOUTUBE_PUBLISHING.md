@@ -140,6 +140,67 @@ verwaltet die Token-Ablage über das Keychain.
 **Was Readiness NICHT bedeutet:** kein „bereit zu veröffentlichen". Selbst bei
 `authenticated` + Credentials bleibt der Upload deaktiviert (`not_implemented`).
 
+## 7c. Phase 2b — OAuth-Flow-Skelett (umgesetzt)
+
+Phase 2b macht den OAuth-Flow zu einer **sicheren, testbaren Struktur** — aber
+**weiterhin ohne echten Upload und ohne echten Google-Token-Exchange**.
+
+### Offizielle OAuth-Grundlagen (Google, abgerufen 2026-07-03)
+
+Geprüft gegen
+[`identity/protocols/oauth2/native-app`](https://developers.google.com/identity/protocols/oauth2/native-app):
+
+- **Flow für Desktop/Installed-Apps:** Authorization-Code-Flow
+  (`response_type=code`).
+- **Auth-Endpoint:** `https://accounts.google.com/o/oauth2/v2/auth`
+  (bzw. `auth_uri` aus der client_secrets-Datei).
+- **Token-Endpoint:** `https://oauth2.googleapis.com/token` (erst in Phase 3
+  relevant).
+- **Redirect-URI für Desktop:** **Loopback-IP** `http://127.0.0.1:port`
+  (OOB `urn:ietf:wg:oauth:2.0:oob` ist **deprecated**; Custom-URI-Schemes
+  werden für Impersonation-Risiko nicht empfohlen). ClipForge nutzt daher die
+  Loopback-Redirect-URI.
+- **CSRF:** über den `state`-Parameter (Pflicht) abzusichern.
+- **PKCE:** `code_challenge` / `code_challenge_method` sind **empfohlen** —
+  ClipForge setzt PKCE mit `S256`.
+- **Refresh-Token:** wird Installed-Apps laut Doku **immer** ausgegeben;
+  `access_type=offline` wird gesetzt, Speicherung „in a secure, long-lived
+  location" → hier ausschließlich das Keychain.
+
+Der **reale Token-Exchange** (Aufruf des Token-Endpoints mit der offiziellen
+Google-Library) ist **Phase 3** und in dieser Phase bewusst nicht gebaut.
+
+### Modul `platforms/youtube_oauth.py`
+
+- **`YouTubeOAuthConfig`** — `client_secrets_path`, `redirect_uri`, `scopes`
+  (nur `youtube.upload`), `enabled`, `state_ttl_seconds`. Nach außen nur
+  **Basename** der Secrets-Datei, nie Pfad/Inhalt.
+- **`OAuthStateStore`** — lokaler, kurzlebiger `state`-Speicher: TTL,
+  **consume-once**, Wiederverwendungs-/Ablauf-Schutz. Enthält **kein Token**;
+  hält serverseitig den PKCE-`code_verifier` (taucht **nie** in einer Antwort auf).
+- **`YouTubeOAuthService`** —
+  - `readiness()` — sicherer Status (siehe `/oauth/status`).
+  - `start_auth()` — baut eine **echte Consent-URL** (mit `client_id`, `state`,
+    PKCE, `access_type=offline`) und legt einen `state` an. Liest aus der
+    client_secrets-Datei **nur `client_id`/`auth_uri`** — **nie das
+    `client_secret`**. Öffnet **keinen** Browser, macht **keinen** Netzwerk-Call.
+  - `handle_callback(code, state, error)` — prüft `error` → Pflichtfelder →
+    `state` (consume-once) → `exchange_code_for_token` → `sanitize` →
+    `token_store.save_token`. Speichert bei jedem Fehler **nichts**.
+  - `exchange_code_for_token(code, verifier)` — **austauschbar/mockbar**. Ohne
+    injizierten Exchanger blockiert es sauber (`exchange_unavailable`, kein
+    Netzwerk-Call). Tests injizieren ein Fake-Token; Phase 3 setzt hier den
+    echten Google-Exchange ein.
+  - `save_token()` / `sanitize_token_payload()` — validiert die Payload
+    (Whitelist bekannter Felder, verwirft u. a. `client_secret`), speichert
+    **nur** über den Keychain-`YouTubeTokenStore` (kein Plaintext-Fallback).
+
+**Sicherheits-Invarianten (durch Tests abgesichert):** keine `access_token`/
+`refresh_token`/`client_secret`/`Bearer`-Werte in Responses/Logs/Exceptions;
+`state` ist Pflicht, einmalig, ablaufend; ungültiger/abgelaufener/
+wiederverwendeter `state` **speichert nichts**; ungültige Token-Payload
+speichert nichts; Path-Traversal im Secrets-Pfad leakt nicht (nur Basename).
+
 ## 8. Feature Flags & Konfiguration
 
 | Variable | Zweck | Default |
@@ -150,6 +211,8 @@ verwaltet die Token-Ablage über das Keychain.
 | `CLIPFORGE_YOUTUBE_TOKEN_SERVICE_NAME` | Keyring-Service-Name für die Token-Ablage | `clipforge-youtube` |
 | `CLIPFORGE_YOUTUBE_TOKEN_ACCOUNT` | Keyring-Account-Name | `default` |
 | `CLIPFORGE_YOUTUBE_CATEGORY_ID` | YouTube-Kategorie | `22` |
+| `CLIPFORGE_YOUTUBE_REDIRECT_URI` | Loopback-Redirect-URI des lokalen OAuth-Callbacks (kein Secret) | `http://127.0.0.1:8000/api/youtube/oauth/callback` |
+| `CLIPFORGE_YOUTUBE_OAUTH_STATE_TTL_SECONDS` | Lebensdauer eines kurzlebigen OAuth-`state` (CSRF), Sekunden | `600` |
 
 `credentials_configured` ist genau dann `true`, wenn die Secrets-Datei gesetzt
 ist **und** existiert. Der Inhalt wird nicht gelesen. **Es gibt keine
@@ -162,8 +225,15 @@ ENV-Variable für ein Token** — Tokens leben ausschließlich im Keychain.
    Client (Typ „Desktop/Installed App") erstellen, `client_secrets.json`
    herunterladen.
 3. `export CLIPFORGE_YOUTUBE_CLIENT_SECRETS=/pfad/zu/client_secrets.json`.
-4. Readiness prüfen (UI-Button oder `GET …/youtube/readiness`).
-5. **Token löschen:** UI „YouTube-Token löschen" oder
+4. Readiness prüfen (UI-Button oder `GET …/youtube/readiness` / `GET
+   /api/youtube/oauth/status`).
+5. **Verbindung vorbereiten:** UI „YouTube verbinden vorbereiten" oder
+   `POST /api/youtube/oauth/start` → liefert eine **Consent-URL**. Diese
+   **manuell** im Browser öffnen (es wird kein Browser automatisch geöffnet).
+   Google leitet auf `CLIPFORGE_YOUTUBE_REDIRECT_URI` zurück
+   (`GET /api/youtube/oauth/callback`). Der echte Token-Exchange ist Phase 3 →
+   der Callback meldet aktuell `exchange_unavailable`.
+6. **Token löschen:** UI „YouTube-Token löschen" oder
    `POST …/youtube/auth/logout` (idempotent).
 
 ## 9. Dry-Run Workflow
@@ -178,8 +248,10 @@ ENV-Variable für ein Token** — Tokens leben ausschließlich im Keychain.
 
 ## 10. Warum echte Uploads noch deaktiviert sind
 
-- Der interaktive **OAuth-Flow ist bewusst nicht gebaut** (Phase 2 = nur
-  Readiness + Token-Ablage/-Löschung).
+- Das **OAuth-Flow-Skelett** existiert (Phase 2b: Consent-URL, State/CSRF+PKCE,
+  Callback, sichere Token-Ablage), aber der **echte Google-Token-Exchange** ist
+  bewusst **nicht gebaut** (Phase 3). Ohne echten Exchange gibt es kein nutzbares
+  Token für einen Upload.
 - Quota-/Verifizierungs-Themen und mehrere API-Details sind **TODO** (§2, §6).
 - Sicherheit vor Bequemlichkeit: ein versehentlicher (ggf. öffentlicher)
   Upload wäre schwer rückgängig zu machen.
@@ -190,8 +262,9 @@ Der Publish-Endpoint existiert, ist aber **sicher blockiert**: bei
 
 ### Voraussetzungen für Phase 3 (echter privater Upload)
 
-1. Interaktiver **OAuth-Installed-App-Flow** (Scope `youtube.upload`), Token
-   **nur** ins Keychain (`YouTubeTokenStore.save_token`).
+1. **Echter Token-Exchange:** `exchange_code_for_token` mit der offiziellen
+   Google-Library gegen `https://oauth2.googleapis.com/token` (der Flow, State/
+   CSRF, PKCE und die sichere Keychain-Ablage stehen bereits aus Phase 2b).
 2. Token-**Refresh**-Logik + Behandlung von `invalid_token`.
 3. Verifizierung der TODO-API-Details aus §2 (u. a. `publishAt`-Bedingung,
    Description-Limit, `categoryId`).
@@ -207,7 +280,8 @@ Der Publish-Endpoint existiert, ist aber **sicher blockiert**: bei
 |---|---|---|
 | 1 | Dry-Run + sicher blockierter Publish-Endpoint | ✅ fertig |
 | 2 | OAuth-**Readiness** + keyring-Token-Ablage/-Löschung (Scope `youtube.upload`, Option B) — **kein echter Upload, kein interaktiver Flow** | ✅ fertig |
-| 3 | Interaktiver OAuth-Flow + privater Upload (`privacyStatus=private`) hinter Flag + Bestätigung | geplant |
+| 2b | OAuth-**Flow-Skelett**: Consent-URL (State/CSRF + PKCE), Callback, sichere Token-Speicherung über Keychain — **kein echter Google-Token-Exchange, kein Upload** | ✅ fertig |
+| 3 | **Echter** Google-Token-Exchange (offizielle Library) → danach privater Upload (`privacyStatus=private`) hinter Flag + Bestätigung | geplant |
 | 4 | Geplante Uploads via `publishAt` (nach TODO-Verifizierung) | geplant |
 | 5 | Public Upload mit extra Bestätigung (`UPLOAD_PUBLIC`) + Verifizierung | geplant |
 
@@ -218,10 +292,22 @@ Der Publish-Endpoint existiert, ist aber **sicher blockiert**: bei
 | `POST …/youtube/dry-run` | Upload-Vorschau, kein Upload, keine Secrets |
 | `POST …/youtube/publish` | sicher blockiert: `403` (Flag aus), `400` (fehlende/falsche Bestätigung), `409` (keine Credentials / nicht validiert / bereits hochgeladen), sonst `200 not_implemented` |
 | `GET …/youtube/readiness` | sichere Readiness (Flag, Credentials-Metadaten, Token-Store-Status, Scope) — **nie Token/Secrets**, `upload_status: not_implemented` |
-| `POST …/youtube/auth/start` | OAuth starten — `oauth_disabled` (Flag aus) bzw. `not_implemented_auth_flow`; kein Browser, kein Token |
+| `POST …/youtube/auth/start` | Draft-Legacy: `oauth_disabled` (Flag aus) bzw. `not_implemented_auth_flow`; kein Browser, kein Token |
 | `POST …/youtube/auth/logout` | löscht Token über Keychain (idempotent, ohne Leak) |
 
-(Pfad-Präfix: `/api/jobs/{job_id}/publishing/{publishing_id}`.) Alle Endpoints
+(Pfad-Präfix: `/api/jobs/{job_id}/publishing/{publishing_id}`.) Diese Endpoints
 gelten nur für `platform = youtube_shorts` (sonst `400`) und sind
-path-traversal-sicher (unbekannte ID → `404`). **Kein Endpoint gibt jemals
-`access_token`, `refresh_token`, `client_secret` oder Bearer-Werte zurück.**
+path-traversal-sicher (unbekannte ID → `404`). Die Draft-Readiness nutzt
+denselben OAuth-Status wie das Flow-Skelett (siehe unten).
+
+### OAuth-Flow-Skelett (Phase 2b, app-global — nicht draft-gebunden)
+
+| Endpoint | Zweck |
+|---|---|
+| `GET /api/youtube/oauth/status` | Sicherer OAuth-Status: `oauth_enabled`, `client_secrets_configured`, `client_secrets_basename`, `redirect_uri`, `scopes`, `token_store_available`, `token_present`, `token_status`, `can_start_auth`, `can_attempt_upload:false`, `blocked_reasons`, `warnings`, `no_secrets:true`. **Nie** Token/Secrets. |
+| `POST /api/youtube/oauth/start` | Erzeugt Consent-URL + kurzlebigen `state`: `enabled`, `auth_url` (optional), `state_created`, `expires_at`, `blocked_reasons`, `warnings`, `no_secrets:true`. Kein Browser, kein Netzwerk-Call. Bei fehlenden Voraussetzungen (`oauth_disabled` / `client_secrets_missing` / `token_store_unavailable` / `client_secrets_unreadable`) → **kein** `auth_url`, klare `blocked_reasons`. |
+| `GET /api/youtube/oauth/callback?code&state&error` | Verarbeitet den Callback: `success`, `token_stored`, `message`, `next_step`, `reason`, `no_secrets:true`. `error` → sichere 200-Antwort; fehlender/ungültiger/abgelaufener/wiederverwendeter `state` → **400**, nichts gespeichert; gültiger `state` → `exchange_code_for_token` → Token **nur** über Keychain. Ohne echten Exchanger (diese Phase) → `reason: exchange_unavailable`, kein Token. |
+
+**Kein Endpoint gibt jemals `access_token`, `refresh_token`, `client_secret`
+oder Bearer-Werte zurück.** Der `client_id` erscheint (per OAuth-Design) in der
+`auth_url`; das `client_secret` wird nicht einmal aus der Datei gelesen.

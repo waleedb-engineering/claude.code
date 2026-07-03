@@ -210,15 +210,23 @@ App öffnen: <http://127.0.0.1:3000>
     **keinen „Live veröffentlichen"-Button** und **kein OAuth-UI** in dieser
     Phase. Nicht-YouTube-Drafts zeigen dieses Panel nicht. Details:
     [`YOUTUBE_PUBLISHING.md`](YOUTUBE_PUBLISHING.md).
-21. **YouTube OAuth-Readiness (Phase 2, nur bei YouTube-Drafts):** Button
-    **„YouTube-Readiness prüfen"** zeigt Feature-Flag, OAuth-Flag, Credentials
-    (konfiguriert/vorhanden, nur **Dateiname**), Token-Store-Verfügbarkeit,
-    Token-Status (`blocked`/`not_authenticated`/`authenticated`/
-    `invalid_token`), benötigten Scope `youtube.upload`, Blocker und nächste
-    Schritte. Optionaler Button **„YouTube-Token löschen"** (nur wenn ein
-    Token-Store verfügbar ist). Es werden **nie** Token/Client-Secrets
-    angezeigt; es gibt **keinen** Live-Upload-Button und **kein** „bereit zu
-    veröffentlichen" — der Upload bleibt `not_implemented`.
+21. **YouTube OAuth-Readiness + Verbindung vorbereiten (Phase 2b, nur bei
+    YouTube-Drafts):** Button **„YouTube-Readiness prüfen"** zeigt Feature-Flag,
+    OAuth-Flag, Client Secrets (konfiguriert/vorhanden, nur **Dateiname**),
+    Token-Store-Verfügbarkeit, Token-Status (`blocked`/`not_authenticated`/
+    `authenticated`/`invalid_token`), benötigten Scope `youtube.upload`, Blocker
+    und nächste Schritte. Optionaler Button **„YouTube-Token löschen"** (nur wenn
+    ein Token-Store verfügbar ist).
+    Neu: Button **„YouTube verbinden vorbereiten"** — nur aktiv, wenn OAuth
+    aktiviert **und** Client Secrets konfiguriert **und** Token-Store verfügbar
+    sind (`can_start_auth`). Er ruft `POST /api/youtube/oauth/start` und zeigt
+    die erzeugte **Consent-URL kopierbar** an, mit dem klaren Hinweis: „Öffne
+    diese URL **manuell**, melde dich bei Google an und kehre über den Callback
+    zurück." **Es wird kein Browser automatisch geöffnet.** Sind Voraussetzungen
+    nicht erfüllt, werden die Blocker angezeigt und der Button bleibt deaktiviert.
+    Es werden **nie** Token/Client-Secrets angezeigt (auch nicht im DOM); es gibt
+    **keinen** Live-Upload-Button und **kein** „bereit zu veröffentlichen" — der
+    Upload bleibt `not_implemented`.
 
 > Echtes Video **ohne** angehängtes Transkript: Die Pipeline transkribiert dann
 > lokal mit faster-whisper. Beim ersten Lauf wird das Modell geladen (~140 MB),

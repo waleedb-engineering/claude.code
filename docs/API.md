@@ -625,11 +625,11 @@ false` (Default) setzt `scheduled_at` im Duplikat auf `null`.
 
 ---
 
-## YouTube Publishing — Phase 1: Dry-Run + Phase 2: OAuth-Readiness (KEIN Upload)
+## YouTube Publishing — Dry-Run + OAuth-Readiness + OAuth-Flow-Skelett (KEIN Upload)
 
-Erste echte Plattform, aber standardmäßig nur Dry-Run + Readiness. **Kein
-echter Upload, kein interaktiver OAuth-Flow, keine Token/Secrets in Responses
-oder Logs.** Konzept + API-Realität in
+Erste echte Plattform, aber standardmäßig nur Dry-Run + Readiness + OAuth-Flow-
+Skelett (Consent-URL/Callback). **Kein echter Upload, kein echter
+Google-Token-Exchange, keine Token/Secrets in Responses oder Logs.** Konzept + API-Realität in
 [`YOUTUBE_PUBLISHING.md`](YOUTUBE_PUBLISHING.md). Alle Endpoints gelten nur für
 `platform = youtube_shorts` (sonst `400`) und sind path-traversal-sicher.
 
@@ -638,10 +638,27 @@ oder Logs.** Konzept + API-Realität in
 | `POST …/youtube/dry-run` | Upload-Vorschau: `enabled`, `would_upload`, `video_file` (nur Dateiname), `title`, `description`, `hashtags`, `privacy_status`, `scheduled_at`, `checks`, `warnings`, `blocked_reasons`, `request_preview` (Metadaten für `videos.insert` — **ohne** Token/Secrets/Binär-Body). Löst **nie** einen Upload aus. |
 | `POST …/youtube/publish` | Sicher blockiert. Body `{confirm, privacy_status}`. |
 | `GET …/youtube/readiness` | Phase 2: `enabled`, `oauth_enabled`, `credentials_configured`, `credentials_file_exists`, `credentials_file_basename` (nur Dateiname), `token_store_available`, `token_present`, `token_status` (`blocked`/`not_authenticated`/`authenticated`/`invalid_token`), `required_scope`, `can_attempt_oauth`, `can_attempt_upload` (immer `false`), `blocked_reasons`, `warnings`, `next_steps`, `upload_status: "not_implemented"`. **Nie Token/Secrets.** |
-| `POST …/youtube/auth/start` | OAuth starten — `oauth_disabled` (Flag aus) bzw. `not_implemented_auth_flow`. Kein Browser, kein Token. |
+| `POST …/youtube/auth/start` | Draft-Legacy: `oauth_disabled` (Flag aus) bzw. `not_implemented_auth_flow`. Kein Browser, kein Token. |
 | `POST …/youtube/auth/logout` | Löscht Token über Keychain (idempotent, ohne Leak): `{deleted, reason?}`. |
 
 (Pfad-Präfix überall: `/api/jobs/{job_id}/publishing/{publishing_id}`.)
+`readiness` liefert zusätzlich `redirect_uri`, `can_start_auth` und
+`oauth_flow_status` (`ready_to_start`/`blocked`) aus dem Flow-Skelett.
+
+### OAuth-Flow-Skelett (Phase 2b, app-global — nicht draft-gebunden)
+
+**Kein echter Google-Token-Exchange, kein Upload.** Baut eine sichere
+Consent-URL (State/CSRF + PKCE) und speichert ein Token **nur** über den
+Keychain. Details in [`YOUTUBE_PUBLISHING.md`](YOUTUBE_PUBLISHING.md) §7c.
+
+| Endpoint | Zweck |
+|---|---|
+| `GET /api/youtube/oauth/status` | `oauth_enabled`, `client_secrets_configured`, `client_secrets_basename`, `redirect_uri`, `scopes`, `required_scope`, `state_ttl_seconds`, `token_store_available`, `token_present`, `token_status`, `can_start_auth`, `can_attempt_upload:false`, `blocked_reasons`, `warnings`, `no_secrets:true`. **Nie Token/Secrets.** |
+| `POST /api/youtube/oauth/start` | `enabled`, `auth_url`(optional), `state_created`, `expires_at`, `blocked_reasons`, `warnings`, `message`, `no_secrets:true`. Kein Browser/Netzwerk-Call. Fehlen Voraussetzungen → kein `auth_url`, klare `blocked_reasons`. |
+| `GET /api/youtube/oauth/callback?code&state&error` | `success`, `token_stored`, `message`, `next_step`, `reason`, `no_secrets:true`. `error` → sichere **200**; fehlender/ungültiger/abgelaufener/wiederverwendeter `state` → **400** (nichts gespeichert); gültiger `state` → Exchange → Token **nur** über Keychain. Diese Phase ohne echten Exchanger → `reason: exchange_unavailable`. |
+
+Der `client_id` steht (per OAuth-Design) in der `auth_url`; das `client_secret`
+wird **nicht** aus der Datei gelesen und erscheint nirgends.
 
 Publish-Verhalten:
 
@@ -659,7 +676,10 @@ Konfiguration: `CLIPFORGE_ENABLE_YOUTUBE_UPLOAD` (Default `false`),
 Readiness-Check läuft immer), `CLIPFORGE_YOUTUBE_CLIENT_SECRETS` (Pfad, nur
 Existenzprüfung — Inhalt wird nie gelesen oder geloggt),
 `CLIPFORGE_YOUTUBE_TOKEN_SERVICE_NAME`/`CLIPFORGE_YOUTUBE_TOKEN_ACCOUNT`
-(Keyring-Koordinaten), `CLIPFORGE_YOUTUBE_CATEGORY_ID` (Default `22`).
+(Keyring-Koordinaten), `CLIPFORGE_YOUTUBE_CATEGORY_ID` (Default `22`),
+`CLIPFORGE_YOUTUBE_REDIRECT_URI` (Default
+`http://127.0.0.1:8000/api/youtube/oauth/callback`),
+`CLIPFORGE_YOUTUBE_OAUTH_STATE_TTL_SECONDS` (Default `600`).
 **Token leben nur im OS-Keychain (`keyring`), nie in ENV/Datei/Response.**
 
 ---

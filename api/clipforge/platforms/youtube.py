@@ -278,7 +278,11 @@ class YouTubeAdapter(PlatformAdapter):
         return self.token_store.get_summary()
 
     def overall_readiness(self) -> dict:
-        """Vollständige, sichere Readiness-Übersicht für die API/UI."""
+        """Vollständige, sichere Readiness-Übersicht für die API/UI.
+
+        Die OAuth-Teilaussagen (can_start_auth, redirect_uri, oauth_flow_status)
+        stammen aus dem OAuth-Flow-Skelett (`youtube_oauth`) — eine einzige
+        Quelle der Wahrheit für Draft- UND globalen OAuth-Status."""
         enabled = self._feature_enabled()
         oauth_enabled = self._oauth_enabled()
         creds = self.credentials_readiness()
@@ -325,16 +329,15 @@ class YouTubeAdapter(PlatformAdapter):
                 "Set CLIPFORGE_ENABLE_YOUTUBE_OAUTH=true to enable OAuth actions."
             )
 
-        # OAuth darf nur *versucht* werden, wenn alle Vorbedingungen stehen
-        # UND das OAuth-Flag an ist. Der Flow selbst ist noch nicht gebaut.
-        can_attempt_oauth = (
-            oauth_enabled
-            and creds["configured"]
-            and creds["file_exists"]
-            and tok["store_available"]
-        )
+        # Single source of truth für den OAuth-Status: das Flow-Skelett.
+        oauth_status = self._oauth_status()
+        can_attempt_oauth = bool(oauth_status["can_start_auth"])
 
-        # Echter Upload bleibt in Phase 2 IMMER unmöglich.
+        # Der Flow selbst kann jetzt eine Consent-URL erzeugen (Phase 2b), führt
+        # aber weiterhin KEINEN echten Token-Exchange/Upload aus.
+        oauth_flow_status = "ready_to_start" if can_attempt_oauth else "blocked"
+
+        # Echter Upload bleibt in Phase 2/2b IMMER unmöglich.
         next_steps.append("Real upload stays disabled until Phase 3.")
 
         return {
@@ -348,14 +351,32 @@ class YouTubeAdapter(PlatformAdapter):
             "token_present": tok["token_present"],
             "token_status": tok["token_status"],
             "required_scope": REQUIRED_SCOPE,
+            "redirect_uri": oauth_status["redirect_uri"],  # kein Secret (Loopback)
             "can_attempt_oauth": can_attempt_oauth,
-            "can_attempt_upload": False,  # Phase 2: niemals
+            "can_start_auth": can_attempt_oauth,
+            "can_attempt_upload": False,  # Phase 2/2b: niemals
             "blocked_reasons": blocked_reasons,
             "warnings": warnings,
             "next_steps": next_steps,
             "upload_status": "not_implemented",
-            "oauth_flow_status": "not_implemented_auth_flow",
+            "oauth_flow_status": oauth_flow_status,
         }
+
+    def _oauth_status(self) -> dict:
+        """OAuth-Status aus dem Flow-Skelett (readiness) — nur Metadaten,
+        keine Tokens/Secrets. Ein Wegwerf-State-Store genügt hier."""
+        from .youtube_oauth import (
+            OAuthStateStore,
+            YouTubeOAuthConfig,
+            YouTubeOAuthService,
+        )
+
+        service = YouTubeOAuthService(
+            config=YouTubeOAuthConfig.from_settings(self.settings),
+            token_store=self.token_store,
+            state_store=OAuthStateStore(),
+        )
+        return service.readiness()
 
     def start_auth(self) -> dict:
         """OAuth-Flow starten — in Phase 2 bewusst NICHT ausgeführt.

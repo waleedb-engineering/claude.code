@@ -1,12 +1,22 @@
 "use client";
 
-// YouTube OAuth Readiness Panel (Phase 2) — prüft NUR, ob ein späterer
-// Upload/OAuth möglich WÄRE. Kein echter Upload, kein OAuth-Flow, kein Token
-// wird angezeigt. Nur sichtbar bei youtube_shorts-Drafts.
+// YouTube OAuth Readiness + Flow-Skelett (Phase 2b). Prüft, OB ein späterer
+// Upload/OAuth möglich WÄRE, und kann eine sichere Consent-URL vorbereiten.
+// KEIN echter Upload, KEIN echter Token-Exchange, KEIN automatisches Öffnen
+// eines Browsers, KEIN Token wird angezeigt. Nur bei youtube_shorts-Drafts.
 
 import { useState } from "react";
-import { youtubeLogout, youtubeReadiness } from "@/lib/api";
-import type { YouTubeReadiness } from "@/lib/types";
+import {
+  youtubeLogout,
+  youtubeOAuthStart,
+  youtubeOAuthStatus,
+  youtubeReadiness,
+} from "@/lib/api";
+import type {
+  YouTubeOAuthStart,
+  YouTubeOAuthStatus,
+  YouTubeReadiness,
+} from "@/lib/types";
 
 const TOKEN_STATUS_LABELS: Record<string, string> = {
   blocked: "Kein Keychain verfügbar",
@@ -32,6 +42,9 @@ export default function YouTubeReadinessPanel({
   publishingId: string;
 }) {
   const [data, setData] = useState<YouTubeReadiness | null>(null);
+  const [oauth, setOauth] = useState<YouTubeOAuthStatus | null>(null);
+  const [start, setStart] = useState<YouTubeOAuthStart | null>(null);
+  const [copied, setCopied] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
@@ -40,8 +53,33 @@ export default function YouTubeReadinessPanel({
     setBusy(true);
     setError(null);
     setNote(null);
+    setStart(null);
     try {
-      setData(await youtubeReadiness(jobId, publishingId));
+      // Draft-Readiness + globaler OAuth-Status (nutzt dieselbe Quelle).
+      const [rd, st] = await Promise.all([
+        youtubeReadiness(jobId, publishingId),
+        youtubeOAuthStatus(),
+      ]);
+      setData(rd);
+      setOauth(st);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function prepareConnect() {
+    setBusy(true);
+    setError(null);
+    setNote(null);
+    setCopied(false);
+    try {
+      const res = await youtubeOAuthStart();
+      setStart(res);
+      if (!res.auth_url && res.blocked_reasons.length > 0) {
+        setNote(`Nicht möglich: ${res.blocked_reasons.join(", ")}`);
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -67,11 +105,23 @@ export default function YouTubeReadinessPanel({
     }
   }
 
+  async function copyAuthUrl() {
+    if (!start?.auth_url) return;
+    try {
+      await navigator.clipboard.writeText(start.auth_url);
+      setCopied(true);
+    } catch {
+      setCopied(false);
+    }
+  }
+
+  const canStart = oauth?.can_start_auth === true;
+
   return (
     <div className="space-y-2 rounded-lg border border-neutral-800 bg-neutral-950/40 p-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <span className="text-xs font-medium text-neutral-300">
-          YouTube-OAuth-Readiness (Phase 2)
+          YouTube-OAuth-Readiness &amp; Verbindung vorbereiten (Phase 2b)
         </span>
         <div className="flex gap-2">
           <button
@@ -113,7 +163,7 @@ export default function YouTubeReadinessPanel({
           <ul className="grid gap-x-4 gap-y-0.5 sm:grid-cols-2">
             <BoolRow label="Upload-Feature aktiv" val={data.enabled} />
             <BoolRow label="OAuth-Aktionen aktiv" val={data.oauth_enabled} />
-            <BoolRow label="Credentials konfiguriert" val={data.credentials_configured} />
+            <BoolRow label="Client Secrets konfiguriert" val={data.credentials_configured} />
             <BoolRow label="Credentials-Datei vorhanden" val={data.credentials_file_exists} />
             <BoolRow label="Token-Store verfügbar" val={data.token_store_available} />
             <BoolRow label="Token vorhanden" val={data.token_present} />
@@ -171,6 +221,69 @@ export default function YouTubeReadinessPanel({
               </ul>
             </div>
           )}
+
+          {/* OAuth-Verbindung vorbereiten — nur wenn alle Voraussetzungen stehen. */}
+          <div className="space-y-2 rounded-md border border-neutral-800 bg-neutral-900/40 p-2">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <span className="text-[11px] font-medium text-neutral-300">
+                YouTube verbinden (Consent-URL vorbereiten)
+              </span>
+              <button
+                type="button"
+                onClick={() => void prepareConnect()}
+                disabled={busy || !canStart}
+                title={
+                  canStart
+                    ? "Erzeugt eine sichere Consent-URL (kein Browser wird geöffnet)."
+                    : "Voraussetzungen fehlen (OAuth aktiv + Client Secrets + Token-Store)."
+                }
+                className="rounded-lg border border-emerald-500/30 px-3 py-1.5 text-[11px] font-medium text-emerald-300 hover:bg-emerald-500/10 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                YouTube verbinden vorbereiten
+              </button>
+            </div>
+
+            {!canStart && (
+              <p className="text-[11px] text-neutral-500">
+                Button ist deaktiviert, bis OAuth aktiv, Client Secrets
+                konfiguriert und der Token-Store verfügbar sind.
+                {oauth && oauth.blocked_reasons.length > 0 && (
+                  <> Blocker: {oauth.blocked_reasons.join(", ")}.</>
+                )}
+              </p>
+            )}
+
+            {start?.auth_url && (
+              <div className="space-y-1">
+                <p className="text-[11px] text-neutral-400">
+                  Öffne diese URL <strong>manuell</strong> im Browser, melde
+                  dich bei Google an und kehre über den Callback zurück. Es
+                  wird <strong>kein</strong> Browser automatisch geöffnet.
+                </p>
+                <div className="flex items-center gap-2">
+                  <input
+                    readOnly
+                    value={start.auth_url}
+                    onFocus={(e) => e.currentTarget.select()}
+                    className="min-w-0 flex-1 rounded-md border border-neutral-700 bg-neutral-950 px-2 py-1 font-mono text-[11px] text-neutral-300"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => void copyAuthUrl()}
+                    className="shrink-0 rounded-md border border-neutral-700 px-2 py-1 text-[11px] text-neutral-200 hover:border-neutral-500"
+                  >
+                    {copied ? "Kopiert ✓" : "Kopieren"}
+                  </button>
+                </div>
+                {start.expires_at && (
+                  <p className="text-[10px] text-neutral-500">
+                    Der Link/State läuft ab (einmalig verwendbar,
+                    CSRF-geschützt).
+                  </p>
+                )}
+              </div>
+            )}
+          </div>
         </div>
       )}
     </div>
