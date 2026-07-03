@@ -25,9 +25,13 @@ from clipforge.config import Settings
 from clipforge.platforms import YouTubeAdapter
 from clipforge.platforms.youtube_auth import YouTubeTokenStore
 from clipforge.platforms.youtube_oauth import (
+    OAuthClientSecretsMissing,
+    OAuthDependencyMissing,
+    OAuthExchangeFailed,
     OAuthStateStore,
     YouTubeOAuthConfig,
     YouTubeOAuthService,
+    real_google_token_exchange,
     sanitize_token_payload,
 )
 
@@ -552,6 +556,274 @@ def test_api_oauth_callback_error_param_is_safe_200():
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
         os.environ.pop("CLIPFORGE_JOBS_DIR", None)
+        sys.modules.pop("app", None)
+
+
+# ---------------------- Prompt 26: echter Token-Exchange ------------------
+# Kein einziger echter Google-Call: entweder die Library-Absenz wird
+# deterministisch erzwungen, oder der Exchange wird komplett gemockt.
+
+import contextlib
+
+
+@contextlib.contextmanager
+def _block_google_library():
+    """Erzwingt deterministisch einen ImportError für google_auth_oauthlib —
+    unabhängig davon, ob die Library installiert ist (kein echter Call)."""
+    saved = {k: sys.modules.get(k) for k in (
+        "google_auth_oauthlib", "google_auth_oauthlib.flow")}
+    sys.modules["google_auth_oauthlib"] = None  # → import wirft ImportError
+    sys.modules["google_auth_oauthlib.flow"] = None
+    try:
+        yield
+    finally:
+        for k, v in saved.items():
+            if v is None:
+                sys.modules.pop(k, None)
+            else:
+                sys.modules[k] = v
+
+
+def _google_exchanger(**token):
+    """Baut einen Fake-Exchanger, der `token` zurückgibt (kein echter Call)."""
+    def _ex(config, code, code_verifier):
+        assert code and code_verifier  # PKCE-Verifier muss ankommen
+        return dict(token)
+    return _ex
+
+
+def test_real_exchange_dependency_missing_safe_error():
+    creds = _write_client_secrets()
+    try:
+        cfg = YouTubeOAuthConfig.from_settings(_oauth_settings(enabled=True, creds=creds))
+        with _block_google_library():
+            try:
+                real_google_token_exchange(cfg, "code", "verifier")
+                assert False, "sollte OAuthDependencyMissing werfen"
+            except OAuthDependencyMissing as e:
+                assert e.reason == "exchange_dependency_missing"
+    finally:
+        os.unlink(creds)
+
+
+def test_real_exchange_client_secrets_missing_safe_error():
+    cfg = YouTubeOAuthConfig.from_settings(_oauth_settings(enabled=True, creds=None))
+    try:
+        real_google_token_exchange(cfg, "code", "verifier")
+        assert False, "sollte OAuthClientSecretsMissing werfen"
+    except OAuthClientSecretsMissing as e:
+        assert e.reason == "client_secrets_missing"
+
+
+def test_callback_dependency_missing_stores_nothing():
+    store = _install_fake_keyring()
+    creds = _write_client_secrets()
+    try:
+        ss = OAuthStateStore()
+        # Prod-Exchanger (echte Library) — aber Library ist geblockt.
+        svc = _service(_oauth_settings(enabled=True, creds=creds),
+                       state_store=ss, exchanger=real_google_token_exchange)
+        state, _, _ = ss.create(600)
+        with _block_google_library():
+            res = svc.handle_callback(code="C", state=state)
+        assert res["reason"] == "exchange_dependency_missing"
+        assert res["token_stored"] is False and store == {}
+        _assert_no_secret_values(res)
+    finally:
+        sys.modules.pop("keyring", None)
+        os.unlink(creds)
+
+
+def test_exchange_success_stores_token_and_drops_client_secret_and_id_token():
+    store = _install_fake_keyring()
+    creds = _write_client_secrets()
+    try:
+        ss = OAuthStateStore()
+        ex = _google_exchanger(
+            access_token=_SENTINEL_ACCESS, refresh_token=_SENTINEL_REFRESH,
+            token_uri="https://oauth2.googleapis.com/token", client_id="cid",
+            client_secret=_SENTINEL_SECRET,  # muss verworfen werden
+            id_token="ID_TOKEN_SENTINEL",    # muss verworfen werden
+            scopes=["https://www.googleapis.com/auth/youtube.upload"],
+        )
+        svc = _service(_oauth_settings(enabled=True, creds=creds),
+                       state_store=ss, exchanger=ex)
+        state, _, _ = ss.create(600)
+        res = svc.handle_callback(code="C", state=state)
+        assert res["success"] is True and res["token_stored"] is True
+        assert res["token_status"] == "authenticated"
+        raw = next(iter(store.values()))
+        keys = set(json.loads(raw).keys())
+        assert "client_secret" not in keys and "id_token" not in keys
+        assert {"access_token", "refresh_token", "token_uri", "scopes"} <= keys
+        _assert_no_secret_values(res, _SENTINEL_ACCESS, _SENTINEL_REFRESH,
+                                 _SENTINEL_SECRET, "ID_TOKEN_SENTINEL")
+    finally:
+        sys.modules.pop("keyring", None)
+        os.unlink(creds)
+
+
+def test_exchange_without_refresh_token_warns_but_stores():
+    store = _install_fake_keyring()
+    creds = _write_client_secrets()
+    try:
+        ss = OAuthStateStore()
+        ex = _google_exchanger(
+            access_token=_SENTINEL_ACCESS,
+            scope="https://www.googleapis.com/auth/youtube.upload")
+        svc = _service(_oauth_settings(enabled=True, creds=creds),
+                       state_store=ss, exchanger=ex)
+        state, _, _ = ss.create(600)
+        res = svc.handle_callback(code="C", state=state)
+        assert res["success"] is True and res["token_stored"] is True
+        assert "no_refresh_token" in res["warnings"]
+        assert store  # gespeichert
+    finally:
+        sys.modules.pop("keyring", None)
+        os.unlink(creds)
+
+
+def test_exchange_wrong_scope_blocks_and_stores_nothing():
+    store = _install_fake_keyring()
+    creds = _write_client_secrets()
+    try:
+        ss = OAuthStateStore()
+        ex = _google_exchanger(
+            access_token=_SENTINEL_ACCESS,
+            scopes=["https://www.googleapis.com/auth/drive"])  # kein Upload-Scope
+        svc = _service(_oauth_settings(enabled=True, creds=creds),
+                       state_store=ss, exchanger=ex)
+        state, _, _ = ss.create(600)
+        res = svc.handle_callback(code="C", state=state)
+        assert res["reason"] == "invalid_scope"
+        assert res["token_stored"] is False and store == {}
+    finally:
+        sys.modules.pop("keyring", None)
+        os.unlink(creds)
+
+
+def test_exchange_missing_access_token_blocks():
+    store = _install_fake_keyring()
+    creds = _write_client_secrets()
+    try:
+        ss = OAuthStateStore()
+        ex = _google_exchanger(  # nur refresh_token, kein access_token
+            refresh_token=_SENTINEL_REFRESH,
+            scope="https://www.googleapis.com/auth/youtube.upload")
+        svc = _service(_oauth_settings(enabled=True, creds=creds),
+                       state_store=ss, exchanger=ex)
+        state, _, _ = ss.create(600)
+        res = svc.handle_callback(code="C", state=state)
+        assert res["reason"] == "invalid_token_payload"
+        assert store == {}
+    finally:
+        sys.modules.pop("keyring", None)
+        os.unlink(creds)
+
+
+def test_exchange_google_error_no_token_stored():
+    store = _install_fake_keyring()
+    creds = _write_client_secrets()
+    try:
+        ss = OAuthStateStore()
+
+        def _boom(config, code, verifier):
+            raise OAuthExchangeFailed()
+
+        svc = _service(_oauth_settings(enabled=True, creds=creds),
+                       state_store=ss, exchanger=_boom)
+        state, _, _ = ss.create(600)
+        res = svc.handle_callback(code="C", state=state)
+        assert res["reason"] == "exchange_failed"
+        assert res["token_stored"] is False and store == {}
+        _assert_no_secret_values(res)
+    finally:
+        sys.modules.pop("keyring", None)
+        os.unlink(creds)
+
+
+def test_exchange_raw_exception_is_sanitized():
+    """Eine rohe Exception aus dem Exchanger darf NIE mit Details durchschlagen."""
+    store = _install_fake_keyring()
+    creds = _write_client_secrets()
+    try:
+        ss = OAuthStateStore()
+
+        def _leak(config, code, verifier):
+            raise RuntimeError(f"boom {_SENTINEL_SECRET} {code}")
+
+        svc = _service(_oauth_settings(enabled=True, creds=creds),
+                       state_store=ss, exchanger=_leak)
+        state, _, _ = ss.create(600)
+        res = svc.handle_callback(code="SECRETCODE", state=state)
+        assert res["reason"] == "exchange_failed"
+        assert res["token_stored"] is False and store == {}
+        _assert_no_secret_values(res, _SENTINEL_SECRET, "SECRETCODE")
+    finally:
+        sys.modules.pop("keyring", None)
+        os.unlink(creds)
+
+
+def test_sanitize_drops_id_token_keeps_token_uri_and_scopes():
+    clean = sanitize_token_payload({
+        "access_token": "A", "refresh_token": "R",
+        "token_uri": "https://oauth2.googleapis.com/token",
+        "client_id": "cid", "client_secret": _SENTINEL_SECRET,
+        "id_token": "IDT", "scopes": ["s1", "s2"],
+    })
+    assert clean is not None
+    assert "id_token" not in clean and "client_secret" not in clean
+    assert clean["token_uri"].endswith("/token")
+    assert clean["scopes"] == ["s1", "s2"]
+
+
+def test_logout_removes_token_and_readiness_false():
+    _install_fake_keyring()
+    creds = _write_client_secrets()
+    try:
+        settings = _oauth_settings(enabled=True, creds=creds)
+        ss = OAuthStateStore()
+        svc = _service(settings, state_store=ss)  # default _fake_exchanger
+        state, _, _ = ss.create(600)
+        assert svc.handle_callback(code="C", state=state)["token_stored"] is True
+        assert svc.readiness()["token_present"] is True
+        # Logout über den Adapter (nutzt denselben TokenStore).
+        adapter = YouTubeAdapter(Settings(
+            enable_youtube_oauth=True, youtube_client_secrets_file=creds))
+        assert adapter.logout()["deleted"] is True
+        assert svc.readiness()["token_present"] is False
+        assert svc.readiness()["token_status"] == "not_authenticated"
+    finally:
+        sys.modules.pop("keyring", None)
+        os.unlink(creds)
+
+
+def test_api_callback_dependency_missing_is_safe_200():
+    creds = _write_client_secrets()
+    _install_fake_keyring()
+    os.environ["CLIPFORGE_ENABLE_YOUTUBE_OAUTH"] = "true"
+    os.environ["CLIPFORGE_YOUTUBE_CLIENT_SECRETS"] = creds
+    client, tmp, app_module = _make_client()
+    # Prod-Default-Exchanger (echte Library) beibehalten, aber Library blocken.
+    try:
+        r = client.post("/api/youtube/oauth/start")
+        state = parse_qs(urlparse(r.json()["auth_url"]).query)["state"][0]
+        with _block_google_library():
+            r = client.get("/api/youtube/oauth/callback",
+                           params={"code": "C", "state": state})
+        assert r.status_code == 200, r.text
+        body = r.json()
+        assert body["success"] is False
+        assert body["reason"] == "exchange_dependency_missing"
+        assert body["token_stored"] is False
+        _assert_no_secret_values(body)
+    finally:
+        os.environ.pop("CLIPFORGE_ENABLE_YOUTUBE_OAUTH", None)
+        os.environ.pop("CLIPFORGE_YOUTUBE_CLIENT_SECRETS", None)
+        os.unlink(creds)
+        shutil.rmtree(tmp, ignore_errors=True)
+        os.environ.pop("CLIPFORGE_JOBS_DIR", None)
+        sys.modules.pop("keyring", None)
         sys.modules.pop("app", None)
 
 

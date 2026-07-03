@@ -2,10 +2,12 @@
 
 Stand: 2026-07-03. Dieses Dokument ist der verbindliche Plan für den späteren
 Publishing-Agent. **In dieser Phase gibt es keinen echten Plattform-Upload und
-keinen echten Google-Token-Exchange.** Ein sicheres OAuth-Flow-Skelett
-(Consent-URL, State/CSRF+PKCE, Callback, Keychain-Token-Ablage) ist vorbereitet
-(Phase 2b, siehe [`YOUTUBE_PUBLISHING.md`](YOUTUBE_PUBLISHING.md)); Tokens leben
-nur im OS-Keychain, nie in ENV/Datei/Response/Logs.
+kein `videos.insert`.** Der YouTube-OAuth-Flow ist vollständig sicher gebaut —
+inkl. **echtem** Token-Exchange über die offizielle Google-Library
+(`google-auth-oauthlib`, PKCE) (Phase 2b/2c, siehe
+[`YOUTUBE_PUBLISHING.md`](YOUTUBE_PUBLISHING.md)). Tokens leben nur im
+OS-Keychain, nie in ENV/Datei/Response/Logs; `client_secret`/`id_token` werden
+nie gespeichert.
 
 ## 1. Ziel
 
@@ -216,7 +218,7 @@ vor jedem Upload `external_post_id` prüfen — gesetzt ⇒ niemals erneut poste
 | Phase | Inhalt | Voraussetzung |
 |---|---|---|
 | **1 (✅ jetzt)** | Publishing Planner lokal (Drafts, Validierung, Pack-ZIP, **globale Übersicht + Duplizieren**, Prompt 21+22) | — |
-| 2 | YouTube-Upload über offizielle API (Privacy-Status wählbar, `publishAt`) — **Dry-Run (Phase 1) + OAuth-Readiness & keyring-Token-Ablage (Phase 2) + OAuth-Flow-Skelett mit Consent-URL/State/CSRF+PKCE/Callback (Phase 2b) bereits gebaut**, siehe [`YOUTUBE_PUBLISHING.md`](YOUTUBE_PUBLISHING.md). **Echter Google-Token-Exchange + Upload bleiben `not_implemented` (Phase 3).** | echter Token-Exchange (offizielle Library) + Upload-Client + ggf. API-Audit |
+| 2 | YouTube-Upload über offizielle API (Privacy-Status wählbar, `publishAt`) — **Dry-Run (Ph. 1) + OAuth-Readiness & keyring-Token-Ablage (Ph. 2) + OAuth-Flow (Consent-URL/State/CSRF+PKCE/Callback, Ph. 2b) + echter Token-Exchange über offizielle Library (Ph. 2c) gebaut**, siehe [`YOUTUBE_PUBLISHING.md`](YOUTUBE_PUBLISHING.md). **Upload/`videos.insert` bleiben `not_implemented` (Phase 3).** | Upload-Client (`google-api-python-client`) + Token-Refresh + Idempotenz + ggf. API-Audit |
 | 3 | Instagram/TikTok nach offizieller Prüfung (App-Review/Audit, Hosting-Frage für IG klären) | Meta-/TikTok-Review bestanden |
 | 4 | Scheduling/Queue (lokaler Worker verarbeitet `scheduled`-Drafts) | Phase 2 stabil |
 | 5 | Analytics/Rückmeldung (Views/Likes zurück in ClipForge, Score-Feedback) | offizielle Analytics-APIs |

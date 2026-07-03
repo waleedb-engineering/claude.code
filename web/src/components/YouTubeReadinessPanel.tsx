@@ -1,9 +1,10 @@
 "use client";
 
-// YouTube OAuth Readiness + Flow-Skelett (Phase 2b). Prüft, OB ein späterer
-// Upload/OAuth möglich WÄRE, und kann eine sichere Consent-URL vorbereiten.
-// KEIN echter Upload, KEIN echter Token-Exchange, KEIN automatisches Öffnen
-// eines Browsers, KEIN Token wird angezeigt. Nur bei youtube_shorts-Drafts.
+// YouTube OAuth Readiness + Flow (Phase 3-Vorbereitung). Prüft, OB ein späterer
+// Upload/OAuth möglich WÄRE, bereitet eine sichere Consent-URL vor und stößt den
+// ECHTEN Token-Exchange (offizielle Google-Library) über den Callback an.
+// KEIN echter Upload, KEIN Token wird angezeigt (auch nicht im DOM). Nur bei
+// youtube_shorts-Drafts.
 
 import { useState } from "react";
 import {
@@ -24,6 +25,23 @@ const TOKEN_STATUS_LABELS: Record<string, string> = {
   authenticated: "Angemeldet",
   invalid_token: "Token ungültig/defekt",
 };
+
+// Sichere, verständliche Labels für Blocker/Fehler-Codes (kein Secret, kein
+// Rohtext). Deckt Voraussetzungen UND Callback-Fehler ab.
+const REASON_LABELS: Record<string, string> = {
+  oauth_disabled: "OAuth ist deaktiviert (CLIPFORGE_ENABLE_YOUTUBE_OAUTH=true setzen)",
+  client_secrets_missing: "Client-Secrets-Datei fehlt",
+  client_secrets_unreadable: "Client-Secrets-Datei ist unlesbar/unvollständig",
+  token_store_unavailable: "Kein sicherer Token-Store (keyring) verfügbar",
+  exchange_dependency_missing: "Google-Auth-Library fehlt (google-auth-oauthlib)",
+  exchange_failed: "Token-Austausch mit Google fehlgeschlagen",
+  invalid_scope: "Erteilter Scope deckt keinen YouTube-Upload ab",
+  invalid_token_payload: "Token-Antwort ungültig",
+};
+
+function reasonLabel(code: string): string {
+  return REASON_LABELS[code] ?? code;
+}
 
 function BoolRow({ label, val }: { label: string; val: boolean }) {
   return (
@@ -200,7 +218,7 @@ export default function YouTubeReadinessPanel({
               <ul className="space-y-0.5">
                 {data.blocked_reasons.map((r, i) => (
                   <li key={i} className="text-red-300">
-                    ✗ {r}
+                    ✗ {reasonLabel(r)}
                   </li>
                 ))}
               </ul>
@@ -248,7 +266,7 @@ export default function YouTubeReadinessPanel({
                 Button ist deaktiviert, bis OAuth aktiv, Client Secrets
                 konfiguriert und der Token-Store verfügbar sind.
                 {oauth && oauth.blocked_reasons.length > 0 && (
-                  <> Blocker: {oauth.blocked_reasons.join(", ")}.</>
+                  <> Blocker: {oauth.blocked_reasons.map(reasonLabel).join(", ")}.</>
                 )}
               </p>
             )}
@@ -256,9 +274,12 @@ export default function YouTubeReadinessPanel({
             {start?.auth_url && (
               <div className="space-y-1">
                 <p className="text-[11px] text-neutral-400">
-                  Öffne diese URL <strong>manuell</strong> im Browser, melde
-                  dich bei Google an und kehre über den Callback zurück. Es
-                  wird <strong>kein</strong> Browser automatisch geöffnet.
+                  Öffne diese URL <strong>manuell</strong> im Browser und melde
+                  dich bei Google an. Nach der Freigabe leitet Google{" "}
+                  <strong>automatisch</strong> auf den Callback zurück, der den
+                  Code sicher gegen ein Token tauscht und es nur im Keychain
+                  speichert. Es wird <strong>kein</strong> Browser automatisch
+                  geöffnet und <strong>kein</strong> Token hier angezeigt.
                 </p>
                 <div className="flex items-center gap-2">
                   <input

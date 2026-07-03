@@ -625,11 +625,12 @@ false` (Default) setzt `scheduled_at` im Duplikat auf `null`.
 
 ---
 
-## YouTube Publishing — Dry-Run + OAuth-Readiness + OAuth-Flow-Skelett (KEIN Upload)
+## YouTube Publishing — Dry-Run + OAuth-Flow + echter Token-Exchange (KEIN Upload)
 
-Erste echte Plattform, aber standardmäßig nur Dry-Run + Readiness + OAuth-Flow-
-Skelett (Consent-URL/Callback). **Kein echter Upload, kein echter
-Google-Token-Exchange, keine Token/Secrets in Responses oder Logs.** Konzept + API-Realität in
+Erste echte Plattform: Dry-Run + Readiness + OAuth-Flow (Consent-URL/Callback)
+inkl. **echtem** Token-Exchange über die offizielle Google-Library. **Kein
+echter Upload, kein `videos.insert`, keine Token/Secrets in Responses oder
+Logs.** Konzept + API-Realität in
 [`YOUTUBE_PUBLISHING.md`](YOUTUBE_PUBLISHING.md). Alle Endpoints gelten nur für
 `platform = youtube_shorts` (sonst `400`) und sind path-traversal-sicher.
 
@@ -645,20 +646,23 @@ Google-Token-Exchange, keine Token/Secrets in Responses oder Logs.** Konzept + A
 `readiness` liefert zusätzlich `redirect_uri`, `can_start_auth` und
 `oauth_flow_status` (`ready_to_start`/`blocked`) aus dem Flow-Skelett.
 
-### OAuth-Flow-Skelett (Phase 2b, app-global — nicht draft-gebunden)
+### OAuth-Flow (Phase 2b/2c, app-global — nicht draft-gebunden)
 
-**Kein echter Google-Token-Exchange, kein Upload.** Baut eine sichere
-Consent-URL (State/CSRF + PKCE) und speichert ein Token **nur** über den
+**Echter Token-Exchange, aber KEIN Upload.** Baut eine sichere Consent-URL
+(State/CSRF + PKCE), tauscht den Code über die offizielle Google-Library
+(`google-auth-oauthlib`) gegen ein Token und speichert es **nur** über den
 Keychain. Details in [`YOUTUBE_PUBLISHING.md`](YOUTUBE_PUBLISHING.md) §7c.
 
 | Endpoint | Zweck |
 |---|---|
 | `GET /api/youtube/oauth/status` | `oauth_enabled`, `client_secrets_configured`, `client_secrets_basename`, `redirect_uri`, `scopes`, `required_scope`, `state_ttl_seconds`, `token_store_available`, `token_present`, `token_status`, `can_start_auth`, `can_attempt_upload:false`, `blocked_reasons`, `warnings`, `no_secrets:true`. **Nie Token/Secrets.** |
 | `POST /api/youtube/oauth/start` | `enabled`, `auth_url`(optional), `state_created`, `expires_at`, `blocked_reasons`, `warnings`, `message`, `no_secrets:true`. Kein Browser/Netzwerk-Call. Fehlen Voraussetzungen → kein `auth_url`, klare `blocked_reasons`. |
-| `GET /api/youtube/oauth/callback?code&state&error` | `success`, `token_stored`, `message`, `next_step`, `reason`, `no_secrets:true`. `error` → sichere **200**; fehlender/ungültiger/abgelaufener/wiederverwendeter `state` → **400** (nichts gespeichert); gültiger `state` → Exchange → Token **nur** über Keychain. Diese Phase ohne echten Exchanger → `reason: exchange_unavailable`. |
+| `GET /api/youtube/oauth/callback?code&state&error` | `success`, `token_stored`, `token_status`, `message`, `next_step`, `reason`, `warnings`, `no_secrets:true`. `error` → sichere **200**; fehlender/ungültiger/abgelaufener/wiederverwendeter `state` → **400** (nichts gespeichert); gültiger `state` → **echter** Google-Token-Exchange → Token **nur** über Keychain. Degrade (sichere **200**, kein Token): `exchange_dependency_missing`, `client_secrets_missing`, `exchange_failed`, `invalid_scope`, `invalid_token_payload`. Fehlt `refresh_token` → `warnings:["no_refresh_token"]`. |
 
 Der `client_id` steht (per OAuth-Design) in der `auth_url`; das `client_secret`
-wird **nicht** aus der Datei gelesen und erscheint nirgends.
+und `id_token` erscheinen **nie** in Response/Store/Log. Benötigt für den
+Exchange: `google-auth` + `google-auth-oauthlib` (optional; fehlen sie →
+`exchange_dependency_missing`).
 
 Publish-Verhalten:
 

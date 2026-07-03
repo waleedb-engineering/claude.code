@@ -12,3 +12,11 @@ opencv-python-headless>=4.8.0
 # OPTIONAL & defensiv importiert — fehlt keyring oder ein nutzbares Backend,
 # meldet die Readiness sauber "blocked" (kein Plaintext-Fallback, kein Crash).
 keyring>=24.0.0
+# YouTube-OAuth Token-Exchange (echter Authorization-Code→Token-Tausch inkl.
+# PKCE) über die offizielle Google-Library. OPTIONAL & defensiv importiert:
+# fehlt sie, meldet der Callback sauber "exchange_dependency_missing" (kein
+# Crash, kein Token). NUR für den Token-Exchange nötig — NICHT für Upload:
+# google-api-python-client wird bewusst NICHT ergänzt, da in dieser Phase kein
+# videos.insert stattfindet.
+google-auth>=2.0.0
+google-auth-oauthlib>=1.0.0

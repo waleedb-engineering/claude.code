@@ -51,26 +51,82 @@ from .youtube_auth import REQUIRED_SCOPE, YouTubeTokenStore
 GOOGLE_AUTH_ENDPOINT = "https://accounts.google.com/o/oauth2/v2/auth"
 GOOGLE_TOKEN_ENDPOINT = "https://oauth2.googleapis.com/token"
 
-# Nur Werte, die in einer sanitisierten Token-Payload behalten werden.
-# (client_secret ist bewusst NICHT dabei — er gehört nicht in den Token-Store.)
+# Primitive Felder, die in einer sanitisierten Token-Payload behalten werden.
+# BEWUSST NICHT dabei:
+#   - `client_secret` → gehört nie in den Token-Store.
+#   - `id_token` → für den Upload nicht gebraucht (enthält Nutzer-Claims).
 _ALLOWED_TOKEN_FIELDS = (
     "access_token",
     "refresh_token",
     "token_type",
     "scope",
+    "token_uri",
+    "client_id",
     "expiry",
     "expires_in",
-    "id_token",
 )
+
+# YouTube-Scopes, die einen Upload abdecken (minimal: youtube.upload). Ein Token
+# ist nur brauchbar, wenn mindestens einer davon gewährt wurde.
+_UPLOAD_COMPATIBLE_SCOPES = frozenset({
+    "https://www.googleapis.com/auth/youtube.upload",
+    "https://www.googleapis.com/auth/youtube",
+    "https://www.googleapis.com/auth/youtube.force-ssl",
+    "https://www.googleapis.com/auth/youtubepartner",
+})
+
+
+def _granted_scopes(payload: dict) -> set[str]:
+    """Sammelt die gewährten Scopes aus `scope` (Space-String) und/oder
+    `scopes` (Liste). Beides ist bei Google-Antworten möglich."""
+    granted: set[str] = set()
+    scope_str = payload.get("scope")
+    if isinstance(scope_str, str):
+        granted.update(s for s in scope_str.split() if s)
+    scope_list = payload.get("scopes")
+    if isinstance(scope_list, (list, tuple)):
+        granted.update(s for s in scope_list if isinstance(s, str) and s)
+    return granted
+
+
+def _scope_grants_upload(payload: dict) -> bool:
+    return bool(_granted_scopes(payload) & _UPLOAD_COMPATIBLE_SCOPES)
 
 
 class OAuthError(Exception):
-    """Basis für OAuth-Fehler. Nachrichten enthalten NIE Secrets/Codes/Tokens."""
+    """Basis für OAuth-Fehler. Nachrichten enthalten NIE Secrets/Codes/Tokens.
+
+    `reason` ist ein stabiler, sicherer Maschinen-Code (kein Freitext), der im
+    Callback als `reason` nach außen gegeben werden darf."""
+
+    reason = "oauth_error"
 
 
 class OAuthExchangeUnavailable(OAuthError):
-    """Token-Exchange ist (noch) nicht verfügbar — z. B. Phase 3 nicht gebaut
-    oder offizielle Google-Library fehlt. Blockiert sauber, ohne Secret-Leak."""
+    """Token-Exchange ist nicht ausführbar (bewusst blockiert oder Dependency/
+    Voraussetzung fehlt). Blockiert sauber, ohne Secret-Leak."""
+
+    reason = "exchange_unavailable"
+
+
+class OAuthDependencyMissing(OAuthExchangeUnavailable):
+    """Die offizielle Google-Auth-Library ist nicht installiert."""
+
+    reason = "exchange_dependency_missing"
+
+
+class OAuthClientSecretsMissing(OAuthExchangeUnavailable):
+    """Die client_secrets-Datei fehlt/existiert nicht (für den Exchange nötig)."""
+
+    reason = "client_secrets_missing"
+
+
+class OAuthExchangeFailed(OAuthError):
+    """Der Google-Token-Exchange schlug fehl (Netzwerk/ungültiger Code/…).
+    Die zugrunde liegende Exception wird bewusst NICHT propagiert."""
+
+    reason = "exchange_failed"
+
 
 
 # --------------------------------------------------------------------------
@@ -226,10 +282,79 @@ def sanitize_token_payload(payload) -> dict | None:
             val = payload[key]
             if isinstance(val, (str, int, float, bool)):
                 clean[key] = val
+    # `scopes` darf als Liste von Strings erhalten bleiben (Google-Format).
+    scope_list = payload.get("scopes")
+    if isinstance(scope_list, (list, tuple)):
+        scopes = [s for s in scope_list if isinstance(s, str) and s]
+        if scopes:
+            clean["scopes"] = scopes
     if not clean:
         return None
     clean["stored_at"] = int(time.time())
     return clean
+
+
+# --------------------------------------------------------------------------
+# Echter Google-Token-Exchange (offizielle Library, Phase 3-Codepfad)
+# --------------------------------------------------------------------------
+
+def real_google_token_exchange(config: "YouTubeOAuthConfig", code: str, code_verifier: str) -> dict:
+    """Tauscht den Authorization-Code über die **offizielle Google-Library**
+    (`google-auth-oauthlib`) gegen ein Token — inkl. PKCE-`code_verifier`.
+
+    Gibt eine ROHE Token-Payload zurück (wird vom Service sanitisiert/geprüft
+    und NUR über den Keychain gespeichert). Speichert selbst **nichts**.
+
+    Sicherheit:
+      - Kein Token/Code/Secret wird geloggt.
+      - Die zugrunde liegende Google/oauthlib-Exception wird NIE propagiert
+        (könnte Code-/Secret-Fragmente enthalten) → generisch `OAuthExchangeFailed`.
+      - Ohne Library → `OAuthDependencyMissing`; ohne Secrets-Datei →
+        `OAuthClientSecretsMissing`.
+
+    Referenz (offizielle Doku, abgerufen 2026-07-03):
+      google-auth-oauthlib `Flow.from_client_secrets_file(path, scopes,
+      redirect_uri=…, code_verifier=…)` + `flow.fetch_token(code=…)` →
+      `flow.credentials` (google.oauth2.credentials.Credentials).
+      Token-Endpoint: https://oauth2.googleapis.com/token.
+    """
+    if not config.client_secrets_configured():
+        raise OAuthClientSecretsMissing()
+
+    try:
+        from google_auth_oauthlib.flow import Flow  # offizielle Library
+    except Exception:  # noqa: BLE001 — Absenz/Defekt → sauber blockieren
+        raise OAuthDependencyMissing()
+
+    try:
+        flow = Flow.from_client_secrets_file(
+            config.client_secrets_path,
+            scopes=list(config.scopes),
+            redirect_uri=config.redirect_uri,
+            code_verifier=code_verifier,  # PKCE
+        )
+        flow.fetch_token(code=code)
+        creds = flow.credentials
+        # NUR nicht-geheime/benötigte Felder — client_secret wird NICHT gelesen.
+        return {
+            "access_token": getattr(creds, "token", None),
+            "refresh_token": getattr(creds, "refresh_token", None),
+            "token_uri": getattr(creds, "token_uri", GOOGLE_TOKEN_ENDPOINT),
+            "client_id": getattr(creds, "client_id", None),
+            "scopes": list(getattr(creds, "scopes", None) or config.scopes),
+            "expiry": _isoformat_or_none(getattr(creds, "expiry", None)),
+        }
+    except OAuthError:
+        raise
+    except Exception:  # noqa: BLE001 — rohe Exception nie nach außen
+        raise OAuthExchangeFailed()
+
+
+def _isoformat_or_none(value):
+    try:
+        return value.isoformat() if value is not None else None
+    except Exception:  # noqa: BLE001
+        return None
 
 
 # --------------------------------------------------------------------------
@@ -240,6 +365,33 @@ def sanitize_token_payload(payload) -> dict | None:
 CALLBACK_BAD_REQUEST_REASONS = frozenset(
     {"missing_code", "missing_state", "invalid_state"}
 )
+
+# Sichere, benutzerlesbare Meldungen je Fehler-Reason (kein Secret, kein Freitext
+# aus Exceptions). Wird im Callback verwendet.
+_CALLBACK_ERROR_MESSAGES = {
+    "exchange_unavailable": (
+        "Token-Austausch ist nicht verfügbar (kein Exchanger konfiguriert)."
+    ),
+    "exchange_dependency_missing": (
+        "Die offizielle Google-Auth-Library fehlt — installiere "
+        "'google-auth-oauthlib'. Kein Token wurde gespeichert."
+    ),
+    "client_secrets_missing": (
+        "OAuth-Client-Secrets fehlen — kein Token-Austausch möglich."
+    ),
+    "exchange_failed": "Token-Austausch mit Google fehlgeschlagen.",
+    "invalid_scope": (
+        "Der erteilte Scope deckt keinen YouTube-Upload ab "
+        "(benötigt youtube.upload)."
+    ),
+    "invalid_token_payload": (
+        "Token-Payload ungültig — es wurde nichts gespeichert."
+    ),
+    "token_store_write_failed": "Token konnte nicht sicher gespeichert werden.",
+    "token_store_unavailable": (
+        "Kein sicherer Token-Store (Keychain) verfügbar — kein Plaintext-Fallback."
+    ),
+}
 
 
 class YouTubeOAuthService:
@@ -422,6 +574,7 @@ class YouTubeOAuthService:
             "message": "",
             "next_step": "",
             "reason": "",
+            "token_status": self.token_store.get_status(),
             "no_secrets": True,
         }
 
@@ -448,36 +601,54 @@ class YouTubeOAuthService:
                 "next_step": "Starte den OAuth-Vorgang erneut.",
             }
 
-        # Token-Exchange (austauschbar/mockbar). Ohne Mock → sauber blockiert.
+        # Token-Exchange über die austauschbare Methode (Prod: echte Google-
+        # Library; Tests: Fake). Alle Fehler → sicherer reason-Code, kein Leak.
         try:
             raw = self.exchange_code_for_token(code, entry.code_verifier)
-        except OAuthExchangeUnavailable:
+        except OAuthError as exc:
+            reason = _safe_error_code(getattr(exc, "reason", "exchange_failed"))
             return {
                 **base,
-                "reason": "exchange_unavailable",
-                "message": (
-                    "Token-Austausch ist in dieser Phase nicht implementiert "
-                    "(Phase 3: echter Google-Exchange mit offizieller Library)."
-                ),
+                "reason": reason,
+                "message": _CALLBACK_ERROR_MESSAGES.get(
+                    reason, "Token-Austausch fehlgeschlagen."),
                 "next_step": "Kein Token gespeichert. Upload bleibt deaktiviert.",
+                "token_status": self.token_store.get_status(),
             }
         except Exception:  # noqa: BLE001 — nie Details/Secret nach außen
-            return {**base, "reason": "exchange_failed",
-                    "message": "Token-Austausch fehlgeschlagen."}
+            return {
+                **base,
+                "reason": "exchange_failed",
+                "message": _CALLBACK_ERROR_MESSAGES["exchange_failed"],
+                "next_step": "Kein Token gespeichert. Upload bleibt deaktiviert.",
+                "token_status": self.token_store.get_status(),
+            }
 
         saved = self.save_token(raw)
         if not saved.get("ok"):
+            reason = _safe_error_code(saved.get("reason", "invalid_token_payload"))
             return {
                 **base,
-                "reason": saved.get("reason", "invalid_token_payload"),
-                "message": "Token-Payload ungültig oder Speicherung fehlgeschlagen — nichts gespeichert.",
+                "reason": reason,
+                "message": _CALLBACK_ERROR_MESSAGES.get(
+                    reason, "Token-Payload ungültig — nichts gespeichert."),
+                "token_status": self.token_store.get_status(),
             }
 
+        warnings = list(saved.get("warnings") or [])
+        next_step = "Upload bleibt in dieser Phase deaktiviert (not_implemented)."
+        if "no_refresh_token" in warnings:
+            next_step = (
+                "Kein refresh_token erhalten — ggf. erneut mit erzwungenem "
+                "Consent autorisieren. Upload bleibt deaktiviert (not_implemented)."
+            )
         return {
             "success": True,
             "token_stored": True,
+            "token_status": self.token_store.get_status(),
             "message": "YouTube-Token wurde sicher im Keychain gespeichert.",
-            "next_step": "Upload bleibt in dieser Phase deaktiviert (not_implemented).",
+            "next_step": next_step,
+            "warnings": warnings,
             "reason": "",
             "no_secrets": True,
         }
@@ -485,27 +656,53 @@ class YouTubeOAuthService:
     # -- austauschbarer Token-Exchange (Phase 3 / Tests mocken das) -------
 
     def exchange_code_for_token(self, code: str, code_verifier: str) -> dict:
-        """Tauscht einen Authorization-Code gegen ein Token.
+        """Tauscht einen Authorization-Code (+ PKCE-`code_verifier` aus dem
+        konsumierten State) gegen eine ROHE Token-Payload.
 
-        In dieser Phase gibt es KEINE eingebaute reale Implementierung: ohne
-        injizierten `exchanger` wird sauber blockiert (kein Netzwerk-Call).
-        Der reale Exchange (offizielle Google-Library, Token-Endpoint
-        `https://oauth2.googleapis.com/token`) ist Phase 3.
+        Der eigentliche Exchange ist ein **injizierter** Callable
+        `exchanger(config, code, code_verifier) -> dict`:
+          - Produktion: `real_google_token_exchange` (offizielle Google-Library,
+            Token-Endpoint `https://oauth2.googleapis.com/token`).
+          - Tests: ein Fake — es passiert NIE ein echter Google-Call in Tests.
+        Ohne injizierten Exchanger wird sauber blockiert (kein Netzwerk-Call).
 
-        Tests injizieren einen `exchanger`, der ein Fake-Token liefert."""
+        Speichert selbst NICHTS und loggt NICHTS — das übernimmt `save_token`."""
         if self._exchanger is None:
-            raise OAuthExchangeUnavailable("token_exchange_not_implemented")
+            raise OAuthExchangeUnavailable("no_exchanger_configured")
         return self._exchanger(self.config, code, code_verifier)
 
     # -- sichere Token-Speicherung ---------------------------------------
 
     def save_token(self, token_payload) -> dict:
-        """Sanitisiert die Payload und speichert sie NUR über den sicheren
-        Token-Store. Kein Plaintext-Fallback. Gibt nie das Token zurück."""
+        """Sanitisiert + validiert die Payload und speichert sie NUR über den
+        sicheren Token-Store. Kein Plaintext-Fallback. Gibt nie das Token zurück.
+
+        Validierung:
+          - `access_token` muss vorhanden sein (sonst `invalid_token_payload`).
+          - Der Scope muss `youtube.upload` (oder einen kompatiblen) enthalten
+            (sonst `invalid_scope` → nichts speichern).
+          - Fehlt `refresh_token`, wird gespeichert, aber `warnings` enthält
+            `no_refresh_token` (offline-Zugriff evtl. eingeschränkt).
+        """
         clean = self.sanitize_token_payload(token_payload)
         if clean is None:
             return {"ok": False, "reason": "invalid_token_payload"}
-        return self.token_store.save_token(clean)
+        # access_token ist Pflicht (ein reines refresh_token reicht hier nicht).
+        at = clean.get("access_token")
+        if not (isinstance(at, str) and at.strip()):
+            return {"ok": False, "reason": "invalid_token_payload"}
+        # Scope muss einen Upload abdecken.
+        if not _scope_grants_upload(clean):
+            return {"ok": False, "reason": "invalid_scope"}
+
+        result = self.token_store.save_token(clean)
+        if not result.get("ok"):
+            return result
+        warnings: list[str] = []
+        rt = clean.get("refresh_token")
+        if not (isinstance(rt, str) and rt.strip()):
+            warnings.append("no_refresh_token")
+        return {"ok": True, "warnings": warnings}
 
     def sanitize_token_payload(self, token_payload) -> dict | None:
         return sanitize_token_payload(token_payload)

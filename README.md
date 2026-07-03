@@ -54,6 +54,7 @@ npm run dev      # http://127.0.0.1:3000
 | Schritt 23 | **YouTube Publishing Adapter (Dry-Run, kein echter Upload)** | ✅ fertig & verifiziert |
 | Schritt 24 | **YouTube OAuth-Readiness & sichere Token-Ablage (keyring, kein Upload)** | ✅ fertig & verifiziert |
 | Schritt 25 | **YouTube OAuth-Flow-Skelett (Consent-URL, State/CSRF+PKCE, Callback, sichere Token-Speicherung — kein echter Exchange/Upload)** | ✅ fertig & verifiziert |
+| Schritt 26 | **YouTube OAuth echter Token-Exchange (offizielle Google-Library, PKCE) — Token nur im Keychain, weiterhin kein Upload** | ✅ fertig & verifiziert |
 | später | Face-Tracking-Reframe, echtes A/B-Tracking, Direkt-Posten | 🔭 später |
 
 ### Was schon echt funktioniert
@@ -199,20 +200,25 @@ npm run dev      # http://127.0.0.1:3000
   Status). Token-Ablage **ausschließlich über OS-Keychain (`keyring`), kein
   Plaintext-Fallback**; fehlt keyring/Backend → `token_status: blocked`.
   Endpoints: `…/youtube/readiness`, `…/auth/start`, `…/auth/logout` (idempotent).
-- **YouTube OAuth-Flow-Skelett — Phase 2b** (`platforms/youtube_oauth.py`):
-  macht den OAuth-Flow zu einer **sicheren, testbaren Struktur** — aber
-  **weiterhin ohne echten Upload und ohne echten Google-Token-Exchange**.
+- **YouTube OAuth-Flow + echter Token-Exchange — Phase 2b/2c**
+  (`platforms/youtube_oauth.py`): vollständiger, sicherer OAuth-Flow — **aber
+  weiterhin ohne Upload und ohne `videos.insert`**.
   `POST /api/youtube/oauth/start` baut eine **echte Consent-URL** (Google
   Installed-App-Flow: `response_type=code`, `access_type=offline`, `state` für
   CSRF **und PKCE `S256`**) — liest dafür nur den `client_id` aus der
   Secrets-Datei, **nie das `client_secret`**, und öffnet **keinen** Browser.
   `GET /api/youtube/oauth/callback` prüft den `state` (einmalig, ablaufend,
-  wiederverwendungssicher), ruft einen **austauschbaren/mockbaren**
-  Token-Exchange (ohne echten Google-Call blockiert er sauber → Phase 3) und
-  speichert ein Token **nur** über den Keychain. `GET /api/youtube/oauth/status`
-  liefert `can_start_auth`/`token_present` etc. **Kein Endpoint gibt je Token/
-  Secrets zurück.** Offizielle OAuth-Grundlagen (Auth-/Token-Endpoint,
-  Loopback-Redirect, PKCE, Refresh-Token) + Sicherheitsmodell in
+  wiederverwendungssicher) und tauscht den Code **echt** über die offizielle
+  Google-Library (`google-auth-oauthlib`, inkl. PKCE) gegen ein Token — das
+  **nur** über den Keychain gespeichert wird. Fehlt die Library/Secrets oder
+  scheitert Google, degradiert es sauber (`exchange_dependency_missing`/
+  `client_secrets_missing`/`exchange_failed`) — **kein Token, kein Leak**. Der
+  Token-Payload wird validiert (Scope muss `youtube.upload` abdecken;
+  `client_secret`/`id_token` werden **verworfen**; fehlt `refresh_token` →
+  Warnung). `GET /api/youtube/oauth/status` liefert `can_start_auth`/
+  `token_present` etc. **Kein Endpoint gibt je Token/Secrets zurück.** Tests
+  nutzen ausschließlich Fakes — **kein echter Google-Call**. Offizielle
+  Grundlagen + Sicherheitsmodell in
   [`docs/YOUTUBE_PUBLISHING.md`](docs/YOUTUBE_PUBLISHING.md).
 
 ### Klar als TODO gekennzeichnet (noch nicht echt)

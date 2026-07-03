@@ -41,10 +41,10 @@ from clipforge.platforms import YouTubeAdapter
 from clipforge.platforms.youtube_auth import YouTubeTokenStore
 from clipforge.platforms.youtube_oauth import (
     CALLBACK_BAD_REQUEST_REASONS,
-    OAuthExchangeUnavailable,
     OAuthStateStore,
     YouTubeOAuthConfig,
     YouTubeOAuthService,
+    real_google_token_exchange,
 )
 from clipforge.ffmpeg_utils import FFmpegNotFound, ensure_ffmpeg
 from clipforge.publishing import (
@@ -1514,12 +1514,15 @@ _OAUTH_STATE_STORE = OAuthStateStore()
 
 
 def _youtube_token_exchanger(config: YouTubeOAuthConfig, code: str, code_verifier: str) -> dict:
-    """Phase-3-Naht für den echten Google-Token-Exchange (offizielle Library,
-    Token-Endpoint https://oauth2.googleapis.com/token).
+    """Produktions-Exchanger: **echter** Google-Token-Exchange über die
+    offizielle Library (`google-auth-oauthlib`), Token-Endpoint
+    https://oauth2.googleapis.com/token.
 
-    In dieser Phase bewusst NICHT implementiert → blockiert sauber, ohne
-    Netzwerk-Call und ohne Secret-Leak. Tests ersetzen diese Funktion."""
-    raise OAuthExchangeUnavailable("token_exchange_not_implemented")
+    Degradiert sauber, wenn die Library fehlt (`exchange_dependency_missing`)
+    oder Secrets fehlen (`client_secrets_missing`); Google-Fehler →
+    `exchange_failed`. KEIN Upload, KEIN Secret in Logs/Response.
+    Tests ersetzen diese Funktion durch einen Fake (kein echter Google-Call)."""
+    return real_google_token_exchange(config, code, code_verifier)
 
 
 def build_youtube_oauth_service() -> YouTubeOAuthService:
