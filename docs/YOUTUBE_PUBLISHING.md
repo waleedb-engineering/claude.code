@@ -330,6 +330,84 @@ setzen.
 `rate_limited`, `permission_denied`, `invalid_credentials`, `upload_failed`,
 `upload_result_uncertain`.
 
+## 7e. Phase 3b — Hardening: Retry/Backoff, Recovery, Real-Testmodus
+
+### Retry-Policy (`YouTubeRetryPolicy`, testbar)
+
+Kontrolliertes, **injizierbares** Retry (kein `time.sleep` in Unit-Tests, Jitter
+injizierbar). Kategorien: `retryable` · `non_retryable` · `auth_refreshable` ·
+`uncertain`.
+
+| Fehler | Kategorie | Verhalten |
+|---|---|---|
+| `500/502/503/504`, Netzwerk/Timeout | retryable | Backoff + `next_chunk()` auf **derselben** resumable Session |
+| `403 rateLimitExceeded`, `429` | retryable | Backoff (gemäß Policy) |
+| `403 quotaExceeded` | non_retryable | **kein** aggressiver Retry → `quota_exceeded` (failed) |
+| `403 forbidden` (permission), `400`, `404` | non_retryable | sofort abbrechen |
+| `401` | auth_refreshable | **maximal ein** erzwungener Token-Refresh + neue Session; danach `invalid_credentials`/`reauth_required` |
+| Netzabbruch **nach** möglichem Commit / Retries erschöpft | uncertain | `uncertain` — **kein** blindes Retry |
+
+**Backoff:** exponentiell `initial · multiplier^(n−1)`, gedeckelt auf `max_delay`,
+mit optionalem Full-Jitter (`random()·delay`) — offizielle Empfehlung
+(Resumable-Upload-Guide, Prompt 27 §7d). `max_attempts` begrenzt die Retries.
+
+**Quellen/TODO:** `[500,502,503,504]`+Netzwerk-Retry und Backoff/Jitter sind
+offiziell (Guide). `quotaExceeded`/`badRequest`/`forbidden`/`notFound` = permanent
+(docs/errors). `rateLimitExceeded`/`429`-Retry und `401`-Refresh-once sind
+**Policy** (in der Fehler-Referenz nicht explizit → als TODO markiert, Standard-
+Praxis).
+
+### Resumable-Recovery — Grenzen (ehrlich)
+
+- **Innerhalb** eines Versuchs: retriable Fehler → erneuter `next_chunk()` auf
+  **derselben** Session (die google-Library kennt den Offset → **kein Duplikat**).
+- Bei `401` wird die Session **einmal** mit frischen Credentials neu gebaut
+  (bis dahin wurden keine Chunks akzeptiert → sicher).
+- **Prozessneustart-Recovery ist NICHT implementiert** und wird **nicht
+  vorgetäuscht**: ein Draft in `in_progress` bleibt nach Neustart geblockt und
+  verlangt manuelle Prüfung. Der (sensible) resumable Session-URI wird **nicht**
+  persistiert/zurückgegeben.
+- **Fortschritt** (`bytes_uploaded`/`total_bytes`/`progress_percent`) wird
+  best-effort im Draft (`upload_progress`) erfasst — sichtbar nur bei granularem
+  Chunking (`CLIPFORGE_YOUTUBE_UPLOAD_CHUNK_BYTES` > 0) und paralleler Abfrage
+  von `upload-status`. Mit Default `-1` (ein Request) gibt es keinen
+  Zwischenfortschritt.
+
+### Attempt-History (`publish_attempts`, additiv)
+
+Jeder `upload_private`-Aufruf hängt einen Eintrag an (gekappt auf die letzten
+20): `attempt_id`, `started_at`, `completed_at`, `outcome`
+(`succeeded`/`failed`/`uncertain`), `error_code`, `retry_count`. **Keine**
+Tokens/Header/rohe Exceptions/Session-URIs. Die bestehenden Felder
+(`publish_attempt_count`, `publish_attempt_id`, `last_publish_error`,
+`idempotency_state`) bleiben kompatibel.
+
+### Reauth-Flow
+
+Bei `token_missing`/`reauth_required`/`invalid_credentials` meldet
+`upload-status` `requires_reauth: true`; die UI zeigt „YouTube erneut verbinden"
+(Link zu `oauth/start`), lädt Readiness neu — **kein** Token im Browser, **kein**
+automatischer Browser-Login.
+
+### Sicherer manueller Real-Testmodus
+
+`scripts/manual_youtube_private_upload.py` ist der **einzige** Weg, einen echten
+Upload auszulösen — und nur, wenn **beide** Flags an sind
+(`CLIPFORGE_ENABLE_YOUTUBE_UPLOAD=true` **und**
+`CLIPFORGE_ENABLE_YOUTUBE_REAL_TEST=true`) sowie OAuth/Token/Keyring/Draft/MP4
+bereit. Ablauf: Voraussetzungen prüfen → Draft anzeigen → interaktive
+`UPLOAD_PRIVATE`-Bestätigung → **nur privat** hochladen → `external_post_id`
+anzeigen → Anleitung zur manuellen Studio-Prüfung. **Kein** Auto-Löschen, **kein**
+Public-Schalten. Fehlen Voraussetzungen/echte Credentials → Ausgabe
+**`REAL TEST NOT RUN`** (Exit 2, **nie** als Erfolg). **Automatische Tests setzen
+das Real-Test-Flag nie und lösen nie einen echten Upload aus.**
+
+### Nach `uncertain`: ZUERST YouTube Studio prüfen
+
+Ein `uncertain`-Zustand blockiert jedes automatische Retry. **Bevor** erneut
+hochgeladen wird, im YouTube Studio prüfen, ob bereits ein (privates) Video
+angelegt wurde — sonst droht ein Duplikat.
+
 ## 8. Feature Flags & Konfiguration
 
 | Variable | Zweck | Default |
@@ -342,6 +420,11 @@ setzen.
 | `CLIPFORGE_YOUTUBE_CATEGORY_ID` | YouTube-Kategorie | `22` |
 | `CLIPFORGE_YOUTUBE_REDIRECT_URI` | Loopback-Redirect-URI des lokalen OAuth-Callbacks (kein Secret) | `http://127.0.0.1:8000/api/youtube/oauth/callback` |
 | `CLIPFORGE_YOUTUBE_OAUTH_STATE_TTL_SECONDS` | Lebensdauer eines kurzlebigen OAuth-`state` (CSRF), Sekunden | `600` |
+| `CLIPFORGE_ENABLE_YOUTUBE_REAL_TEST` | **zweites** Flag; nur mit ihm **und** dem Upload-Flag darf das manuelle Skript echt hochladen. Automatische Tests setzen es nie. | `false` |
+| `CLIPFORGE_YOUTUBE_UPLOAD_MAX_ATTEMPTS` | max. Upload-Versuche (Retry-Policy) | `5` |
+| `CLIPFORGE_YOUTUBE_UPLOAD_INITIAL_DELAY` | Backoff-Startverzögerung (Sekunden) | `1.0` |
+| `CLIPFORGE_YOUTUBE_UPLOAD_MAX_DELAY` | Backoff-Deckel (Sekunden) | `32.0` |
+| `CLIPFORGE_YOUTUBE_UPLOAD_CHUNK_BYTES` | resumable Chunk-Größe (`-1` = ein Request; >0 für Fortschritt/Resume, Vielfaches von 256 KB) | `-1` |
 
 `credentials_configured` ist genau dann `true`, wenn die Secrets-Datei gesetzt
 ist **und** existiert. Der Inhalt wird nur für den `client_id`/Token-Exchange
@@ -428,6 +511,7 @@ transaktionalen Statusübergängen ist gebaut. Offen bleibt:
 | 2b | OAuth-**Flow-Skelett**: Consent-URL (State/CSRF + PKCE), Callback, sichere Token-Speicherung über Keychain | ✅ fertig |
 | 2c | **Echter** Google-Token-Exchange (offizielle Library `google-auth-oauthlib`, PKCE), Token nur im Keychain — **weiterhin kein Upload** | ✅ fertig |
 | 3 | **Echter PRIVATER Upload** (`videos.insert`, `privacyStatus=private`) hinter Flag + `UPLOAD_PRIVATE`-Bestätigung + Token-Refresh + Idempotenz (`uncertain`-Schutz) — **nur private, kein public/unlisted, kein Auto-Posting** | ✅ fertig |
+| 3b | **Hardening**: kontrolliertes Retry/Backoff (`YouTubeRetryPolicy`), 401→ein Refresh, Attempt-History, `upload-status`-Endpoint, Reauth-Flow, sicherer manueller Real-Testmodus (`REAL TEST NOT RUN` ohne Credentials) | ✅ fertig |
 | 4 | Geplante Uploads via `publishAt` (nach TODO-Verifizierung) | geplant |
 | 5 | Public/Unlisted Upload mit extra Bestätigung + Verifizierung | geplant |
 
@@ -436,7 +520,8 @@ transaktionalen Statusübergängen ist gebaut. Offen bleibt:
 | Endpoint | Zweck |
 |---|---|
 | `POST …/youtube/dry-run` | Upload-Vorschau **inkl. `upload_readiness`** (Gates + Idempotenz), kein Upload, keine Secrets |
-| `POST …/youtube/publish` | **Echter PRIVATER Upload.** Body `{confirm:"UPLOAD_PRIVATE", privacy_status:"private"}`. Immer **HTTP 200** mit strukturiertem Ergebnis: `success`, `error_code`, `status`, `external_post_id`, `privacy_status:"private"`, `idempotency_state`, `published_at`, `message`, `no_secrets:true`. `published`/`external_post_id` **nur** bei eindeutigem Erfolg; public/unlisted → `invalid_privacy_status`; Flag aus → `upload_disabled`. **Nie Token/Secrets.** |
+| `POST …/youtube/publish` | **Echter PRIVATER Upload** (mit Retry/Backoff). Body `{confirm:"UPLOAD_PRIVATE", privacy_status:"private"}`. Immer **HTTP 200** mit `success`, `error_code`, `status`, `external_post_id`, `privacy_status:"private"`, `idempotency_state`, `retry_count`, `published_at`, `message`, `no_secrets:true`. `published`/`external_post_id` **nur** bei eindeutigem Erfolg; public/unlisted → `invalid_privacy_status`; Flag aus → `upload_disabled`. **Nie Token/Secrets.** |
+| `GET …/youtube/upload-status` | Status/Recovery: `status`, `idempotency_state`, `publish_attempt_count`, `last_publish_error`, `external_post_id_present`, `can_retry`, `requires_manual_check`, `requires_reauth`, `upload_progress`, `attempt_history_summary`, `no_secrets:true`. Löst nichts aus. **Nie Token/Secrets/Session-URIs.** |
 | `GET …/youtube/readiness` | sichere OAuth-Readiness (Flag, Credentials-Metadaten, Token-Store-Status, Scope) — **nie Token/Secrets** |
 | `POST …/youtube/auth/start` | Draft-Legacy: `oauth_disabled` (Flag aus) bzw. `not_implemented_auth_flow`; kein Browser, kein Token |
 | `POST …/youtube/auth/logout` | löscht Token über Keychain (idempotent, ohne Leak) |

@@ -99,6 +99,31 @@ class Settings:
             "CLIPFORGE_YOUTUBE_OAUTH_STATE_TTL_SECONDS", 600
         )
     )
+    # --- YouTube Upload Hardening (Phase 3b) ---
+    # ZWEITES, unabhängiges Flag für den manuellen echten E2E-Testmodus. Nur
+    # wenn DIESES zusätzlich zu CLIPFORGE_ENABLE_YOUTUBE_UPLOAD gesetzt ist, darf
+    # das manuelle Skript einen echten Upload versuchen. Automatische Tests
+    # setzen es NIE. Default AUS.
+    enable_youtube_real_test: bool = field(
+        default_factory=lambda: os.environ.get(
+            "CLIPFORGE_ENABLE_YOUTUBE_REAL_TEST", "false"
+        ).strip().lower() == "true"
+    )
+    # Retry/Backoff-Parameter für den Upload (kontrolliert, dokumentiert).
+    youtube_upload_max_attempts: int = field(
+        default_factory=lambda: _get_int("CLIPFORGE_YOUTUBE_UPLOAD_MAX_ATTEMPTS", 5)
+    )
+    youtube_upload_initial_delay: float = field(
+        default_factory=lambda: _get_float("CLIPFORGE_YOUTUBE_UPLOAD_INITIAL_DELAY", 1.0)
+    )
+    youtube_upload_max_delay: float = field(
+        default_factory=lambda: _get_float("CLIPFORGE_YOUTUBE_UPLOAD_MAX_DELAY", 32.0)
+    )
+    # Chunk-Größe für den resumable Upload in Bytes (-1 = ein Request, Google-
+    # Beispiel-Default; positiv = granularer Fortschritt/Resume, Vielfaches von 256KB).
+    youtube_upload_chunk_bytes: int = field(
+        default_factory=lambda: _get_int("CLIPFORGE_YOUTUBE_UPLOAD_CHUNK_BYTES", -1)
+    )
 
     @property
     def llm_available(self) -> bool:

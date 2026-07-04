@@ -1436,6 +1436,8 @@ def _require_youtube_draft(job: Job, publishing_id: str) -> dict:
 _youtube_upload_uploader = None
 _youtube_upload_credentials_loader = None
 _youtube_upload_refresher = None
+_youtube_upload_session_factory = None
+_youtube_upload_sleep = None  # Tests setzen einen No-op → schlafen nie real
 
 
 def build_youtube_upload_service() -> YouTubeUploadService:
@@ -1445,6 +1447,8 @@ def build_youtube_upload_service() -> YouTubeUploadService:
         credentials_loader=_youtube_upload_credentials_loader,
         refresher=_youtube_upload_refresher,
         uploader=_youtube_upload_uploader,
+        session_factory=_youtube_upload_session_factory,
+        sleep_fn=_youtube_upload_sleep,
     )
 
 
@@ -1482,6 +1486,16 @@ def youtube_publish(
         confirm=req.confirm, privacy_status=req.privacy_status,
     )
     return result
+
+
+@app.get("/api/jobs/{job_id}/publishing/{publishing_id}/youtube/upload-status")
+def youtube_upload_status(job_id: str, publishing_id: str) -> dict:
+    """Sichere Status-/Recovery-Übersicht (Idempotenz, can_retry,
+    requires_manual_check, requires_reauth, Attempt-History-Summary). Löst
+    nichts aus, enthält NIE Token/Secrets/Session-URIs."""
+    job = _require_job(job_id)
+    draft = _require_youtube_draft(job, publishing_id)
+    return build_youtube_upload_service().upload_status(draft)
 
 
 # --- YouTube OAuth-Readiness (Phase 2) — KEIN echter Upload, KEIN Token in

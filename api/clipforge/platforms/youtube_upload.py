@@ -38,7 +38,7 @@ from __future__ import annotations
 import os
 
 from ..config import Settings
-from ..publishing import apply_publish_state, build_validation_summary
+from ..publishing import apply_publish_state, build_validation_summary, load_draft
 from .youtube_auth import REQUIRED_SCOPE, YouTubeTokenStore
 from .youtube_oauth import (
     GOOGLE_TOKEN_ENDPOINT,
@@ -185,23 +185,110 @@ def _default_refresher(creds) -> None:
     creds.refresh(Request())
 
 
-def _default_uploader(creds, body: dict, media_path: str) -> dict:
-    """Echter resumable Upload via google-api-python-client. Gibt bei Erfolg
-    die (sanitisierte) API-Antwort mit `id` zurück; klassifizierbare Fehler
-    werden als Exceptions durchgereicht und vom Service klassifiziert."""
+def _default_session_factory(creds, body: dict, media_path: str, chunk_bytes: int = -1):
+    """Baut eine **resumable Upload-Session** (google-api-python-client). Das
+    zurückgegebene Request-Objekt hat `next_chunk() -> (status, response)` und
+    verwaltet den Session-URI + Offset intern (Recovery bei retriablen Fehlern
+    passiert durch erneuten `next_chunk()`-Aufruf auf DEMSELBEN Objekt)."""
     try:
         from googleapiclient.discovery import build  # type: ignore
         from googleapiclient.http import MediaFileUpload  # type: ignore
     except Exception:  # noqa: BLE001
         raise UploadDependencyMissing()
     youtube = build("youtube", "v3", credentials=creds, cache_discovery=False)
-    media = MediaFileUpload(media_path, chunksize=-1, resumable=True)
-    request = youtube.videos().insert(part="snippet,status", body=body,
-                                      media_body=media)
-    response = None
-    while response is None:
-        _status, response = request.next_chunk()
-    return response or {}
+    media = MediaFileUpload(media_path, chunksize=chunk_bytes, resumable=True)
+    return youtube.videos().insert(part="snippet,status", body=body,
+                                   media_body=media)
+
+
+class _LegacyUploaderSession:
+    """Adapter, der einen alten `uploader(creds, body, media) -> dict` als
+    Session mit `next_chunk()` verpackt (Rückwärtskompatibilität für Prompt 27
+    und den app-Seam `_youtube_upload_uploader`)."""
+
+    def __init__(self, uploader, creds, body, media_path):
+        self._uploader = uploader
+        self._creds = creds
+        self._body = body
+        self._media_path = media_path
+
+    def next_chunk(self):
+        # Ein „Chunk" = ein vollständiger Uploadversuch; Fehler propagieren.
+        return None, self._uploader(self._creds, self._body, self._media_path)
+
+
+# --------------------------------------------------------------------------
+# Retry Policy (kontrolliert, testbar; keine echten sleeps in Unit-Tests)
+# --------------------------------------------------------------------------
+
+# Retry-Kategorien.
+RETRYABLE = "retryable"
+NON_RETRYABLE = "non_retryable"
+AUTH_REFRESHABLE = "auth_refreshable"
+UNCERTAIN = "uncertain"
+
+
+class YouTubeRetryPolicy:
+    """Zentrale, dokumentierte Retry-/Backoff-Policy.
+
+    Kategorien: `retryable` · `non_retryable` · `auth_refreshable` · `uncertain`.
+    `sleep_fn`/`jitter_fn` sind injizierbar → Unit-Tests schlafen NIE real und
+    haben deterministischen Jitter.
+
+    Quellen (offiziell, abgerufen 2026-07-03):
+      - Retriable HTTP: `[500, 502, 503, 504]` + Netzwerk-Exceptions,
+        Exponential-Backoff mit Jitter (Resumable-Upload-Guide, Prompt 27).
+      - `quotaExceeded (403)` = Kontingent erschöpft → **nicht** aggressiv
+        wiederholen; `badRequest (400)`/`forbidden (403)`/`notFound (404)` =
+        permanent (docs/errors). `rateLimitExceeded`/`429` → retriable mit
+        Backoff (Policy; nicht explizit in der Fehler-Referenz → TODO-verifiziert).
+    """
+
+    def __init__(self, *, max_attempts: int = 5, initial_delay_seconds: float = 1.0,
+                 max_delay_seconds: float = 32.0, multiplier: float = 2.0,
+                 jitter_enabled: bool = True, jitter_fn=None):
+        self.max_attempts = max(1, int(max_attempts))
+        self.initial_delay_seconds = max(0.0, float(initial_delay_seconds))
+        self.max_delay_seconds = max(0.0, float(max_delay_seconds))
+        self.multiplier = max(1.0, float(multiplier))
+        self.jitter_enabled = bool(jitter_enabled)
+        import random
+        self._jitter_fn = jitter_fn or random.random
+
+    def classify_retryability(self, error: Exception) -> str:
+        if isinstance(error, UploadUncertain):
+            return UNCERTAIN
+        code = getattr(error, "code", None) if isinstance(error, UploadError) else None
+        status = _http_status(error)
+        reason = _http_reason(error)
+        if status == 401 or code == INVALID_CREDENTIALS:
+            return AUTH_REFRESHABLE
+        if status == 403:
+            if reason == "quotaExceeded":
+                return NON_RETRYABLE
+            if reason == "rateLimitExceeded":
+                return RETRYABLE
+            return NON_RETRYABLE  # forbidden/permission
+        if status == 429:
+            return RETRYABLE
+        if status in RETRIABLE_STATUS_CODES:
+            return RETRYABLE
+        if _is_network_error(error):
+            return RETRYABLE
+        return NON_RETRYABLE
+
+    def should_retry(self, error: Exception, attempt: int) -> bool:
+        """attempt = wievielter RETRY-Versuch (1-basiert)."""
+        return (self.classify_retryability(error) == RETRYABLE
+                and attempt < self.max_attempts)
+
+    def calculate_delay(self, attempt: int) -> float:
+        """Exponentielles Backoff mit optionalem Full-Jitter. attempt 1-basiert."""
+        raw = self.initial_delay_seconds * (self.multiplier ** max(0, attempt - 1))
+        raw = min(self.max_delay_seconds, raw)
+        if self.jitter_enabled:
+            return max(0.0, float(self._jitter_fn()) * raw)
+        return raw
 
 
 # --------------------------------------------------------------------------
@@ -212,6 +299,9 @@ class YouTubeUploadService:
     """Isolierter, sicherer Private-Upload-Service. Alle Google-Interaktionen
     sind injizierbar → Tests laufen ohne echte Google-Verbindung."""
 
+    # Wie viele Attempt-Einträge in der Draft-History maximal behalten werden.
+    _MAX_ATTEMPT_HISTORY = 20
+
     def __init__(
         self,
         settings: Settings,
@@ -220,6 +310,9 @@ class YouTubeUploadService:
         credentials_loader=None,
         refresher=None,
         uploader=None,
+        session_factory=None,
+        retry_policy: "YouTubeRetryPolicy | None" = None,
+        sleep_fn=None,
         now_fn=None,
     ) -> None:
         self.settings = settings
@@ -229,7 +322,17 @@ class YouTubeUploadService:
         )
         self._credentials_loader = credentials_loader or _default_credentials_loader
         self._refresher = refresher or _default_refresher
-        self._uploader = uploader or _default_uploader
+        # Upload-Nahtstelle: `session_factory` (neu, resumable) hat Vorrang;
+        # sonst Legacy-`uploader` (Prompt 27); sonst der echte Google-Default.
+        self._session_factory = session_factory
+        self._uploader = uploader
+        self.retry_policy = retry_policy or YouTubeRetryPolicy(
+            max_attempts=settings.youtube_upload_max_attempts,
+            initial_delay_seconds=settings.youtube_upload_initial_delay,
+            max_delay_seconds=settings.youtube_upload_max_delay,
+        )
+        import time as _time
+        self._sleep = sleep_fn or _time.sleep
         import datetime
         self._now = now_fn or (
             lambda: datetime.datetime.now(datetime.timezone.utc).isoformat())
@@ -355,16 +458,17 @@ class YouTubeUploadService:
             return None, INVALID_CREDENTIALS
         return creds, None
 
-    def refresh_credentials_if_needed(self, creds):
-        """Refresht nur bei Bedarf. Rückgabe: (creds, error_code_or_None).
+    def refresh_credentials_if_needed(self, creds, force: bool = False):
+        """Refresht nur bei Bedarf (oder `force=True`, z. B. nach 401).
+        Rückgabe: (creds, error_code_or_None).
 
-        - Access-Token noch gültig → kein Refresh.
-        - Abgelaufen + refresh_token → offizieller Refresh, danach neuen Stand
-          NUR über Keychain speichern.
+        - Access-Token noch gültig und nicht `force` → kein Refresh.
+        - Abgelaufen/`force` + refresh_token → offizieller Refresh, danach neuen
+          Stand NUR über Keychain speichern.
         - Kein refresh_token → reauth_required.
         - Refresh-Fehler → token_refresh_failed.
         """
-        if getattr(creds, "valid", False):
+        if not force and getattr(creds, "valid", False):
             return creds, None
         if not getattr(creds, "refresh_token", None):
             return None, REAUTH_REQUIRED
@@ -553,77 +657,225 @@ class YouTubeUploadService:
 
         body = self.build_upload_request(draft)
         media_path = draft.get("mp4_path")
+        ctx = {"retry_count": 0}
 
-        # 10) Upload ausführen — Google-Interaktion ist injiziert/mockbar.
+        def _entry(outcome: str, error_code: str | None) -> dict:
+            return {
+                "attempt_id": attempt_id,
+                "started_at": started_at,
+                "completed_at": self._now(),
+                "outcome": outcome,
+                "error_code": error_code,
+                "retry_count": int(ctx["retry_count"]),
+            }
+
+        def _on_progress(status) -> None:
+            self._persist_progress(job_dir, publishing_id, status)
+
+        # 10) Upload mit kontrolliertem Retry/Backoff — Google-Interaktion ist
+        #     injiziert/mockbar (Tests machen NIE echte Calls, schlafen NIE real).
         try:
-            raw = self._uploader(creds, body, media_path)
+            raw = self._run_upload(creds, body, media_path, ctx, _on_progress)
+        except UploadUncertain:
+            self._finish(job_dir, publishing_id, status="failed",
+                         idem="uncertain", error_code=UPLOAD_RESULT_UNCERTAIN,
+                         entry=_entry("uncertain", UPLOAD_RESULT_UNCERTAIN))
+            return {**base, "error_code": UPLOAD_RESULT_UNCERTAIN, "status": "failed",
+                    "idempotency_state": "uncertain", "retry_count": ctx["retry_count"],
+                    "message": "Upload-Ergebnis unklar — bitte YouTube-Studio "
+                               "prüfen, bevor erneut versucht wird."}
         except Exception as exc:  # noqa: BLE001 — klassifizieren, nie leaken
             code = self.classify_error(exc)
             uncertain = code in (UPLOAD_RESULT_UNCERTAIN, UPLOAD_STATE_UNCERTAIN)
-            self._record_failure(job_dir, publishing_id, code, uncertain, attempt_count)
-            msg = ("Upload-Ergebnis unklar — bitte YouTube-Konto prüfen, "
-                   "bevor erneut versucht wird." if uncertain
-                   else "Upload fehlgeschlagen.")
+            idem_final = "uncertain" if uncertain else "failed"
+            self._finish(job_dir, publishing_id, status="failed", idem=idem_final,
+                         error_code=code, entry=_entry(idem_final, code))
+            msg = ("Upload-Ergebnis unklar — bitte YouTube-Studio prüfen, bevor "
+                   "erneut versucht wird." if uncertain else "Upload fehlgeschlagen.")
             return {**base, "error_code": code, "status": "failed",
-                    "idempotency_state": "uncertain" if uncertain else "failed",
+                    "idempotency_state": idem_final, "retry_count": ctx["retry_count"],
                     "message": msg}
 
         # 11) Erfolg NUR bei eindeutiger id.
         result = self.sanitize_result(raw)
         video_id = result.get("video_id")
         if not video_id:
-            # Antwort ohne id → Ergebnis unklar (kein Fake-published).
-            self._record_failure(job_dir, publishing_id, UPLOAD_RESULT_UNCERTAIN,
-                                 True, attempt_count)
-            return {**base, "error_code": UPLOAD_RESULT_UNCERTAIN,
-                    "status": "failed", "idempotency_state": "uncertain",
+            self._finish(job_dir, publishing_id, status="failed", idem="uncertain",
+                         error_code=UPLOAD_RESULT_UNCERTAIN,
+                         entry=_entry("uncertain", UPLOAD_RESULT_UNCERTAIN))
+            return {**base, "error_code": UPLOAD_RESULT_UNCERTAIN, "status": "failed",
+                    "idempotency_state": "uncertain", "retry_count": ctx["retry_count"],
                     "message": "Upload-Ergebnis unklar (keine Video-ID)."}
 
         completed_at = self._now()
         try:
-            apply_publish_state(job_dir, publishing_id, {
-                "status": "published",
-                "idempotency_state": "succeeded",
-                "external_post_id": video_id,
-                "published_at": completed_at,
-                "publish_completed_at": completed_at,
-                "last_publish_error": None,
-                "error": None,
-            })
+            self._finish(job_dir, publishing_id, status="published",
+                         idem="succeeded", error_code=None,
+                         entry=_entry("succeeded", None),
+                         extra={"external_post_id": video_id,
+                                "published_at": completed_at, "error": None})
         except Exception:  # noqa: BLE001 — Remote erfolgreich, lokal nicht
-            # Video existiert remote, lokale Persistenz scheiterte → uncertain.
             return {**base, "error_code": UPLOAD_RESULT_UNCERTAIN,
                     "status": "publishing", "idempotency_state": "uncertain",
-                    "external_post_id": video_id,
+                    "external_post_id": video_id, "retry_count": ctx["retry_count"],
                     "message": "Upload war erfolgreich, lokale Speicherung "
                                "schlug fehl — bitte Status prüfen."}
 
         return {
-            "success": True,
-            "error_code": None,
-            "status": "published",
-            "publishing_id": publishing_id,
-            "external_post_id": video_id,
-            "privacy_status": ALLOWED_PRIVACY,
-            "idempotency_state": "succeeded",
-            "published_at": completed_at,
+            "success": True, "error_code": None, "status": "published",
+            "publishing_id": publishing_id, "external_post_id": video_id,
+            "privacy_status": ALLOWED_PRIVACY, "idempotency_state": "succeeded",
+            "published_at": completed_at, "retry_count": ctx["retry_count"],
             "message": "Privates Video erfolgreich hochgeladen (privat).",
             "no_secrets": True,
         }
 
-    def _record_failure(self, job_dir: str, publishing_id: str, code: str,
-                        uncertain: bool, attempt_count: int) -> None:
-        """Persistiert einen fehlgeschlagenen/unklaren Versuch (ohne Secrets)."""
+    # -- Upload-Ausführung mit Retry/Backoff ------------------------------
+
+    def _new_session(self, creds, body: dict, media_path: str):
+        if self._session_factory is not None:
+            return self._session_factory(creds, body, media_path)
+        if self._uploader is not None:
+            return _LegacyUploaderSession(self._uploader, creds, body, media_path)
+        return _default_session_factory(
+            creds, body, media_path, self.settings.youtube_upload_chunk_bytes)
+
+    def _run_upload(self, creds, body: dict, media_path: str, ctx: dict, on_progress):
+        """Treibt den resumable Upload mit kontrolliertem Retry/Backoff.
+
+        - Retriable (5xx/429/rateLimit/Netzwerk): Backoff, dann `next_chunk()`
+          auf DERSELBEN Session (resumable Resume — kein Duplikat).
+        - 401/auth: **maximal ein** erzwungener Refresh + neue Session, dann
+          erneut. Danach → Fehler (invalid_credentials/reauth).
+        - Nicht retriable: sofort abbrechen.
+        - Retriable erschöpft: `UploadUncertain` (möglicher Remote-Commit — NIE
+          blind neu starten).
+        Wirft `UploadUncertain` oder eine klassifizierbare Exception.
+        """
+        policy = self.retry_policy
+        session = self._new_session(creds, body, media_path)
+        response = None
+        refreshed_once = False
+        while response is None:
+            try:
+                status, response = session.next_chunk()
+                if status is not None and on_progress is not None:
+                    on_progress(status)
+            except UploadUncertain:
+                raise
+            except Exception as exc:  # noqa: BLE001
+                cat = policy.classify_retryability(exc)
+                if cat == UNCERTAIN:
+                    raise UploadUncertain()
+                if cat == AUTH_REFRESHABLE and not refreshed_once:
+                    refreshed_once = True
+                    new_creds, err = self.refresh_credentials_if_needed(creds, force=True)
+                    if err == REAUTH_REQUIRED:
+                        raise ReauthRequired()
+                    if err == TOKEN_REFRESH_FAILED:
+                        raise TokenRefreshFailed()
+                    if err == UPLOAD_DEPENDENCY_MISSING:
+                        raise UploadDependencyMissing()
+                    if err:
+                        raise  # unbekannt → als invalid_credentials failen
+                    creds = new_creds
+                    # 401 ⇒ Chunks wurden nicht akzeptiert ⇒ neue Session ist sicher.
+                    session = self._new_session(creds, body, media_path)
+                    response = None
+                    continue
+                if cat == RETRYABLE and policy.should_retry(exc, ctx["retry_count"] + 1):
+                    ctx["retry_count"] += 1
+                    self._sleep(policy.calculate_delay(ctx["retry_count"]))
+                    continue  # dieselbe Session fortsetzen (resumable)
+                if cat == RETRYABLE:
+                    # Retries erschöpft → möglicher Remote-Erfolg unklar.
+                    raise UploadUncertain()
+                raise  # non_retryable
+        return response or {}
+
+    # -- Attempt-History + Progress (additiv, ohne Secrets) ---------------
+
+    def _finish(self, job_dir: str, publishing_id: str, *, status: str, idem: str,
+                error_code: str | None, entry: dict, extra: dict | None = None) -> None:
+        """Schreibt den Endzustand + hängt einen Attempt-History-Eintrag an
+        (gekappt). Enthält NIE Tokens/Secrets/Session-URIs."""
+        current = load_draft(job_dir, publishing_id) or {}
+        history = list(current.get("publish_attempts") or [])
+        history.append(_safe_attempt_entry(entry))
+        history = history[-self._MAX_ATTEMPT_HISTORY:]
+        updates = {
+            "status": status,
+            "idempotency_state": idem,
+            "last_publish_error": error_code,
+            "error": error_code,
+            "publish_completed_at": entry.get("completed_at"),
+            "publish_attempts": history,
+        }
+        if extra:
+            updates.update(extra)
+        apply_publish_state(job_dir, publishing_id, updates)
+
+    def _persist_progress(self, job_dir: str, publishing_id: str, status) -> None:
+        """Best-effort: schreibt Fortschritt (bytes/percent) in den Draft, damit
+        ein paralleler upload-status-Poll ihn sehen kann. Kein Secret/Session-URI.
+        """
+        prog = _extract_progress(status)
+        if prog is None:
+            return
         try:
-            apply_publish_state(job_dir, publishing_id, {
-                "status": "failed",
-                "idempotency_state": "uncertain" if uncertain else "failed",
-                "last_publish_error": code,
-                "error": code,
-                "publish_completed_at": self._now(),
-            })
+            apply_publish_state(job_dir, publishing_id, {"upload_progress": prog})
         except Exception:  # noqa: BLE001
             pass
+
+    # -- Upload-Status / Recovery-Check -----------------------------------
+
+    def upload_status(self, draft: dict) -> dict:
+        """Sichere Status-/Recovery-Übersicht (für den Endpoint). Keine Secrets."""
+        idem = derive_idempotency_state(draft)
+        ext_present = bool(draft.get("external_post_id"))
+        last_err = draft.get("last_publish_error")
+        requires_reauth = last_err in (TOKEN_MISSING, REAUTH_REQUIRED, INVALID_CREDENTIALS)
+        requires_manual_check = idem == "uncertain"
+        can_retry = idem in ("never_attempted", "failed") and not ext_present
+        history = draft.get("publish_attempts") or []
+        summary = [_safe_attempt_entry(a) for a in history[-self._MAX_ATTEMPT_HISTORY:]]
+        return {
+            "status": draft.get("status"),
+            "idempotency_state": idem,
+            "publish_attempt_count": int(draft.get("publish_attempt_count") or 0),
+            "last_publish_error": last_err,
+            "external_post_id_present": ext_present,
+            "can_retry": bool(can_retry),
+            "requires_manual_check": requires_manual_check,
+            "requires_reauth": bool(requires_reauth),
+            "upload_progress": draft.get("upload_progress"),
+            "attempt_history_summary": summary,
+            "no_secrets": True,
+        }
+
+    # -- Sicherer manueller Real-Testmodus (nie in automatischen Tests) ---
+
+    def real_test_ready(self, draft: dict) -> tuple[bool, list[str]]:
+        """Prüft ALLE Voraussetzungen für einen echten manuellen Test-Upload.
+        Beide Flags müssen an sein; Automatische Tests setzen das Real-Test-Flag
+        NIE. Rückgabe: (ok, fehlende_reasons)."""
+        reasons: list[str] = []
+        if not self.settings.enable_youtube_upload:
+            reasons.append(UPLOAD_DISABLED)
+        if not self.settings.enable_youtube_real_test:
+            reasons.append("real_test_flag_missing")
+        rd = self.readiness(draft)
+        if not rd["oauth_ready"]:
+            reasons.append(OAUTH_NOT_READY)
+        if not rd["token_present"]:
+            reasons.append(TOKEN_MISSING)
+        if not rd["draft_valid"]:
+            reasons.append(INVALID_DRAFT)
+        if not rd["mp4_exists"]:
+            reasons.append(MP4_MISSING)
+        if not self.token_store.is_available():
+            reasons.append(TOKEN_MISSING)
+        return (len(reasons) == 0, reasons)
 
 
 # --------------------------------------------------------------------------
@@ -660,3 +912,41 @@ def _http_reason(error: Exception) -> str | None:
 def _is_network_error(error: Exception) -> bool:
     name = type(error).__name__.lower()
     return any(k in name for k in ("timeout", "connection", "httplib", "ssl"))
+
+
+# Nur diese Felder eines Attempt-Eintrags werden persistiert/zurückgegeben —
+# garantiert keine Tokens/Header/Session-URIs/rohe Exceptions.
+_ATTEMPT_FIELDS = ("attempt_id", "started_at", "completed_at", "outcome",
+                   "error_code", "retry_count")
+
+
+def _safe_attempt_entry(entry: dict) -> dict:
+    out: dict = {}
+    for k in _ATTEMPT_FIELDS:
+        v = entry.get(k)
+        if isinstance(v, (str, int, float, bool)) or v is None:
+            out[k] = v
+    return out
+
+
+def _extract_progress(status) -> dict | None:
+    """Liest Fortschritt aus einem google MediaUploadProgress-Status (best-effort).
+    Enthält NUR Zahlen — nie den (sensiblen) resumable Session-URI."""
+    if status is None:
+        return None
+    uploaded = getattr(status, "resumable_progress", None)
+    total = getattr(status, "total_size", None)
+    percent = None
+    prog_fn = getattr(status, "progress", None)
+    if callable(prog_fn):
+        try:
+            percent = round(float(prog_fn()) * 100.0, 1)
+        except Exception:  # noqa: BLE001
+            percent = None
+    if uploaded is None and percent is None:
+        return None
+    return {
+        "bytes_uploaded": int(uploaded) if isinstance(uploaded, (int, float)) else None,
+        "total_bytes": int(total) if isinstance(total, (int, float)) else None,
+        "progress_percent": percent,
+    }

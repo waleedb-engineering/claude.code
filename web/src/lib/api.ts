@@ -23,6 +23,7 @@ import type {
   YouTubeOAuthStatus,
   YouTubeReadiness,
   YouTubeUploadResult,
+  YouTubeUploadStatus,
 } from "./types";
 
 export const API_BASE =
@@ -511,6 +512,17 @@ export async function youtubePublishPrivate(
     `/api/jobs/${jobId}/publishing/${publishingId}/youtube/publish`,
     "POST",
     { confirm: "UPLOAD_PRIVATE", privacy_status: "private" },
+  );
+}
+
+// Sichere Status-/Recovery-Übersicht (Idempotenz, can_retry, requires_reauth,
+// Attempt-History). Löst nichts aus; enthält NIE Tokens/Secrets.
+export async function youtubeUploadStatus(
+  jobId: string,
+  publishingId: string,
+): Promise<YouTubeUploadStatus> {
+  return getJson<YouTubeUploadStatus>(
+    `/api/jobs/${jobId}/publishing/${publishingId}/youtube/upload-status`,
   );
 }
 

@@ -557,7 +557,38 @@ export interface YouTubeUploadResult {
   privacy_status: "private";
   idempotency_state: IdempotencyState;
   published_at: string | null;
+  retry_count?: number;
   message: string;
+  no_secrets: boolean;
+}
+
+export interface UploadProgress {
+  bytes_uploaded: number | null;
+  total_bytes: number | null;
+  progress_percent: number | null;
+}
+
+export interface UploadAttemptSummary {
+  attempt_id: string;
+  started_at: string | null;
+  completed_at: string | null;
+  outcome: string | null;
+  error_code: string | null;
+  retry_count: number | null;
+}
+
+// Status-/Recovery-Übersicht des Uploads. Enthält NIE Tokens/Secrets.
+export interface YouTubeUploadStatus {
+  status: string;
+  idempotency_state: IdempotencyState;
+  publish_attempt_count: number;
+  last_publish_error: string | null;
+  external_post_id_present: boolean;
+  can_retry: boolean;
+  requires_manual_check: boolean;
+  requires_reauth: boolean;
+  upload_progress: UploadProgress | null;
+  attempt_history_summary: UploadAttemptSummary[];
   no_secrets: boolean;
 }
 

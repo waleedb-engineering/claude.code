@@ -56,6 +56,7 @@ npm run dev      # http://127.0.0.1:3000
 | Schritt 25 | **YouTube OAuth-Flow-Skelett (Consent-URL, State/CSRF+PKCE, Callback, sichere Token-Speicherung — kein echter Exchange/Upload)** | ✅ fertig & verifiziert |
 | Schritt 26 | **YouTube OAuth echter Token-Exchange (offizielle Google-Library, PKCE) — Token nur im Keychain, weiterhin kein Upload** | ✅ fertig & verifiziert |
 | Schritt 27 | **YouTube echter PRIVATER Upload (`videos.insert`, private-only) — Feature-Flag + `UPLOAD_PRIVATE`-Bestätigung + Idempotenz + Token-Refresh** | ✅ fertig & verifiziert |
+| Schritt 28 | **Upload-Hardening: Retry/Backoff-Policy, Attempt-History, `upload-status` + Reauth-Flow, sicherer manueller E2E-Testmodus** | ✅ fertig & verifiziert |
 | später | Public/Unlisted-Upload, geplante Uploads (`publishAt`), Auto-Posting | 🔭 später |
 
 ### Was schon echt funktioniert
@@ -237,6 +238,22 @@ npm run dev      # http://127.0.0.1:3000
   Fehlt `google-api-python-client` → `upload_dependency_missing` (sauberer
   Fallback). Details in
   [`docs/YOUTUBE_PUBLISHING.md`](docs/YOUTUBE_PUBLISHING.md) §7d.
+- **YouTube Upload-Hardening — Phase 3b** (`platforms/youtube_upload.py`):
+  kontrolliertes **Retry/Backoff** (`YouTubeRetryPolicy`) — retriable
+  `5xx`/`429`/`rateLimitExceeded`/Netzwerk mit Exponential-Backoff+Jitter auf
+  **derselben** resumable Session (kein Duplikat), `quotaExceeded`/permission
+  **nicht** retriable, `401` → **maximal ein** erzwungener Token-Refresh. Sleep
+  und Jitter sind injizierbar → **Tests schlafen nie real**. **Attempt-History**
+  (`publish_attempts`, gekappt, ohne Secrets), ein **`upload-status`**-Endpoint
+  (`can_retry`/`requires_manual_check`/`requires_reauth`/Verlauf) und ein
+  **Reauth-Flow** in der UI. Ein sicherer **manueller** E2E-Testmodus
+  (`scripts/manual_youtube_private_upload.py`) lädt nur bei **zwei** Flags
+  (`…_ENABLE_YOUTUBE_UPLOAD` + `…_ENABLE_YOUTUBE_REAL_TEST`) und voller
+  Konfiguration echt hoch; sonst **`REAL TEST NOT RUN`** (nie ein vorgetäuschter
+  Erfolg). Automatische Tests aktivieren diesen Modus **nie**. Nach `uncertain`:
+  **zuerst YouTube Studio prüfen**. Prozessneustart-Recovery ist bewusst **nicht**
+  vorgetäuscht. Details in
+  [`docs/YOUTUBE_PUBLISHING.md`](docs/YOUTUBE_PUBLISHING.md) §7e.
 
 ### Klar als TODO gekennzeichnet (noch nicht echt)
 - Reframe ist **statischer** Smart-Crop (ein Fokuspunkt pro Clip) — **kein

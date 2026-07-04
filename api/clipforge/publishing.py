@@ -322,7 +322,7 @@ _PUBLISHER_FIELDS = frozenset({
     "status", "external_post_id", "published_at", "error",
     "publish_attempt_id", "publish_started_at", "publish_completed_at",
     "publish_platform", "publish_attempt_count", "last_publish_error",
-    "idempotency_state",
+    "idempotency_state", "publish_attempts", "upload_progress",
 })
 
 

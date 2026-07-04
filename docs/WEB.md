@@ -247,6 +247,15 @@ App öffnen: <http://127.0.0.1:3000>
     `failed`. Bei **`uncertain`** eine deutliche Warnung: „Upload-Ergebnis unklar.
     Bitte YouTube-Konto prüfen, bevor erneut versucht wird." Es gibt **keinen**
     Public- und **keinen** Unlisted-Button.
+    Hardening (Phase 3b): das Panel zeigt zusätzlich **Idempotenz-Zustand +
+    Anzahl Versuche** (aus `…/youtube/upload-status`) und den letzten Fehler als
+    lesbares Label. Bei `failed`+`can_retry` heißt der Button **„Erneut privat
+    hochladen"**; bei **`uncertain`** gibt es **keinen** Retry-Button, sondern die
+    Warnung „Bitte zuerst YouTube Studio prüfen". Bei `token_missing`/
+    `reauth_required`/`invalid_credentials` erscheint **„YouTube erneut
+    verbinden"** (öffnet manuell die Consent-URL, kein Token im Browser, kein
+    Auto-Login) plus „Readiness neu laden". Liefert das Backend echten
+    Fortschritt (`upload_progress`), wird er während `in_progress` angezeigt.
 
 > Echtes Video **ohne** angehängtes Transkript: Die Pipeline transkribiert dann
 > lokal mit faster-whisper. Beim ersten Lauf wird das Modell geladen (~140 MB),
