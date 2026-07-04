@@ -238,6 +238,98 @@ Log-Filter) — als TODO dokumentiert. Der `code` ist kurzlebig und einmalig.
 wiederverwendeter `state` **speichert nichts**; ungültige Token-Payload
 speichert nichts; Path-Traversal im Secrets-Pfad leakt nicht (nur Basename).
 
+## 7d. Phase 3 — Echter PRIVATER Upload (umgesetzt, private-only)
+
+Phase 3 baut den **ersten echten Uploadpfad**: ein validierter YouTube-Draft
+kann nach **expliziter Bestätigung** als **privates** Video über die offizielle
+YouTube Data API v3 (`videos.insert`, resumable) hochgeladen werden.
+
+**Hart ausgeschlossen:** kein `public`/`unlisted`, kein Auto-Posting, kein
+Scheduling, kein TikTok/Instagram. **In Tests passiert nie ein echter Upload**
+(Google-Interaktion injiziert/gemockt).
+
+### Offizielle Upload-Grundlagen (Google, abgerufen 2026-07-03)
+
+Geprüft gegen
+[`youtube/v3/guides/uploading_a_video`](https://developers.google.com/youtube/v3/guides/uploading_a_video):
+
+- **Methode:** `youtube.videos().insert(part="snippet,status", body={snippet,
+  status}, media_body=MediaFileUpload(file, chunksize=-1, resumable=True))`.
+- **Resumable-Loop:** `status, response = request.next_chunk()`; **Erfolg** wenn
+  `'id' in response` (→ die neue Video-ID).
+- **Retriable-Status:** `[500, 502, 503, 504]`; Exponential-Backoff mit Jitter.
+- **Library:** `google-api-python-client` (`googleapiclient.discovery.build`,
+  `googleapiclient.http.MediaFileUpload`) — defensiv importiert (fehlt sie →
+  `upload_dependency_missing`).
+- **Fehlerklassen:** `401` (Credentials), `403 quotaExceeded`/`rateLimitExceeded`
+  bzw. sonstiges `403` (permission), `429` (Rate-Limit). Unverifizierte Projekte
+  laden ohnehin nur **privat** hoch (§2).
+
+### Voraussetzungen für einen echten Upload (ALLE nötig)
+
+`CLIPFORGE_ENABLE_YOUTUBE_UPLOAD=true` · OAuth aktiv · Client-Secrets vorhanden ·
+Token-Store (keyring) verfügbar · Token vorhanden & verwendbar · Draft valide ·
+MP4 existiert · `platform=youtube_shorts` · `privacy_status=private` ·
+exakte Bestätigung `UPLOAD_PRIVATE`. Fehlt eines → sauber blockiert, **kein**
+Upload. Standard: Upload **aus**.
+
+### Modul `platforms/youtube_upload.py` — `YouTubeUploadService`
+
+Alle Google-Interaktionen sind **injizierbar** (`credentials_loader`,
+`refresher`, `uploader`) → Tests laufen ohne echte Verbindung.
+
+- `readiness(draft)` — alle Gates + Idempotenz (siehe Dry-Run §9-Felder).
+- `prepare_credentials()` / `refresh_credentials_if_needed()` — Token aus dem
+  Keychain rekonstruieren; **kein** unnötiger Refresh, wenn das Access-Token
+  gültig ist; abgelaufen + `refresh_token` → offizieller Refresh, neuer Stand
+  **nur** ins Keychain; kein `refresh_token` → `reauth_required`; Refresh-Fehler
+  → `token_refresh_failed`. Access-/Refresh-Token werden **nie** geloggt. Das
+  `client_secret` wird für den Refresh **frisch aus der Datei** gelesen (nie
+  gespeichert/geloggt).
+- `build_upload_request(draft)` — `snippet`+`status`, `privacyStatus` **immer**
+  `private`.
+- `upload_private(...)` — die sichere Transaktion (siehe Idempotenz unten).
+- `classify_error(error)` / `sanitize_result(result)` — stabile interne
+  Fehlercodes bzw. auf `video_id`/Status reduzierte Antwort. **Nie** rohe
+  Google-Exceptions/Secrets.
+
+### Idempotenz (kein Doppel-Upload)
+
+Draft-Felder: `idempotency_state` (`never_attempted`/`in_progress`/`succeeded`/
+`failed`/`uncertain`), `external_post_id`, `publish_attempt_id`,
+`publish_started_at`/`publish_completed_at`, `publish_attempt_count`,
+`last_publish_error`, `publish_platform`.
+
+Regeln: `external_post_id`/`succeeded`/`in_progress`/`uncertain` **blockieren**
+einen (weiteren) Upload; nur `never_attempted`/`failed` erlauben (Retry). Jeder
+Versuch bekommt eine neue `publish_attempt_id` und erhöht `publish_attempt_count`.
+**Kein Fake-Erfolg:** `external_post_id`/`published` werden **nur** bei
+eindeutigem API-Erfolg (`'id'` vorhanden) gesetzt.
+
+**`uncertain` ist zentral:** Netzwerkabbruch/Timeout/5xx **nach** möglichem
+Remote-Erfolg — oder eine erfolgreiche Antwort, die lokal nicht gespeichert
+werden konnte — wird als `uncertain` markiert (nicht blind `failed`) und
+**blockiert** ein automatisches Retry. Der Nutzer muss sein YouTube-Konto prüfen.
+
+### Sichere Statusübergänge (transaktional)
+
+`ready → publishing` (Idempotenz `in_progress`, **vor** dem Call geschrieben, damit
+ein Absturz mittendrin als `in_progress` geblockt bleibt) → bei eindeutigem
+Erfolg `publishing → published` (`external_post_id` Pflicht) · bei eindeutigem
+Fehler `publishing → failed` · bei unklarem Ergebnis `failed` **mit**
+`idempotency_state=uncertain`. Der Trusted Writer `publishing.apply_publish_state`
+schreibt atomar (tmp+rename) und ist der einzige Weg, die reservierten Status zu
+setzen.
+
+### Interne Fehlercodes (nie rohe Google-Exceptions)
+
+`upload_disabled`, `oauth_not_ready`, `token_missing`, `reauth_required`,
+`token_refresh_failed`, `upload_dependency_missing`, `invalid_draft`,
+`mp4_missing`, `already_uploaded`, `upload_in_progress`, `upload_state_uncertain`,
+`invalid_privacy_status`, `confirmation_required`, `quota_exceeded`,
+`rate_limited`, `permission_denied`, `invalid_credentials`, `upload_failed`,
+`upload_result_uncertain`.
+
 ## 8. Feature Flags & Konfiguration
 
 | Variable | Zweck | Default |
@@ -263,8 +355,8 @@ der Callback sauber `exchange_dependency_missing` (kein Crash, kein Token).
 
 ### Lokales Entwickler-Setup
 
-1. `pip install keyring google-auth google-auth-oauthlib` und ein
-   OS-Keychain-Backend bereitstellen.
+1. `pip install keyring google-auth google-auth-oauthlib google-api-python-client`
+   und ein OS-Keychain-Backend bereitstellen.
 2. Google-Cloud-Projekt anlegen, „YouTube Data API v3" aktivieren, OAuth-
    Client (Typ „Desktop/Installed App") erstellen, `client_secrets.json`
    herunterladen. Redirect-URI = `CLIPFORGE_YOUTUBE_REDIRECT_URI` autorisieren.
@@ -278,8 +370,14 @@ der Callback sauber `exchange_dependency_missing` (kein Crash, kein Token).
    Nach dem Login leitet Google **automatisch** auf
    `GET /api/youtube/oauth/callback` zurück, der den Code **echt** gegen ein
    Token tauscht und es **nur** im Keychain speichert (`token_stored: true`).
-   **Upload bleibt trotzdem deaktiviert.**
-6. **Token löschen:** UI „YouTube-Token löschen" oder
+6. **Echter privater Test-Upload (Phase 3):** einen **validierten** Draft
+   wählen, `export CLIPFORGE_ENABLE_YOUTUBE_UPLOAD=true` setzen, in der UI die
+   Checkbox bestätigen, `UPLOAD_PRIVATE` eintippen und „Privat zu YouTube
+   hochladen" klicken (oder `POST …/youtube/publish` mit
+   `{confirm:"UPLOAD_PRIVATE", privacy_status:"private"}`). Das Video ist
+   danach **privat** in deinem Konto. Bei `uncertain` **erst das Konto prüfen**,
+   bevor erneut versucht wird.
+7. **Token löschen:** UI „YouTube-Token löschen" oder
    `POST …/youtube/auth/logout` (idempotent).
 
 ## 9. Dry-Run Workflow
@@ -292,35 +390,34 @@ der Callback sauber `exchange_dependency_missing` (kein Crash, kein Token).
    an `videos.insert` gingen — **ohne** Token, Secrets, Binär-Body).
 4. Es passiert **kein** Upload.
 
-## 10. Warum echte Uploads noch deaktiviert sind
+## 10. Was echt geht — und was bewusst (noch) NICHT
 
-- Der **OAuth-Flow inklusive echtem Token-Exchange** existiert (Phase 2b/2c:
-  Consent-URL, State/CSRF+PKCE, Callback, echter Google-Exchange, sichere
-  Keychain-Ablage). Ein gültiges Token kann also im Keychain liegen — **der
-  Upload (`videos.insert`) ist trotzdem bewusst NICHT gebaut** (Phase 3).
-- Quota-/Verifizierungs-Themen und mehrere API-Details sind **TODO** (§2, §6).
-- Sicherheit vor Bequemlichkeit: ein versehentlicher (ggf. öffentlicher)
-  Upload wäre schwer rückgängig zu machen.
+- **Echter privater Upload (Phase 3): gebaut.** `videos.insert`, `privacy
+  Status=private`, hinter Feature-Flag + `UPLOAD_PRIVATE`-Bestätigung +
+  Idempotenz + Token-Refresh (§7d).
+- **Bewusst NICHT:** `public`/`unlisted` (→ `invalid_privacy_status`), Auto-
+  Posting, Scheduling-Daemon, TikTok/Instagram.
+- Standard bleibt **Upload aus** (`CLIPFORGE_ENABLE_YOUTUBE_UPLOAD=false`) —
+  Sicherheit vor Bequemlichkeit.
+- Quota-/Verifizierungs-Themen und mehrere API-Details bleiben **TODO** (§2, §6).
 
-Der Publish-Endpoint existiert, ist aber **sicher blockiert**: bei
-`CLIPFORGE_ENABLE_YOUTUBE_UPLOAD=false` → `403`; selbst mit Flag+Credentials
-+ Bestätigung liefert er `not_implemented` und ändert den Draft-Status nicht.
+Der Publish-Endpoint gibt **immer HTTP 200** mit strukturiertem Ergebnis zurück
+(`success`/`error_code`/`idempotency_state`); bei fehlenden Voraussetzungen
+passiert **kein** Upload und der Draft-Status bleibt unverändert.
 
-### Voraussetzungen für Phase 3 (echter privater Upload)
+### Nächste Phasen (nach dem privaten Upload)
 
-Der **echte Token-Exchange** (offizielle Library gegen
-`https://oauth2.googleapis.com/token`, inkl. PKCE + Keychain-Ablage) ist **seit
-Phase 2c erledigt**. Für einen echten Upload fehlen noch:
+Der private Upload inkl. Token-Refresh, Idempotenz (`uncertain`-Schutz) und
+transaktionalen Statusübergängen ist gebaut. Offen bleibt:
 
-1. Token-**Refresh**-Logik + Behandlung von `invalid_token`.
+1. **Aktiver Backoff/Retry** bei retriablen 5xx/429 (aktuell werden diese als
+   `uncertain`/`rate_limited` klassifiziert und **nicht** blind wiederholt).
 2. Verifizierung der TODO-API-Details aus §2 (u. a. `publishAt`-Bedingung,
-   Description-Limit, `categoryId`).
-3. Resumable-Upload-Client (`google-api-python-client`) — **neue** Dependency,
-   vor Installation begründen (bewusst NICHT in dieser Phase ergänzt).
-4. `videos.insert` real aufrufen, `external_post_id` **nur bei Erfolg** setzen,
-   Status `publishing → published`/`failed` transaktional, Idempotenz-Guard.
-5. Backoff/Retry für `403`/`429`, Quota-/Rate-Limit-Verhalten.
-6. Access-Log-Hardening: `code`-Query-Parameter am Callback redigieren (§7c).
+   Description-Limit, `categoryId`) → geplante Uploads via `publishAt`.
+3. Behandlung von `invalid_token`/Reauth-Flows in der UI.
+4. Public/Unlisted mit zusätzlicher Bestätigung + ggf. API-Audit.
+5. Access-Log-Hardening: `code`-Query-Parameter am Callback redigieren (§7c);
+   analog sollte der Reverse-Proxy Upload-Requests nicht mitloggen.
 
 ## 11. Roadmap
 
@@ -329,18 +426,18 @@ Phase 2c erledigt**. Für einen echten Upload fehlen noch:
 | 1 | Dry-Run + sicher blockierter Publish-Endpoint | ✅ fertig |
 | 2 | OAuth-**Readiness** + keyring-Token-Ablage/-Löschung (Scope `youtube.upload`, Option B) — **kein echter Upload, kein interaktiver Flow** | ✅ fertig |
 | 2b | OAuth-**Flow-Skelett**: Consent-URL (State/CSRF + PKCE), Callback, sichere Token-Speicherung über Keychain | ✅ fertig |
-| 2c | **Echter** Google-Token-Exchange (offizielle Library `google-auth-oauthlib`, PKCE), Token nur im Keychain — **weiterhin kein Upload, kein `videos.insert`** | ✅ fertig |
-| 3 | Privater Upload (`videos.insert`, `privacyStatus=private`) hinter Flag + Bestätigung + Token-Refresh + Idempotenz | geplant |
+| 2c | **Echter** Google-Token-Exchange (offizielle Library `google-auth-oauthlib`, PKCE), Token nur im Keychain — **weiterhin kein Upload** | ✅ fertig |
+| 3 | **Echter PRIVATER Upload** (`videos.insert`, `privacyStatus=private`) hinter Flag + `UPLOAD_PRIVATE`-Bestätigung + Token-Refresh + Idempotenz (`uncertain`-Schutz) — **nur private, kein public/unlisted, kein Auto-Posting** | ✅ fertig |
 | 4 | Geplante Uploads via `publishAt` (nach TODO-Verifizierung) | geplant |
-| 5 | Public Upload mit extra Bestätigung (`UPLOAD_PUBLIC`) + Verifizierung | geplant |
+| 5 | Public/Unlisted Upload mit extra Bestätigung + Verifizierung | geplant |
 
 ## 12. API-Endpoints (Phase 1 + 2)
 
 | Endpoint | Zweck |
 |---|---|
-| `POST …/youtube/dry-run` | Upload-Vorschau, kein Upload, keine Secrets |
-| `POST …/youtube/publish` | sicher blockiert: `403` (Flag aus), `400` (fehlende/falsche Bestätigung), `409` (keine Credentials / nicht validiert / bereits hochgeladen), sonst `200 not_implemented` |
-| `GET …/youtube/readiness` | sichere Readiness (Flag, Credentials-Metadaten, Token-Store-Status, Scope) — **nie Token/Secrets**, `upload_status: not_implemented` |
+| `POST …/youtube/dry-run` | Upload-Vorschau **inkl. `upload_readiness`** (Gates + Idempotenz), kein Upload, keine Secrets |
+| `POST …/youtube/publish` | **Echter PRIVATER Upload.** Body `{confirm:"UPLOAD_PRIVATE", privacy_status:"private"}`. Immer **HTTP 200** mit strukturiertem Ergebnis: `success`, `error_code`, `status`, `external_post_id`, `privacy_status:"private"`, `idempotency_state`, `published_at`, `message`, `no_secrets:true`. `published`/`external_post_id` **nur** bei eindeutigem Erfolg; public/unlisted → `invalid_privacy_status`; Flag aus → `upload_disabled`. **Nie Token/Secrets.** |
+| `GET …/youtube/readiness` | sichere OAuth-Readiness (Flag, Credentials-Metadaten, Token-Store-Status, Scope) — **nie Token/Secrets** |
 | `POST …/youtube/auth/start` | Draft-Legacy: `oauth_disabled` (Flag aus) bzw. `not_implemented_auth_flow`; kein Browser, kein Token |
 | `POST …/youtube/auth/logout` | löscht Token über Keychain (idempotent, ohne Leak) |
 

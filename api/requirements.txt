@@ -15,8 +15,11 @@ keyring>=24.0.0
 # YouTube-OAuth Token-Exchange (echter Authorization-Code→Token-Tausch inkl.
 # PKCE) über die offizielle Google-Library. OPTIONAL & defensiv importiert:
 # fehlt sie, meldet der Callback sauber "exchange_dependency_missing" (kein
-# Crash, kein Token). NUR für den Token-Exchange nötig — NICHT für Upload:
-# google-api-python-client wird bewusst NICHT ergänzt, da in dieser Phase kein
-# videos.insert stattfindet.
+# Crash, kein Token).
 google-auth>=2.0.0
 google-auth-oauthlib>=1.0.0
+# YouTube Private Upload (videos.insert, resumable) über die offizielle Library.
+# OPTIONAL & defensiv importiert: fehlt sie, meldet der Upload sauber
+# "upload_dependency_missing" (kein Crash, kein Upload). Nur für den echten
+# Private-Upload nötig; Tests laufen ohne diese Library (Google wird gemockt).
+google-api-python-client>=2.0.0

@@ -24,13 +24,8 @@ from ..publishing import build_validation_summary
 from .base import PlatformAdapter
 from .youtube_auth import REQUIRED_SCOPE, YouTubeTokenStore
 
-# Offiziell dokumentierte privacyStatus-Werte (YouTube Data API v3).
-YOUTUBE_PRIVACY_STATUSES = ("private", "unlisted", "public")
+# Default-privacyStatus (der echte Upload erlaubt in dieser Phase NUR private).
 DEFAULT_PRIVACY = "private"
-
-# Bestätigungs-Phrasen (müssen exakt passen).
-CONFIRM_PRIVATE = "UPLOAD_PRIVATE"
-CONFIRM_PUBLIC = "UPLOAD_PUBLIC"
 
 UPLOAD_DISABLED_MESSAGE = "YouTube upload is disabled. Dry-run only."
 
@@ -183,84 +178,10 @@ class YouTubeAdapter(PlatformAdapter):
             "upload_implemented": False,
         }
 
-    def publish(
-        self, draft: dict, *, confirm: str | None = None, privacy_status: str = DEFAULT_PRIVACY
-    ) -> dict:
-        """Sicher blockierter Publish. Gibt in dieser Phase NIEMALS einen
-        echten Erfolg zurück (kein Fake-Success, kein Statuswechsel auf
-        published)."""
-        privacy = (privacy_status or DEFAULT_PRIVACY).strip().lower()
-        result: dict = {
-            "platform": self.platform,
-            "outcome": "",  # disabled | needs_confirmation | not_ready | not_implemented
-            "message": "",
-            "blocked_reasons": [],
-            "privacy_status": privacy,
-            "external_post_id": None,
-            "draft_status_changed": False,
-        }
-
-        # 1) Feature-Flag: standardmäßig AUS.
-        if not self._feature_enabled():
-            result["outcome"] = "disabled"
-            result["message"] = UPLOAD_DISABLED_MESSAGE
-            result["blocked_reasons"].append("feature_disabled")
-            return result
-
-        # 2) Gültiger privacyStatus.
-        if privacy not in YOUTUBE_PRIVACY_STATUSES:
-            result["outcome"] = "needs_confirmation"
-            result["message"] = (
-                f"Invalid privacy_status {privacy!r} "
-                f"(allowed: {', '.join(YOUTUBE_PRIVACY_STATUSES)})."
-            )
-            result["blocked_reasons"].append("invalid_privacy_status")
-            return result
-
-        # 3) Explizite Bestätigungs-Phrase (public verlangt eine strengere).
-        needed = CONFIRM_PUBLIC if privacy == "public" else CONFIRM_PRIVATE
-        if confirm != needed:
-            result["outcome"] = "needs_confirmation"
-            result["message"] = (
-                f"Confirmation phrase {needed!r} is required for "
-                f"privacy_status={privacy}."
-            )
-            result["blocked_reasons"].append("confirmation_required")
-            return result
-
-        # 4) Credentials vorhanden? (nur Existenzprüfung, kein Token-Handling)
-        if not self._credentials_configured():
-            result["outcome"] = "not_ready"
-            result["message"] = "YouTube credentials are not configured."
-            result["blocked_reasons"].append("credentials_not_configured")
-            return result
-
-        # 5) Draft muss validiert & gültig sein.
-        summary = self.validate_draft(draft)
-        if not summary["is_valid"]:
-            result["outcome"] = "not_ready"
-            result["message"] = "Draft did not pass validation."
-            result["blocked_reasons"] = list(summary["blocking_issues"])
-            return result
-
-        # 6) Idempotenz: schon hochgeladen? → nicht doppelt posten.
-        if draft.get("external_post_id"):
-            result["outcome"] = "not_ready"
-            result["message"] = (
-                "Draft already has an external_post_id — refusing to upload twice."
-            )
-            result["blocked_reasons"].append("already_uploaded")
-            return result
-
-        # 7) Alle Vorbedingungen erfüllt — ABER echter Upload ist (bewusst)
-        #    noch nicht implementiert. KEIN Fake-Erfolg, KEIN Statuswechsel.
-        result["outcome"] = "not_implemented"
-        result["message"] = (
-            "All preconditions met, but the real YouTube upload is not "
-            "implemented yet (Phase 1: dry-run only). No upload was performed "
-            "and the draft status is unchanged."
-        )
-        return result
+    # Hinweis: Der echte (private) Upload liegt bewusst NICHT im Adapter,
+    # sondern im dedizierten `YouTubeUploadService` (platforms/youtube_upload.py)
+    # — inkl. Token-Refresh, Idempotenz und sicheren Statusübergängen. Der
+    # Adapter bleibt für Dry-Run + OAuth-Readiness zuständig.
 
     # ---- OAuth-Readiness (Phase 2) --------------------------------------
     # Rein informativ & sicher: prüft, OB ein OAuth/Upload später möglich wäre.

@@ -1,13 +1,14 @@
 """Plattform-Adapter für Publishing.
 
-Aktuell nur YouTube. Dry-Run + OAuth-Readiness + OAuth-Flow (Consent-URL,
-State/CSRF+PKCE, Callback, **echter** Google-Token-Exchange über die offizielle
-Library, sichere Keychain-Token-Ablage) — aber weiterhin **kein Upload** und
-**kein `videos.insert`**. Siehe docs/YOUTUBE_PUBLISHING.md.
+Aktuell nur YouTube: Dry-Run + OAuth-Flow (Consent-URL, State/CSRF+PKCE, echter
+Token-Exchange, Keychain-Ablage) + **echter privater Upload** (`videos.insert`,
+PRIVATE-only, hinter Feature-Flag + expliziter Bestätigung + Idempotenz). **Kein
+public/unlisted, kein Auto-Posting.** Siehe docs/YOUTUBE_PUBLISHING.md.
 """
 
 from .base import PlatformAdapter
 from .youtube import YouTubeAdapter
+from .youtube_upload import YouTubeUploadService, derive_idempotency_state
 from .youtube_oauth import (
     OAuthClientSecretsMissing,
     OAuthDependencyMissing,
@@ -34,4 +35,6 @@ __all__ = [
     "OAuthExchangeFailed",
     "real_google_token_exchange",
     "sanitize_token_payload",
+    "YouTubeUploadService",
+    "derive_idempotency_state",
 ]

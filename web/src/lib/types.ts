@@ -518,6 +518,47 @@ export interface YouTubeDryRun {
     note: string;
   };
   upload_implemented: boolean;
+  upload_readiness?: YouTubeUploadReadiness;
+}
+
+// --- YouTube Private Upload (Phase 3 — echter privater Upload) --------------
+
+export type IdempotencyState =
+  | "never_attempted"
+  | "in_progress"
+  | "succeeded"
+  | "failed"
+  | "uncertain";
+
+export interface YouTubeUploadReadiness {
+  upload_feature_enabled: boolean;
+  oauth_ready: boolean;
+  token_present: boolean;
+  token_refresh_possible: boolean;
+  draft_valid: boolean;
+  mp4_exists: boolean;
+  idempotency_state: IdempotencyState;
+  already_uploaded: boolean;
+  publish_attempt_count: number;
+  can_attempt_private_upload: boolean;
+  privacy_status: "private";
+  blocked_reasons: string[];
+  warnings: string[];
+  no_secrets: boolean;
+}
+
+// Antwort des echten Private-Upload-Endpoints. Enthält NIE Tokens/Secrets.
+export interface YouTubeUploadResult {
+  success: boolean;
+  error_code: string | null;
+  status: string;
+  publishing_id: string;
+  external_post_id: string | null;
+  privacy_status: "private";
+  idempotency_state: IdempotencyState;
+  published_at: string | null;
+  message: string;
+  no_secrets: boolean;
 }
 
 // --- YouTube OAuth Readiness (Phase 2 — kein echter Upload) ----------------

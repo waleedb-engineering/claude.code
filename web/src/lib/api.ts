@@ -22,6 +22,7 @@ import type {
   YouTubeOAuthStart,
   YouTubeOAuthStatus,
   YouTubeReadiness,
+  YouTubeUploadResult,
 } from "./types";
 
 export const API_BASE =
@@ -496,6 +497,20 @@ export async function youtubeReadiness(
 ): Promise<YouTubeReadiness> {
   return getJson<YouTubeReadiness>(
     `/api/jobs/${jobId}/publishing/${publishingId}/youtube/readiness`,
+  );
+}
+
+// Echter PRIVATER Upload (Phase 3). Antwort enthält NIE Tokens/Secrets; der
+// Endpoint liefert immer HTTP 200 mit strukturiertem Ergebnis (success/
+// error_code/idempotency_state). Nur privacy_status='private'.
+export async function youtubePublishPrivate(
+  jobId: string,
+  publishingId: string,
+): Promise<YouTubeUploadResult> {
+  return sendJson<YouTubeUploadResult>(
+    `/api/jobs/${jobId}/publishing/${publishingId}/youtube/publish`,
+    "POST",
+    { confirm: "UPLOAD_PRIVATE", privacy_status: "private" },
   );
 }
 

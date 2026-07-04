@@ -81,6 +81,25 @@ class YouTubeTokenStore:
         except Exception:  # noqa: BLE001
             return False
 
+    def read_token(self) -> dict | None:
+        """Gibt die gespeicherte Token-Payload als Dict zurück (oder None).
+
+        Für den Upload-/Refresh-Pfad nötig, um Credentials zu rekonstruieren.
+        Loggt/druckt NIE den Inhalt. Bei fehlendem Store/kaputtem JSON → None."""
+        if not self.is_available():
+            return None
+        try:
+            raw = self._read_raw()
+        except Exception:  # noqa: BLE001
+            return None
+        if raw is None:
+            return None
+        try:
+            data = json.loads(raw)
+        except (ValueError, TypeError):
+            return None
+        return data if isinstance(data, dict) and data else None
+
     def get_status(self) -> str:
         """blocked | not_authenticated | authenticated | invalid_token.
         Gibt NIE Token-Inhalte zurück — nur einen Status-String."""

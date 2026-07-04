@@ -55,7 +55,8 @@ npm run dev      # http://127.0.0.1:3000
 | Schritt 24 | **YouTube OAuth-Readiness & sichere Token-Ablage (keyring, kein Upload)** | ✅ fertig & verifiziert |
 | Schritt 25 | **YouTube OAuth-Flow-Skelett (Consent-URL, State/CSRF+PKCE, Callback, sichere Token-Speicherung — kein echter Exchange/Upload)** | ✅ fertig & verifiziert |
 | Schritt 26 | **YouTube OAuth echter Token-Exchange (offizielle Google-Library, PKCE) — Token nur im Keychain, weiterhin kein Upload** | ✅ fertig & verifiziert |
-| später | Face-Tracking-Reframe, echtes A/B-Tracking, Direkt-Posten | 🔭 später |
+| Schritt 27 | **YouTube echter PRIVATER Upload (`videos.insert`, private-only) — Feature-Flag + `UPLOAD_PRIVATE`-Bestätigung + Idempotenz + Token-Refresh** | ✅ fertig & verifiziert |
+| später | Public/Unlisted-Upload, geplante Uploads (`publishAt`), Auto-Posting | 🔭 später |
 
 ### Was schon echt funktioniert
 - **Transkription** lokal via `faster-whisper` (Wort-Level-Timestamps) — verifiziert
@@ -220,6 +221,22 @@ npm run dev      # http://127.0.0.1:3000
   nutzen ausschließlich Fakes — **kein echter Google-Call**. Offizielle
   Grundlagen + Sicherheitsmodell in
   [`docs/YOUTUBE_PUBLISHING.md`](docs/YOUTUBE_PUBLISHING.md).
+- **YouTube echter PRIVATER Upload — Phase 3** (`platforms/youtube_upload.py`):
+  ein validierter Draft kann nach **expliziter Bestätigung** (`UPLOAD_PRIVATE`)
+  als **privates** Video über die offizielle YouTube Data API (`videos.insert`,
+  resumable) hochgeladen werden — hinter `CLIPFORGE_ENABLE_YOUTUBE_UPLOAD=true`.
+  **Nur private** (kein public/unlisted), **kein Auto-Posting**. Mit
+  **Token-Refresh** (neuer Stand nur ins Keychain), **Idempotenz**
+  (`external_post_id`/`succeeded`/`in_progress`/`uncertain` blocken Doppel-
+  Uploads; Retry nur nach eindeutigem `failed`) und **transaktionalen**
+  Statusübergängen (`published` **nur** bei eindeutigem API-Erfolg). Ein
+  **Netzabbruch nach möglichem Remote-Erfolg** wird als **`uncertain`** markiert
+  (blockiert blindes Retry — Konto prüfen). Stabile Fehlercodes statt roher
+  Google-Exceptions; **keine Tokens/Secrets** in Responses/Logs. Die
+  Google-Interaktion ist injizierbar → **Tests laufen ohne echten Upload**.
+  Fehlt `google-api-python-client` → `upload_dependency_missing` (sauberer
+  Fallback). Details in
+  [`docs/YOUTUBE_PUBLISHING.md`](docs/YOUTUBE_PUBLISHING.md) §7d.
 
 ### Klar als TODO gekennzeichnet (noch nicht echt)
 - Reframe ist **statischer** Smart-Crop (ein Fokuspunkt pro Clip) — **kein

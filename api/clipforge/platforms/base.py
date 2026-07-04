@@ -3,9 +3,9 @@
 Sicherheitsprinzip (siehe docs/YOUTUBE_PUBLISHING.md):
   - Adapter führen NIE unkontrolliert echte Uploads aus.
   - `dry_run()` ist immer erlaubt und löst NIEMALS einen Upload aus.
-  - `publish()` ist standardmäßig blockiert (Feature-Flag, Credentials,
-    Validierung, explizite Bestätigung) und gibt in dieser Phase bewusst
-    keinen Fake-Erfolg zurück.
+  - Der echte (private) Upload liegt bewusst NICHT im Adapter, sondern im
+    dedizierten `YouTubeUploadService` (platforms/youtube_upload.py) — hinter
+    Feature-Flag + expliziter Bestätigung + Idempotenz.
 """
 
 from __future__ import annotations
@@ -27,12 +27,4 @@ class PlatformAdapter(ABC):
     def dry_run(self, draft: dict) -> dict:
         """Plant den Upload und gibt eine Vorschau zurück — OHNE Upload,
         OHNE Secrets, OHNE Token, OHNE Binär-Body."""
-        raise NotImplementedError
-
-    @abstractmethod
-    def publish(
-        self, draft: dict, *, confirm: str | None, privacy_status: str
-    ) -> dict:
-        """Versucht eine echte Veröffentlichung — nur wenn alle Sicherheits-
-        bedingungen erfüllt sind. In der aktuellen Phase kein echter Upload."""
         raise NotImplementedError

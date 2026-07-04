@@ -625,19 +625,20 @@ false` (Default) setzt `scheduled_at` im Duplikat auf `null`.
 
 ---
 
-## YouTube Publishing — Dry-Run + OAuth-Flow + echter Token-Exchange (KEIN Upload)
+## YouTube Publishing — Dry-Run + OAuth-Flow + echter PRIVATER Upload
 
-Erste echte Plattform: Dry-Run + Readiness + OAuth-Flow (Consent-URL/Callback)
-inkl. **echtem** Token-Exchange über die offizielle Google-Library. **Kein
-echter Upload, kein `videos.insert`, keine Token/Secrets in Responses oder
-Logs.** Konzept + API-Realität in
+Erste echte Plattform mit **echtem privatem Upload** (`videos.insert`,
+private-only, hinter Feature-Flag + `UPLOAD_PRIVATE` + Idempotenz). Zusätzlich:
+Dry-Run + Readiness + OAuth-Flow (Consent-URL/Callback) inkl. **echtem**
+Token-Exchange. **Nur privater Upload — kein public/unlisted, kein Auto-Posting,
+keine Token/Secrets in Responses oder Logs.** Konzept + API-Realität in
 [`YOUTUBE_PUBLISHING.md`](YOUTUBE_PUBLISHING.md). Alle Endpoints gelten nur für
 `platform = youtube_shorts` (sonst `400`) und sind path-traversal-sicher.
 
 | Endpoint | Zweck |
 |---|---|
-| `POST …/youtube/dry-run` | Upload-Vorschau: `enabled`, `would_upload`, `video_file` (nur Dateiname), `title`, `description`, `hashtags`, `privacy_status`, `scheduled_at`, `checks`, `warnings`, `blocked_reasons`, `request_preview` (Metadaten für `videos.insert` — **ohne** Token/Secrets/Binär-Body). Löst **nie** einen Upload aus. |
-| `POST …/youtube/publish` | Sicher blockiert. Body `{confirm, privacy_status}`. |
+| `POST …/youtube/dry-run` | Upload-Vorschau: `enabled`, `would_upload`, `video_file` (nur Dateiname), `title`, …, `request_preview` (Metadaten für `videos.insert` — **ohne** Token/Secrets/Binär-Body) **und `upload_readiness`** (Gates + Idempotenz: `upload_feature_enabled`, `oauth_ready`, `token_present`, `token_refresh_possible`, `draft_valid`, `mp4_exists`, `idempotency_state`, `already_uploaded`, `publish_attempt_count`, `can_attempt_private_upload`, `blocked_reasons`, `warnings`). Löst **nie** einen Upload aus. |
+| `POST …/youtube/publish` | **Echter PRIVATER Upload** (Phase 3). Body `{confirm:"UPLOAD_PRIVATE", privacy_status:"private"}`. Immer **HTTP 200** mit `success`, `error_code`, `status`, `external_post_id`, `privacy_status:"private"`, `idempotency_state`, `published_at`, `message`, `no_secrets:true`. `published`/`external_post_id` **nur** bei eindeutigem API-Erfolg; `public`/`unlisted` → `invalid_privacy_status`; Flag aus → `upload_disabled`; fehlt `google-api-python-client` → `upload_dependency_missing`. **Nie Token/Secrets.** Fehlercodes: `oauth_not_ready`, `token_missing`, `reauth_required`, `token_refresh_failed`, `invalid_draft`, `mp4_missing`, `already_uploaded`, `upload_in_progress`, `upload_state_uncertain`, `quota_exceeded`, `rate_limited`, `permission_denied`, `invalid_credentials`, `upload_failed`, `upload_result_uncertain`. |
 | `GET …/youtube/readiness` | Phase 2: `enabled`, `oauth_enabled`, `credentials_configured`, `credentials_file_exists`, `credentials_file_basename` (nur Dateiname), `token_store_available`, `token_present`, `token_status` (`blocked`/`not_authenticated`/`authenticated`/`invalid_token`), `required_scope`, `can_attempt_oauth`, `can_attempt_upload` (immer `false`), `blocked_reasons`, `warnings`, `next_steps`, `upload_status: "not_implemented"`. **Nie Token/Secrets.** |
 | `POST …/youtube/auth/start` | Draft-Legacy: `oauth_disabled` (Flag aus) bzw. `not_implemented_auth_flow`. Kein Browser, kein Token. |
 | `POST …/youtube/auth/logout` | Löscht Token über Keychain (idempotent, ohne Leak): `{deleted, reason?}`. |

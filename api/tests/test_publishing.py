@@ -709,71 +709,10 @@ def test_youtube_dry_run_flags_virality_guarantee():
         os.unlink(mp4.name)
 
 
-def test_youtube_publish_blocked_when_feature_disabled():
-    adapter = YouTubeAdapter(_yt_settings(enabled=False))
-    res = adapter.publish(_valid_yt_draft("/x.mp4"), confirm="UPLOAD_PRIVATE",
-                          privacy_status="private")
-    assert res["outcome"] == "disabled"
-    assert "disabled" in res["message"].lower()
-
-
-def test_youtube_publish_blocked_without_credentials():
-    adapter = YouTubeAdapter(_yt_settings(enabled=True, creds_path=None))
-    res = adapter.publish(_valid_yt_draft("/x.mp4"), confirm="UPLOAD_PRIVATE",
-                          privacy_status="private")
-    assert res["outcome"] == "not_ready"
-    assert "credentials_not_configured" in res["blocked_reasons"]
-
-
-def test_youtube_publish_public_requires_public_phrase():
-    sec = tempfile.NamedTemporaryFile(suffix=".json", delete=False)
-    sec.write(b"{}"); sec.close()
-    mp4 = tempfile.NamedTemporaryFile(suffix=".mp4", delete=False)
-    mp4.write(b"x"); mp4.close()
-    try:
-        adapter = YouTubeAdapter(_yt_settings(enabled=True, creds_path=sec.name))
-        draft = _valid_yt_draft(mp4.name)
-        # public mit privater Phrase → blockiert
-        res = adapter.publish(draft, confirm="UPLOAD_PRIVATE", privacy_status="public")
-        assert res["outcome"] == "needs_confirmation"
-        assert "confirmation_required" in res["blocked_reasons"]
-        # public mit korrekter Phrase → not_implemented (kein Fake-Erfolg)
-        res2 = adapter.publish(draft, confirm="UPLOAD_PUBLIC", privacy_status="public")
-        assert res2["outcome"] == "not_implemented"
-    finally:
-        os.unlink(sec.name); os.unlink(mp4.name)
-
-
-def test_youtube_publish_never_fakes_success():
-    sec = tempfile.NamedTemporaryFile(suffix=".json", delete=False)
-    sec.write(b"{}"); sec.close()
-    mp4 = tempfile.NamedTemporaryFile(suffix=".mp4", delete=False)
-    mp4.write(b"x"); mp4.close()
-    try:
-        adapter = YouTubeAdapter(_yt_settings(enabled=True, creds_path=sec.name))
-        res = adapter.publish(_valid_yt_draft(mp4.name), confirm="UPLOAD_PRIVATE",
-                              privacy_status="private")
-        assert res["outcome"] == "not_implemented"
-        assert res["external_post_id"] is None
-        assert res["draft_status_changed"] is False
-    finally:
-        os.unlink(sec.name); os.unlink(mp4.name)
-
-
-def test_youtube_publish_idempotency_guard():
-    sec = tempfile.NamedTemporaryFile(suffix=".json", delete=False)
-    sec.write(b"{}"); sec.close()
-    mp4 = tempfile.NamedTemporaryFile(suffix=".mp4", delete=False)
-    mp4.write(b"x"); mp4.close()
-    try:
-        adapter = YouTubeAdapter(_yt_settings(enabled=True, creds_path=sec.name))
-        draft = _valid_yt_draft(mp4.name)
-        draft["external_post_id"] = "already-there"
-        res = adapter.publish(draft, confirm="UPLOAD_PRIVATE", privacy_status="private")
-        assert res["outcome"] == "not_ready"
-        assert "already_uploaded" in res["blocked_reasons"]
-    finally:
-        os.unlink(sec.name); os.unlink(mp4.name)
+# Der echte (private) Upload-Pfad inkl. Gates/Idempotenz/Refresh/Fehler-
+# klassifikation wird in tests/test_youtube_upload.py getestet (mit Fakes, ohne
+# echte Google-Calls). Der frühere `adapter.publish()`-Platzhalter existiert
+# nicht mehr — publishing läuft über YouTubeUploadService.
 
 
 # ---------------------- YouTube API-Endpoints (TestClient) ----------------
@@ -792,19 +731,27 @@ def test_api_youtube_dry_run_and_publish_disabled():
             "source_clip_index": 1})
         pid = r.json()["publishing_id"]
 
-        # Dry-Run funktioniert, keine Secrets, kein Upload
+        # Dry-Run funktioniert, keine Secrets, kein Upload. Enthält jetzt
+        # zusätzlich upload_readiness (Idempotenz/Gates) — Feldnamen wie
+        # token_present sind kein Secret → value-basierter Leak-Check.
         r = client.post(f"/api/jobs/pubjob0001/publishing/{pid}/youtube/dry-run")
         assert r.status_code == 200, r.text
         body = r.json()
         assert body["platform"] == "youtube_shorts"
         assert body["enabled"] is False
-        _assert_no_secrets(body)
+        assert body["upload_readiness"]["can_attempt_private_upload"] is False
+        assert body["upload_readiness"]["idempotency_state"] == "never_attempted"
+        _assert_no_secret_values(body)
 
-        # Publish bei Feature-Flag aus → 403
+        # Publish bei Feature-Flag aus → 200 mit success=false, error_code
+        # upload_disabled (kein Upload, Status unverändert). Kein Secret.
         r = client.post(f"/api/jobs/pubjob0001/publishing/{pid}/youtube/publish",
                         json={"confirm": "UPLOAD_PRIVATE", "privacy_status": "private"})
-        assert r.status_code == 403, r.text
-        assert "disabled" in r.json()["detail"].lower()
+        assert r.status_code == 200, r.text
+        body = r.json()
+        assert body["success"] is False
+        assert body["error_code"] == "upload_disabled"
+        _assert_no_secrets(body)
 
         # Draft-Status ist unverändert (kein published)
         r = client.get(f"/api/jobs/pubjob0001/publishing/{pid}")
@@ -823,6 +770,8 @@ def test_api_youtube_publish_enabled_but_blocked_paths():
     sec = tempfile.NamedTemporaryFile(suffix=".json", delete=False)
     sec.write(b"{}"); sec.close()
     os.environ["CLIPFORGE_ENABLE_YOUTUBE_UPLOAD"] = "true"
+    os.environ.pop("CLIPFORGE_ENABLE_YOUTUBE_OAUTH", None)
+    sys.modules.pop("keyring", None)  # kein Token-Store → kein Token
     client, tmp = _make_client()
     try:
         r = client.post("/api/jobs/pubjob0001/publishing", json={
@@ -831,25 +780,32 @@ def test_api_youtube_publish_enabled_but_blocked_paths():
         pid = r.json()["publishing_id"]
         client.post(f"/api/jobs/pubjob0001/publishing/{pid}/validate")
 
-        # Ohne Credentials → 409
-        os.environ.pop("CLIPFORGE_YOUTUBE_CLIENT_SECRETS", None)
-        r = client.post(f"/api/jobs/pubjob0001/publishing/{pid}/youtube/publish",
-                        json={"confirm": "UPLOAD_PRIVATE", "privacy_status": "private"})
-        assert r.status_code == 409, r.text
-
-        # Mit Credentials, aber public ohne UPLOAD_PUBLIC → 400
-        os.environ["CLIPFORGE_YOUTUBE_CLIENT_SECRETS"] = sec.name
+        # public → immer blockiert (nur private erlaubt), kein Upload
         r = client.post(f"/api/jobs/pubjob0001/publishing/{pid}/youtube/publish",
                         json={"confirm": "UPLOAD_PRIVATE", "privacy_status": "public"})
-        assert r.status_code == 400, r.text
+        assert r.status_code == 200, r.text
+        assert r.json()["error_code"] == "invalid_privacy_status"
 
-        # Mit Credentials + korrekter Phrase → 200 not_implemented (kein Fake)
+        # unlisted → ebenfalls blockiert
+        r = client.post(f"/api/jobs/pubjob0001/publishing/{pid}/youtube/publish",
+                        json={"confirm": "UPLOAD_PRIVATE", "privacy_status": "unlisted"})
+        assert r.json()["error_code"] == "invalid_privacy_status"
+
+        # falscher Confirm-Text → blockiert
+        r = client.post(f"/api/jobs/pubjob0001/publishing/{pid}/youtube/publish",
+                        json={"confirm": "nope", "privacy_status": "private"})
+        assert r.json()["error_code"] == "confirmation_required"
+
+        # private + korrekter Confirm, aber OAuth/Token fehlen → oauth_not_ready
         r = client.post(f"/api/jobs/pubjob0001/publishing/{pid}/youtube/publish",
                         json={"confirm": "UPLOAD_PRIVATE", "privacy_status": "private"})
         assert r.status_code == 200, r.text
-        assert r.json()["status"] == "not_implemented"
+        body = r.json()
+        assert body["success"] is False
+        assert body["error_code"] in ("oauth_not_ready", "token_missing")
+        _assert_no_secret_values(body)
 
-        # Status weiterhin nicht published
+        # Status weiterhin nicht published, kein Upload passiert
         r = client.get(f"/api/jobs/pubjob0001/publishing/{pid}")
         assert r.json()["status"] in ("draft", "ready")
         assert r.json()["external_post_id"] is None
@@ -1083,10 +1039,12 @@ def test_api_youtube_readiness_logout_and_guards():
         assert r.json()["status"] in ("oauth_disabled", "not_implemented_auth_flow")
         assert r.json()["started"] is False
 
-        # Publish weiterhin sicher blockiert, Status unverändert
+        # Publish weiterhin sicher blockiert (Feature-Flag aus), Status unverändert
         r = client.post(f"/api/jobs/pubjob0001/publishing/{pid}/youtube/publish",
                         json={"confirm": "UPLOAD_PRIVATE", "privacy_status": "private"})
-        assert r.status_code == 403
+        assert r.status_code == 200, r.text
+        assert r.json()["success"] is False
+        assert r.json()["error_code"] == "upload_disabled"
         r = client.get(f"/api/jobs/pubjob0001/publishing/{pid}")
         assert r.json()["status"] in ("draft", "ready")
         assert r.json()["external_post_id"] is None

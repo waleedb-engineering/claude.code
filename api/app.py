@@ -46,6 +46,7 @@ from clipforge.platforms.youtube_oauth import (
     YouTubeOAuthService,
     real_google_token_exchange,
 )
+from clipforge.platforms.youtube_upload import YouTubeUploadService
 from clipforge.ffmpeg_utils import FFmpegNotFound, ensure_ffmpeg
 from clipforge.publishing import (
     PublishingError,
@@ -1430,14 +1431,33 @@ def _require_youtube_draft(job: Job, publishing_id: str) -> dict:
     return draft
 
 
+# Injizierbare Google-Nahtstellen für den Upload (in Tests ersetzt → NIE ein
+# echter Google-Call). None → der Service nutzt die echten Library-Defaults.
+_youtube_upload_uploader = None
+_youtube_upload_credentials_loader = None
+_youtube_upload_refresher = None
+
+
+def build_youtube_upload_service() -> YouTubeUploadService:
+    s = get_settings()
+    return YouTubeUploadService(
+        s,
+        credentials_loader=_youtube_upload_credentials_loader,
+        refresher=_youtube_upload_refresher,
+        uploader=_youtube_upload_uploader,
+    )
+
+
 @app.post("/api/jobs/{job_id}/publishing/{publishing_id}/youtube/dry-run")
 def youtube_dry_run(job_id: str, publishing_id: str) -> dict:
-    """Plant den YouTube-Upload und gibt eine Vorschau zurück. Löst NIEMALS
-    einen echten Upload aus, enthält keine Secrets/Tokens."""
+    """Plant den YouTube-Upload und gibt eine Vorschau zurück (inkl. Upload-/
+    Idempotenz-Gates). Löst NIEMALS einen echten Upload aus, keine Secrets."""
     job = _require_job(job_id)
     draft = _require_youtube_draft(job, publishing_id)
-    adapter = YouTubeAdapter(get_settings())
-    return adapter.dry_run(draft)
+    result = YouTubeAdapter(get_settings()).dry_run(draft)
+    # Upload-/Idempotenz-Readiness ergänzen (Phase 3), ohne Secrets/Upload.
+    result["upload_readiness"] = build_youtube_upload_service().readiness(draft)
+    return result
 
 
 class YouTubePublishRequest(BaseModel):
@@ -1449,25 +1469,19 @@ class YouTubePublishRequest(BaseModel):
 def youtube_publish(
     job_id: str, publishing_id: str, req: YouTubePublishRequest
 ) -> dict:
-    """Sicher blockierter Publish-Endpoint. In dieser Phase findet KEIN echter
-    Upload statt; der Draft-Status wird nicht auf 'published' gesetzt."""
+    """Echter PRIVATER YouTube-Upload — hinter Feature-Flag + expliziter
+    Bestätigung + Idempotenz. Nur `privacy_status='private'`. Gibt IMMER einen
+    strukturierten Body (HTTP 200) mit `success`/`error_code`/`idempotency_state`
+    zurück — NIE Token/Secrets. `published`/`external_post_id` nur bei
+    eindeutigem API-Erfolg."""
     job = _require_job(job_id)
     draft = _require_youtube_draft(job, publishing_id)
-    adapter = YouTubeAdapter(get_settings())
-    result = adapter.publish(
-        draft, confirm=req.confirm, privacy_status=req.privacy_status
+    svc = build_youtube_upload_service()
+    result = svc.upload_private(
+        job.job_dir, publishing_id, draft,
+        confirm=req.confirm, privacy_status=req.privacy_status,
     )
-    outcome = result.get("outcome")
-    if outcome == "disabled":
-        # Feature-Flag aus → klar blockiert.
-        raise HTTPException(status_code=403, detail=result["message"])
-    if outcome == "needs_confirmation":
-        raise HTTPException(status_code=400, detail=result["message"])
-    if outcome == "not_ready":
-        raise HTTPException(status_code=409, detail=result["message"])
-    # not_implemented: alle Vorbedingungen erfüllt, aber kein echter Upload.
-    # Kein Fake-Erfolg, Status bleibt unverändert (draft/ready).
-    return {"status": "not_implemented", **result}
+    return result
 
 
 # --- YouTube OAuth-Readiness (Phase 2) — KEIN echter Upload, KEIN Token in

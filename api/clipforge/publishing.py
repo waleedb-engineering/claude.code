@@ -312,6 +312,47 @@ def delete_draft(job_dir: str, publishing_id: str) -> bool:
     return True
 
 
+# ==========================================================================
+# Publisher-Transitions (nur für den echten Publisher — NICHT nutzer-setzbar)
+# ==========================================================================
+
+# Felder, die AUSSCHLIESSLICH der echte Publisher (YouTubeUploadService) setzen
+# darf. Der nutzerseitige update_draft() fasst diese NIE an.
+_PUBLISHER_FIELDS = frozenset({
+    "status", "external_post_id", "published_at", "error",
+    "publish_attempt_id", "publish_started_at", "publish_completed_at",
+    "publish_platform", "publish_attempt_count", "last_publish_error",
+    "idempotency_state",
+})
+
+
+def apply_publish_state(job_dir: str, publishing_id: str, updates: dict) -> dict:
+    """Trusted Writer für Publisher-Statusübergänge + Idempotenzfelder.
+
+    Umgeht bewusst die USER_SETTABLE_STATUSES-Sperre von update_draft(), ist
+    aber auf `_PUBLISHER_FIELDS` beschränkt und speichert atomar (tmp+rename),
+    damit ein Absturz mitten im Schreiben den Draft nicht beschädigt.
+
+    Enthält NIE Tokens/Secrets — `error`/`last_publish_error` sind sanitisierte
+    Fehlercodes/-texte (der Aufrufer stellt das sicher)."""
+    draft = load_draft(job_dir, publishing_id)
+    if draft is None:
+        raise FileNotFoundError(publishing_id)
+    for key, value in updates.items():
+        if key not in _PUBLISHER_FIELDS:
+            raise PublishingError(f"Feld {key!r} ist kein Publisher-Feld.")
+        if key == "status" and value not in STATUSES:
+            raise PublishingError(f"Ungültiger Status {value!r}.")
+        draft[key] = value
+    draft["updated_at"] = _now()
+    path = _draft_path(job_dir, publishing_id)
+    tmp = path + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as fh:
+        json.dump(draft, fh, ensure_ascii=False, indent=2)
+    os.replace(tmp, path)  # atomar
+    return draft
+
+
 def _find_source_clip(job_dir: str, draft: dict) -> dict | None:
     """Rekonstruiert den Quell-Clip (für Content-Paket-Texte) — bestmöglich."""
     if draft.get("source_type") == "auto_clip" and draft.get("source_clip_index"):

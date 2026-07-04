@@ -228,9 +228,25 @@ App öffnen: <http://127.0.0.1:3000>
     Token tauscht und es nur im Keychain speichert." **Es wird kein Browser
     automatisch geöffnet.** Sind Voraussetzungen nicht erfüllt, werden die
     Blocker angezeigt und der Button bleibt deaktiviert.
-    Es werden **nie** Token/Client-Secrets angezeigt (auch nicht im DOM); es gibt
-    **keinen** Live-Upload-Button und **kein** „bereit zu veröffentlichen" — der
-    Upload bleibt `not_implemented`.
+    Es werden **nie** Token/Client-Secrets angezeigt (auch nicht im DOM).
+22. **Privater YouTube-Testupload (Phase 3, nur bei YouTube-Drafts):** ein
+    eigener Bereich **„Privater YouTube-Testupload"**. Er erscheint erst nach
+    „Upload-Bereitschaft prüfen" und ist nur bedienbar, wenn das Backend
+    `can_attempt_private_upload=true` meldet (Feature-Flag an, OAuth ready, Token
+    vorhanden, Draft valide, MP4 da, Idempotenz erlaubt). Andernfalls werden die
+    **Blocker** lesbar angezeigt. Ist alles bereit, weist ein Hinweis klar darauf
+    hin: **Video bleibt PRIVATE**, der Upload ist **echt**, **kein** automatisches
+    öffentliches Posten, es wird das verbundene Google-Konto genutzt. Vor dem
+    Upload sind **beide** nötig: eine **Checkbox** („Ich verstehe, dass das Video
+    real … hochgeladen wird und privat bleibt.") **und** der exakte Confirm-Text
+    **`UPLOAD_PRIVATE`**. Erst dann wird **„Privat zu YouTube hochladen"** aktiv.
+    Während des Uploads: Ladezustand, **kein Doppelklick**. Nach Erfolg:
+    **Status published (privat)** + **Video-ID** (mit Link ins YouTube Studio,
+    „nur für dich sichtbar") — **keine** Tokens, **keine** Behauptung, das Video
+    sei öffentlich. Bei Fehler: verständliche Meldung; Retry nur bei eindeutigem
+    `failed`. Bei **`uncertain`** eine deutliche Warnung: „Upload-Ergebnis unklar.
+    Bitte YouTube-Konto prüfen, bevor erneut versucht wird." Es gibt **keinen**
+    Public- und **keinen** Unlisted-Button.
 
 > Echtes Video **ohne** angehängtes Transkript: Die Pipeline transkribiert dann
 > lokal mit faster-whisper. Beim ersten Lauf wird das Modell geladen (~140 MB),

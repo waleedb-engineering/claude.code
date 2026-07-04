@@ -20,6 +20,7 @@ import {
 } from "@/lib/api";
 import DuplicateDraftButton from "@/components/DuplicateDraftButton";
 import YouTubeDryRunPanel from "@/components/YouTubeDryRunPanel";
+import YouTubePrivateUploadPanel from "@/components/YouTubePrivateUploadPanel";
 import YouTubeReadinessPanel from "@/components/YouTubeReadinessPanel";
 import type {
   ClipsJson,
@@ -346,6 +347,13 @@ function DraftCard({
 
       {draft.platform === "youtube_shorts" && (
         <YouTubeReadinessPanel jobId={jobId} publishingId={draft.publishing_id} />
+      )}
+
+      {draft.platform === "youtube_shorts" && (
+        <YouTubePrivateUploadPanel
+          jobId={jobId}
+          publishingId={draft.publishing_id}
+        />
       )}
 
       {error && (
