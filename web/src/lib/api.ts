@@ -526,6 +526,19 @@ export async function youtubeUploadStatus(
   );
 }
 
+// Reconciliation: prüft NUR den Remote-Status einer bekannten external_post_id
+// und korrigiert den lokalen Zustand. Startet NIE einen Upload. Antwort ist der
+// aktualisierte upload-status (ohne Secrets).
+export async function youtubeReconcile(
+  jobId: string,
+  publishingId: string,
+): Promise<YouTubeUploadStatus> {
+  return sendJson<YouTubeUploadStatus>(
+    `/api/jobs/${jobId}/publishing/${publishingId}/youtube/reconcile`,
+    "POST",
+  );
+}
+
 export async function youtubeLogout(
   jobId: string,
   publishingId: string,

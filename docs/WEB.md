@@ -255,7 +255,16 @@ App öffnen: <http://127.0.0.1:3000>
     `reauth_required`/`invalid_credentials` erscheint **„YouTube erneut
     verbinden"** (öffnet manuell die Consent-URL, kein Token im Browser, kein
     Auto-Login) plus „Readiness neu laden". Liefert das Backend echten
-    Fortschritt (`upload_progress`), wird er während `in_progress` angezeigt.
+    Fortschritt (`upload_progress`), wird er während `uploading` angezeigt.
+    Crash-Safety (Phase 3c): das Panel zeigt den **State-Machine-Zustand**
+    (`preparing`/`uploading`/`retry_wait`/`auth_refresh`/`reconciling`/`published`/
+    `failed`/`uncertain`/`reauth_required`) inkl. **verwaist (stale)**-Hinweis und
+    Retry-Zähler. Ist `can_reconcile=true`, erscheint **„Upload-Status prüfen"**
+    (`POST …/youtube/reconcile`) — prüft nur den Remote-Status, **startet nie**
+    einen Upload. Bei `uncertain` steht die exakte Warnung: „Der Upload-Status ist
+    nicht eindeutig. Prüfe zuerst YouTube Studio. Starte keinen erneuten Upload,
+    bevor geklärt ist, ob das Video bereits vorhanden ist." — **kein** Retry-Button.
+    Keine Tokens/Session-URIs im DOM.
 
 > Echtes Video **ohne** angehängtes Transkript: Die Pipeline transkribiert dann
 > lokal mit faster-whisper. Beim ersten Lauf wird das Modell geladen (~140 MB),

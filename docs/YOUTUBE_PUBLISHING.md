@@ -408,6 +408,83 @@ Ein `uncertain`-Zustand blockiert jedes automatische Retry. **Bevor** erneut
 hochgeladen wird, im YouTube Studio prüfen, ob bereits ein (privates) Video
 angelegt wurde — sonst droht ein Duplikat.
 
+## 7f. Phase 3c — Persistente State-Machine, Crash-Recovery & Race-Schutz
+
+### Zustände & Übergänge (`platforms/youtube_state.py`)
+
+Zentrale, persistente Upload-State-Machine (kein verstreuter String-Vergleich):
+
+`idle · preparing · uploading · retry_wait · auth_refresh · reconciling ·
+published · failed · uncertain · reauth_required`.
+
+`published` ist **terminal** (geschützt). Erlaubte Übergänge sind zentral in
+`ALLOWED_TRANSITIONS` definiert; `transition()` validiert, setzt Checkpoint-
+Felder und schreibt eine **gekappte** `state_transition_history` (ohne Secrets).
+**`uncertain` erlaubt KEINEN direkten Re-Upload** — nur `→ reconciling`. Legacy-
+Felder (`status`/`idempotency_state`) werden weiter konsistent gepflegt.
+
+Persistente Checkpoints (additiv, rückwärtskompatibel, ohne Secrets):
+`upload_state`, `upload_started_at`, `last_upload_activity_at`,
+`last_transition_at`, `retry_count`, `current_attempt`, `last_error_category`,
+`last_error_code`, `requires_manual_check`, `requires_reauth`,
+`reconciliation_status`, `reconciliation_checked_at`, `state_transition_history`.
+
+### Crash-Fenster-Modell (Phase 1 — pro Fenster begründet)
+
+| Fenster | Lage | Bewertung |
+|---|---|---|
+| A | vor Session-Erstellung (`preparing`) | kein Remote-Effekt → **auto restart safe** (nach Recovery `uncertain`, konservativ; Nutzer kann neu starten) |
+| B | Session erstellt, kein Chunk | kein finalisiertes Video → **reconciliation** (ohne ID → `uncertain`) |
+| C | während Chunk (`uploading`) | resumable, aber Commit-Status unklar → **reconciliation required**; ohne eindeutige ID → `uncertain` |
+| D | Remote fertig, lokal nicht `published` | **reconciliation required** über die (evtl. bereits als Checkpoint gespeicherte) `external_post_id` |
+| E | `external_post_id` lokal gespeichert (`reconciling`), Publish nicht finalisiert | **reconciliation** bestätigt die ID → `published` |
+| F | Credential-Refresh (`auth_refresh`) | kein akzeptierter Chunk → nach Recovery `uncertain`/Reauth (**manual/ reauth**) |
+| G | Retry-Wait (`retry_wait`) | kein Remote-Commit → **reconciliation**/`uncertain` |
+| H | Neustart bei `uncertain` | **manual check required** — nie automatischer Re-Upload |
+
+**Kein Fenster** wird als „auto resume über Prozessneustart" behauptet: eine
+laufende resumable Session wird **nicht** über den Neustart hinweg fortgesetzt
+(der Session-URI wird bewusst **nicht** persistiert). Recovery bedeutet
+**reconcile oder uncertain**, nie Blind-Upload.
+
+### Startup-Recovery-Scanner (`platforms/youtube_recovery.py`)
+
+Beim Backend-Start (`run_youtube_startup_recovery`, gated per
+`CLIPFORGE_YOUTUBE_RECOVERY_SCAN_ENABLED`) werden **verwaiste** (stale) aktive
+Zustände erkannt (`ACTIVE_STATES` + Inaktivität >
+`CLIPFORGE_YOUTUBE_STALE_UPLOAD_SECONDS`) und **sicher** verschoben:
+
+- stale **mit** `external_post_id` → `reconciling` (+ optional sofort reconcile),
+- stale **ohne** `external_post_id` → `uncertain` + `requires_manual_check`,
+- **frische** Uploads bleiben unberührt,
+- stale Lock-Dateien werden entfernt.
+
+Der Scanner startet **NIE** einen Upload.
+
+### Reconciliation (nur eindeutige ID, keine Heuristik)
+
+Der `ReconciliationService` prüft **ausschließlich** die exakte
+`external_post_id` über einen injizierbaren Verifier
+(`videos().list(id=…)`):
+
+- Video mit **exakt** dieser ID vorhanden → `published`.
+- Remote **eindeutig** nicht vorhanden → `failed` (Retry sicher, ID verworfen).
+- Netzwerk/uneindeutig/kein Verifier → `uncertain` + `requires_manual_check`.
+- **Keine** `external_post_id` → `uncertain` (Verifier wird gar nicht gerufen).
+
+**Verboten & nicht implementiert:** Titel-/Caption-/Dateinamen-Suche, „ähnliche
+Videos", Fake-Reconciliation. `published` **nur** bei eindeutiger Bestätigung.
+
+### Atomarer Claim / Race-Schutz
+
+Der Publish-Start setzt eine **atomare Lock-Datei** (`O_CREAT|O_EXCL`,
+`<publishing_id>.uploadlock`). Genau **ein** Request gewinnt; parallele Requests
+werden sofort mit `upload_in_progress` geblockt. Nach dem Claim wird der Draft
+**frisch** nachgeladen und die Idempotenz erneut geprüft (schließt das
+sequentielle Race-Fenster). Ergebnis (getestet, deterministisch): **zwei
+gleichzeitige Requests → genau ein tatsächlicher Uploader-Aufruf.** Der Lock-Pfad
+erscheint **nie** in API/Response/Frontend.
+
 ## 8. Feature Flags & Konfiguration
 
 | Variable | Zweck | Default |
@@ -425,6 +502,9 @@ angelegt wurde — sonst droht ein Duplikat.
 | `CLIPFORGE_YOUTUBE_UPLOAD_INITIAL_DELAY` | Backoff-Startverzögerung (Sekunden) | `1.0` |
 | `CLIPFORGE_YOUTUBE_UPLOAD_MAX_DELAY` | Backoff-Deckel (Sekunden) | `32.0` |
 | `CLIPFORGE_YOUTUBE_UPLOAD_CHUNK_BYTES` | resumable Chunk-Größe (`-1` = ein Request; >0 für Fortschritt/Resume, Vielfaches von 256 KB) | `-1` |
+| `CLIPFORGE_YOUTUBE_RECOVERY_SCAN_ENABLED` | Startup-Recovery-Scanner an/aus (verschiebt stale Zustände sicher, nie Upload) | `true` |
+| `CLIPFORGE_YOUTUBE_STALE_UPLOAD_SECONDS` | ab wann ein aktiver Upload-Zustand als verwaist gilt | `900` |
+| `CLIPFORGE_YOUTUBE_RECONCILIATION_TIMEOUT_SECONDS` | Timeout eines Reconcile-Remote-Checks | `60` |
 
 `credentials_configured` ist genau dann `true`, wenn die Secrets-Datei gesetzt
 ist **und** existiert. Der Inhalt wird nur für den `client_id`/Token-Exchange
@@ -512,6 +592,7 @@ transaktionalen Statusübergängen ist gebaut. Offen bleibt:
 | 2c | **Echter** Google-Token-Exchange (offizielle Library `google-auth-oauthlib`, PKCE), Token nur im Keychain — **weiterhin kein Upload** | ✅ fertig |
 | 3 | **Echter PRIVATER Upload** (`videos.insert`, `privacyStatus=private`) hinter Flag + `UPLOAD_PRIVATE`-Bestätigung + Token-Refresh + Idempotenz (`uncertain`-Schutz) — **nur private, kein public/unlisted, kein Auto-Posting** | ✅ fertig |
 | 3b | **Hardening**: kontrolliertes Retry/Backoff (`YouTubeRetryPolicy`), 401→ein Refresh, Attempt-History, `upload-status`-Endpoint, Reauth-Flow, sicherer manueller Real-Testmodus (`REAL TEST NOT RUN` ohne Credentials) | ✅ fertig |
+| 3c | **Crash-Safety**: persistente State-Machine (10 Zustände + Transitions), Startup-Recovery-Scanner, ID-basierte Reconciliation (keine Heuristik), atomarer Claim/Race-Schutz (2 Requests → 1 Upload), Transition-History, `reconcile`-Endpoint | ✅ fertig |
 | 4 | Geplante Uploads via `publishAt` (nach TODO-Verifizierung) | geplant |
 | 5 | Public/Unlisted Upload mit extra Bestätigung + Verifizierung | geplant |
 
@@ -521,7 +602,8 @@ transaktionalen Statusübergängen ist gebaut. Offen bleibt:
 |---|---|
 | `POST …/youtube/dry-run` | Upload-Vorschau **inkl. `upload_readiness`** (Gates + Idempotenz), kein Upload, keine Secrets |
 | `POST …/youtube/publish` | **Echter PRIVATER Upload** (mit Retry/Backoff). Body `{confirm:"UPLOAD_PRIVATE", privacy_status:"private"}`. Immer **HTTP 200** mit `success`, `error_code`, `status`, `external_post_id`, `privacy_status:"private"`, `idempotency_state`, `retry_count`, `published_at`, `message`, `no_secrets:true`. `published`/`external_post_id` **nur** bei eindeutigem Erfolg; public/unlisted → `invalid_privacy_status`; Flag aus → `upload_disabled`. **Nie Token/Secrets.** |
-| `GET …/youtube/upload-status` | Status/Recovery: `status`, `idempotency_state`, `publish_attempt_count`, `last_publish_error`, `external_post_id_present`, `can_retry`, `requires_manual_check`, `requires_reauth`, `upload_progress`, `attempt_history_summary`, `no_secrets:true`. Löst nichts aus. **Nie Token/Secrets/Session-URIs.** |
+| `GET …/youtube/upload-status` | Status/Recovery: `state`, `is_stale`, `idempotency_state`, `publish_attempt_count`, `current_attempt`, `retry_count`, `last_publish_error`, `last_error_category`, `external_post_id_present`, `can_retry`, `can_reconcile`, `requires_manual_check`, `requires_reauth`, `last_activity_at`, `reconciliation_status`, `upload_progress`, `attempt_history_summary`, `transition_history_summary`, `no_secrets:true`. Löst nichts aus. **Nie Token/Secrets/Session-URIs.** |
+| `POST …/youtube/reconcile` | Prüft NUR den Remote-Status einer bekannten `external_post_id` (exakte ID, keine Heuristik) und korrigiert den lokalen Zustand → `published` (eindeutig bestätigt) / `failed` (eindeutig fehlend) / `uncertain` (sonst). **Startet NIE einen Upload.** Antwort = aktualisierter upload-status. |
 | `GET …/youtube/readiness` | sichere OAuth-Readiness (Flag, Credentials-Metadaten, Token-Store-Status, Scope) — **nie Token/Secrets** |
 | `POST …/youtube/auth/start` | Draft-Legacy: `oauth_disabled` (Flag aus) bzw. `not_implemented_auth_flow`; kein Browser, kein Token |
 | `POST …/youtube/auth/logout` | löscht Token über Keychain (idempotent, ohne Leak) |

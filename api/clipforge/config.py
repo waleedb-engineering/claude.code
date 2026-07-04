@@ -124,6 +124,24 @@ class Settings:
     youtube_upload_chunk_bytes: int = field(
         default_factory=lambda: _get_int("CLIPFORGE_YOUTUBE_UPLOAD_CHUNK_BYTES", -1)
     )
+    # --- Crash-Recovery & Reconciliation (Phase 3c) ---
+    # Startup-Recovery-Scanner: erkennt verwaiste (stale) Upload-Zustände beim
+    # Start und verschiebt sie SICHER (nie Blind-Upload). Default AN (sicher, da
+    # nie hochgeladen wird). Kann abgeschaltet werden.
+    youtube_recovery_scan_enabled: bool = field(
+        default_factory=lambda: os.environ.get(
+            "CLIPFORGE_YOUTUBE_RECOVERY_SCAN_ENABLED", "true"
+        ).strip().lower() == "true"
+    )
+    # Ab wann ein aktiver Upload-Zustand als verwaist gilt (Sekunden).
+    youtube_stale_upload_seconds: int = field(
+        default_factory=lambda: _get_int("CLIPFORGE_YOUTUBE_STALE_UPLOAD_SECONDS", 900)
+    )
+    # Timeout für einen Reconciliation-Remote-Check (Sekunden).
+    youtube_reconciliation_timeout_seconds: int = field(
+        default_factory=lambda: _get_int(
+            "CLIPFORGE_YOUTUBE_RECONCILIATION_TIMEOUT_SECONDS", 60)
+    )
 
     @property
     def llm_available(self) -> bool:

@@ -577,18 +577,49 @@ export interface UploadAttemptSummary {
   retry_count: number | null;
 }
 
-// Status-/Recovery-Übersicht des Uploads. Enthält NIE Tokens/Secrets.
+// Persistente Upload-State-Machine (Phase 3c).
+export type UploadState =
+  | "idle"
+  | "preparing"
+  | "uploading"
+  | "retry_wait"
+  | "auth_refresh"
+  | "reconciling"
+  | "published"
+  | "failed"
+  | "uncertain"
+  | "reauth_required";
+
+export interface TransitionSummary {
+  from: string | null;
+  to: string | null;
+  at: string | null;
+  error_category: string | null;
+  error_code: string | null;
+}
+
+// Status-/Recovery-Übersicht des Uploads. Enthält NIE Tokens/Secrets/Session-URIs.
 export interface YouTubeUploadStatus {
   status: string;
+  state: UploadState;
   idempotency_state: IdempotencyState;
+  is_stale: boolean;
   publish_attempt_count: number;
+  current_attempt: number | null;
+  retry_count: number;
   last_publish_error: string | null;
+  last_error_category: string | null;
   external_post_id_present: boolean;
   can_retry: boolean;
+  can_reconcile: boolean;
   requires_manual_check: boolean;
   requires_reauth: boolean;
+  last_activity_at: string | null;
+  reconciliation_status: string | null;
+  reconciliation_checked_at: string | null;
   upload_progress: UploadProgress | null;
   attempt_history_summary: UploadAttemptSummary[];
+  transition_history_summary: TransitionSummary[];
   no_secrets: boolean;
 }
 

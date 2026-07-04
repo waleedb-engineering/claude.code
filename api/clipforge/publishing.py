@@ -323,6 +323,12 @@ _PUBLISHER_FIELDS = frozenset({
     "publish_attempt_id", "publish_started_at", "publish_completed_at",
     "publish_platform", "publish_attempt_count", "last_publish_error",
     "idempotency_state", "publish_attempts", "upload_progress",
+    # Phase 3c — persistente State-Machine + Recovery/Reconciliation.
+    "upload_state", "upload_started_at", "last_upload_activity_at",
+    "last_transition_at", "retry_count", "current_attempt",
+    "last_error_category", "last_error_code", "requires_manual_check",
+    "requires_reauth", "reconciliation_status", "reconciliation_checked_at",
+    "state_transition_history",
 })
 
 

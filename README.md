@@ -57,6 +57,7 @@ npm run dev      # http://127.0.0.1:3000
 | Schritt 26 | **YouTube OAuth echter Token-Exchange (offizielle Google-Library, PKCE) — Token nur im Keychain, weiterhin kein Upload** | ✅ fertig & verifiziert |
 | Schritt 27 | **YouTube echter PRIVATER Upload (`videos.insert`, private-only) — Feature-Flag + `UPLOAD_PRIVATE`-Bestätigung + Idempotenz + Token-Refresh** | ✅ fertig & verifiziert |
 | Schritt 28 | **Upload-Hardening: Retry/Backoff-Policy, Attempt-History, `upload-status` + Reauth-Flow, sicherer manueller E2E-Testmodus** | ✅ fertig & verifiziert |
+| Schritt 29 | **Crash-sichere Upload-State-Machine + Startup-Recovery + ID-basierte Reconciliation + Race-Schutz (2 Requests → 1 Upload)** | ✅ fertig & verifiziert |
 | später | Public/Unlisted-Upload, geplante Uploads (`publishAt`), Auto-Posting | 🔭 später |
 
 ### Was schon echt funktioniert
@@ -251,9 +252,26 @@ npm run dev      # http://127.0.0.1:3000
   (`…_ENABLE_YOUTUBE_UPLOAD` + `…_ENABLE_YOUTUBE_REAL_TEST`) und voller
   Konfiguration echt hoch; sonst **`REAL TEST NOT RUN`** (nie ein vorgetäuschter
   Erfolg). Automatische Tests aktivieren diesen Modus **nie**. Nach `uncertain`:
-  **zuerst YouTube Studio prüfen**. Prozessneustart-Recovery ist bewusst **nicht**
-  vorgetäuscht. Details in
+  **zuerst YouTube Studio prüfen**. Details in
   [`docs/YOUTUBE_PUBLISHING.md`](docs/YOUTUBE_PUBLISHING.md) §7e.
+- **YouTube Crash-Safety — Phase 3c** (`platforms/youtube_state.py` +
+  `youtube_recovery.py`): eine **persistente State-Machine** (idle/preparing/
+  uploading/retry_wait/auth_refresh/reconciling/published/failed/uncertain/
+  reauth_required) mit zentral validierten Übergängen (`published` terminal),
+  Checkpoint-Feldern und gekappter **Transition-History**. Ein **Startup-Recovery-
+  Scanner** erkennt verwaiste (stale) Zustände nach einem Crash und verschiebt
+  sie **sicher** — nie ein Blind-Upload: mit `external_post_id` → `reconciling`,
+  ohne → `uncertain` + manuelle Prüfung; frische Uploads bleiben unberührt. Die
+  **Reconciliation** bestätigt `published` **nur** über die **exakte**
+  `external_post_id` (`videos().list(id=…)`) — **keine** Titel-/Namens-Heuristik,
+  keine Fake-Bestätigung; Netzwerk/uneindeutig → `uncertain`. Ein **atomarer
+  Claim** (`O_EXCL`-Lock + Re-Check nach dem Claim) garantiert bei parallelen
+  Publish-Requests **genau einen** tatsächlichen Upload (deterministisch
+  getestet: 2 Threads → 1 Uploader-Aufruf). Neuer `POST …/youtube/reconcile`-
+  Endpoint prüft nur Remote-Status, startet **nie** einen Upload. Prozessneustart-
+  „Resume" wird **nicht** vorgetäuscht (Session-URI wird nicht persistiert; kein
+  Lock-URI/Secret in API/DOM/Logs). Details in
+  [`docs/YOUTUBE_PUBLISHING.md`](docs/YOUTUBE_PUBLISHING.md) §7f.
 
 ### Klar als TODO gekennzeichnet (noch nicht echt)
 - Reframe ist **statischer** Smart-Crop (ein Fokuspunkt pro Clip) — **kein

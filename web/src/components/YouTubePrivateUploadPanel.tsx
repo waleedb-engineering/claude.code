@@ -10,14 +10,29 @@ import {
   youtubeDryRun,
   youtubeOAuthStart,
   youtubePublishPrivate,
+  youtubeReconcile,
   youtubeUploadStatus,
 } from "@/lib/api";
 import type {
   IdempotencyState,
+  UploadState,
   YouTubeUploadReadiness,
   YouTubeUploadResult,
   YouTubeUploadStatus,
 } from "@/lib/types";
+
+const STATE_LABELS: Record<UploadState, string> = {
+  idle: "bereit",
+  preparing: "wird vorbereitet",
+  uploading: "lädt hoch",
+  retry_wait: "Wiederholung geplant (Backoff)",
+  auth_refresh: "Token wird aufgefrischt",
+  reconciling: "Statusprüfung läuft/steht an",
+  published: "veröffentlicht (privat)",
+  failed: "fehlgeschlagen",
+  uncertain: "unklar",
+  reauth_required: "erneut verbinden nötig",
+};
 
 const REASON_LABELS: Record<string, string> = {
   upload_disabled: "Upload-Feature ist deaktiviert (CLIPFORGE_ENABLE_YOUTUBE_UPLOAD=true)",
@@ -109,12 +124,28 @@ export default function YouTubePrivateUploadPanel({
     }
   }
 
+  async function reconcile() {
+    if (uploading) return;
+    setUploading(true);
+    setError(null);
+    try {
+      const st = await youtubeReconcile(jobId, publishingId);
+      setUploadStatus(st);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setUploading(false);
+    }
+  }
+
   const canAttempt = readiness?.can_attempt_private_upload === true;
   const idem: IdempotencyState | undefined =
     uploadStatus?.idempotency_state ?? readiness?.idempotency_state;
+  const state: UploadState | undefined = uploadStatus?.state;
   const confirmOk = confirmText === "UPLOAD_PRIVATE";
   const attemptCount =
     uploadStatus?.publish_attempt_count ?? readiness?.publish_attempt_count ?? 0;
+  const canReconcile = uploadStatus?.can_reconcile === true;
 
   // Reauth nötig? (aus Status oder letztem Ergebnis)
   const needsReauth =
@@ -146,11 +177,20 @@ export default function YouTubePrivateUploadPanel({
         </p>
       )}
 
-      {/* Status-/Attempt-Übersicht */}
+      {/* Status-/Attempt-Übersicht (State-Machine) */}
       {uploadStatus && (
         <p className="text-[11px] text-neutral-500">
-          Zustand: <span className="text-neutral-300">{idem}</span> · Versuche:{" "}
-          <span className="text-neutral-300">{attemptCount}</span>
+          Zustand:{" "}
+          <span className="text-neutral-300">
+            {state ? STATE_LABELS[state] : idem}
+          </span>
+          {uploadStatus.is_stale && (
+            <span className="text-amber-400"> · verwaist (stale)</span>
+          )}
+          {" "}· Versuche: <span className="text-neutral-300">{attemptCount}</span>
+          {uploadStatus.retry_count > 0 && (
+            <> · Retries: <span className="text-neutral-300">{uploadStatus.retry_count}</span></>
+          )}
           {uploadStatus.last_publish_error && (
             <>
               {" "}· letzter Fehler:{" "}
@@ -162,8 +202,29 @@ export default function YouTubePrivateUploadPanel({
         </p>
       )}
 
+      {/* retry_wait / reconciling Zwischenzustände */}
+      {(state === "retry_wait" || state === "reconciling") && (
+        <p className="text-[11px] text-neutral-400">
+          {state === "retry_wait"
+            ? "Wiederholung geplant (kontrolliertes Backoff)…"
+            : "Statusprüfung (Reconciliation) läuft/steht an…"}
+        </p>
+      )}
+
+      {/* Reconcile-Button — prüft NUR Remote-Status, startet NIE einen Upload */}
+      {canReconcile && (
+        <button
+          type="button"
+          onClick={() => void reconcile()}
+          disabled={uploading}
+          className="rounded-lg border border-sky-500/40 px-3 py-1.5 text-xs text-sky-200 hover:bg-sky-500/10 disabled:opacity-50"
+        >
+          {uploading ? "Prüfe Remote-Status…" : "Upload-Status prüfen"}
+        </button>
+      )}
+
       {/* Fortschritt (nur falls Backend echten Fortschritt liefert) */}
-      {progress && progress.progress_percent != null && idem === "in_progress" && (
+      {progress && progress.progress_percent != null && state === "uploading" && (
         <p className="text-[11px] text-neutral-400">
           Upload läuft … {progress.progress_percent}%
         </p>
@@ -298,11 +359,12 @@ export default function YouTubePrivateUploadPanel({
         </div>
       )}
 
-      {result && !result.success && idem === "uncertain" && (
+      {(idem === "uncertain" || state === "uncertain") && (
         <p className="rounded-md border border-orange-500/50 bg-orange-500/10 px-2 py-1.5 text-xs text-orange-200">
-          ⚠ Upload-Ergebnis <strong>unklar</strong>. Bitte prüfe zuerst dein
-          <strong> YouTube Studio</strong>, ob bereits ein Video existiert, bevor
-          du erneut hochlädst. Ein automatischer Retry ist blockiert.
+          ⚠ Der Upload-Status ist <strong>nicht eindeutig</strong>. Prüfe zuerst
+          <strong> YouTube Studio</strong>. Starte keinen erneuten Upload, bevor
+          geklärt ist, ob das Video bereits vorhanden ist. Ein automatischer
+          Retry ist blockiert.
         </p>
       )}
 

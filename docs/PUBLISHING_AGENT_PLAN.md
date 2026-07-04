@@ -218,7 +218,7 @@ vor jedem Upload `external_post_id` prüfen — gesetzt ⇒ niemals erneut poste
 | Phase | Inhalt | Voraussetzung |
 |---|---|---|
 | **1 (✅ jetzt)** | Publishing Planner lokal (Drafts, Validierung, Pack-ZIP, **globale Übersicht + Duplizieren**, Prompt 21+22) | — |
-| 2 | YouTube-Upload über offizielle API — **Dry-Run (Ph. 1) + OAuth-Readiness/keyring (Ph. 2) + OAuth-Flow inkl. echtem Token-Exchange (Ph. 2b/2c) + echter PRIVATER Upload `videos.insert` mit Idempotenz + Token-Refresh (Ph. 3) + Hardening: Retry/Backoff, Attempt-History, `upload-status`/Reauth, sicherer manueller Real-Testmodus (Ph. 3b) gebaut**, siehe [`YOUTUBE_PUBLISHING.md`](YOUTUBE_PUBLISHING.md). **Nur private; public/unlisted, `publishAt`-Scheduling, Auto-Posting und Prozessneustart-Recovery bleiben offen.** | öffentliche/geplante Uploads + ggf. API-Audit |
+| 2 | YouTube-Upload über offizielle API — **Dry-Run (Ph. 1) + OAuth/keyring (Ph. 2) + Token-Exchange (Ph. 2b/2c) + echter PRIVATER Upload mit Idempotenz/Refresh (Ph. 3) + Retry/Backoff/Attempt-History/Real-Testmodus (Ph. 3b) + crash-sichere State-Machine, Startup-Recovery, ID-basierte Reconciliation, Race-Schutz (Ph. 3c) gebaut**, siehe [`YOUTUBE_PUBLISHING.md`](YOUTUBE_PUBLISHING.md). **Nur private; public/unlisted, `publishAt`-Scheduling und Auto-Posting bleiben offen. Kein Session-Resume über Prozessneustart (bewusst; nicht vorgetäuscht).** | öffentliche/geplante Uploads + ggf. API-Audit |
 | 3 | Instagram/TikTok nach offizieller Prüfung (App-Review/Audit, Hosting-Frage für IG klären) | Meta-/TikTok-Review bestanden |
 | 4 | Scheduling/Queue (lokaler Worker verarbeitet `scheduled`-Drafts) | Phase 2 stabil |
 | 5 | Analytics/Rückmeldung (Views/Likes zurück in ClipForge, Score-Feedback) | offizielle Analytics-APIs |

@@ -47,6 +47,11 @@ from clipforge.platforms.youtube_oauth import (
     real_google_token_exchange,
 )
 from clipforge.platforms.youtube_upload import YouTubeUploadService
+from clipforge.platforms.youtube_recovery import (
+    RecoveryScanner,
+    ReconciliationService,
+    default_remote_verifier,
+)
 from clipforge.ffmpeg_utils import FFmpegNotFound, ensure_ffmpeg
 from clipforge.publishing import (
     PublishingError,
@@ -1496,6 +1501,54 @@ def youtube_upload_status(job_id: str, publishing_id: str) -> dict:
     job = _require_job(job_id)
     draft = _require_youtube_draft(job, publishing_id)
     return build_youtube_upload_service().upload_status(draft)
+
+
+# Injizierbarer Remote-Verifier für Reconciliation (Tests: Fake → NIE echter
+# Google-Call). None → echter ID-basierter videos().list-Verifier.
+_youtube_remote_verifier = None
+
+
+def build_youtube_reconciler() -> ReconciliationService:
+    verifier = _youtube_remote_verifier
+    if verifier is None:
+        verifier = default_remote_verifier(build_youtube_upload_service())
+    return ReconciliationService(verifier=verifier)
+
+
+def run_youtube_startup_recovery() -> dict | None:
+    """Startup-Recovery: erkennt verwaiste (stale) YouTube-Upload-Zustände und
+    verschiebt sie SICHER (nie Blind-Upload). Crasht den Start nie."""
+    try:
+        s = get_settings()
+        if not s.youtube_recovery_scan_enabled:
+            return None
+        scanner = RecoveryScanner(s, reconciler=build_youtube_reconciler())
+        summ = scanner.scan(JOBS_DIR)
+        if summ.get("stale"):
+            print(f"[clipforge] YouTube-Recovery: {summ['stale']} stale · "
+                  f"{summ['moved_reconciling']} reconciling · "
+                  f"{summ['moved_uncertain']} uncertain · "
+                  f"{summ['reconciled_published']} published.")
+        return summ
+    except Exception as e:  # noqa: BLE001 — Startup nie crashen
+        print(f"[clipforge] YouTube-Recovery übersprungen: {type(e).__name__}")
+        return None
+
+
+run_youtube_startup_recovery()
+
+
+@app.post("/api/jobs/{job_id}/publishing/{publishing_id}/youtube/reconcile")
+def youtube_reconcile(job_id: str, publishing_id: str) -> dict:
+    """Prüft NUR den Remote-Status einer bekannten `external_post_id` und
+    korrigiert den lokalen Zustand. Startet **NIE** einen Upload. `published`
+    nur bei eindeutiger Remote-Bestätigung; sonst `uncertain`/`failed`.
+    Antwort enthält den vollständigen upload-status (ohne Secrets)."""
+    job = _require_job(job_id)
+    draft = _require_youtube_draft(job, publishing_id)
+    build_youtube_reconciler().reconcile(job.job_dir, publishing_id, draft)
+    fresh = _require_publishing_draft(job, publishing_id)
+    return build_youtube_upload_service().upload_status(fresh)
 
 
 # --- YouTube OAuth-Readiness (Phase 2) — KEIN echter Upload, KEIN Token in
