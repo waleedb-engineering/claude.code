@@ -140,6 +140,9 @@ def can_transition(frm: str, to: str) -> bool:
 
 
 def _safe_transition_entry(entry: dict) -> dict:
+    # Audit-Fix: korrupte (Nicht-Dict-)Einträge dürfen nie crashen.
+    if not isinstance(entry, dict):
+        return {"from": None, "to": "corrupt_entry", "at": None}
     fields = ("from", "to", "at", "error_category", "error_code")
     out: dict = {}
     for k in fields:
@@ -177,7 +180,8 @@ def transition(
     elif not can_transition(frm, to):
         raise InvalidTransition(f"Unerlaubter Übergang {frm!r} → {to!r}")
 
-    history = list(draft.get("state_transition_history") or [])
+    raw_hist = draft.get("state_transition_history")
+    history = [e for e in raw_hist if isinstance(e, dict)] if isinstance(raw_hist, list) else []
     history.append(_safe_transition_entry({
         "from": frm, "to": to, "at": now,
         "error_category": error_category, "error_code": error_code,
@@ -225,5 +229,7 @@ def transition(
 
 
 def transition_history_summary(draft: dict, limit: int = MAX_TRANSITION_HISTORY) -> list[dict]:
-    hist = draft.get("state_transition_history") or []
+    hist = draft.get("state_transition_history")
+    if not isinstance(hist, list):
+        hist = []
     return [_safe_transition_entry(e) for e in hist[-limit:]]

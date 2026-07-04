@@ -496,8 +496,14 @@ class JobRegistry:
     def _persist(self, job: Job) -> None:
         """Schreibt job.json in den Job-Ordner (reines Debug-/Inspektions-Dump)."""
         try:
-            with open(os.path.join(job.job_dir, "job.json"), "w", encoding="utf-8") as fh:
+            # Audit-Fix: atomar (tmp+rename) — job.json wird bei jedem Status-
+            # Update geschrieben; ein Crash mitten im Write darf keine korrupte
+            # Datei hinterlassen (Restore müsste sonst rekonstruieren).
+            path = os.path.join(job.job_dir, "job.json")
+            tmp = path + ".tmp"
+            with open(tmp, "w", encoding="utf-8") as fh:
                 json.dump(job.to_dict(), fh, ensure_ascii=False, indent=2)
+            os.replace(tmp, path)
         except OSError:
             pass
 

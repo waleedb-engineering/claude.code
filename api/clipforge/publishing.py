@@ -103,6 +103,16 @@ def _draft_path(job_dir: str, publishing_id: str) -> str:
     return path
 
 
+def _write_draft_atomic(job_dir: str, publishing_id: str, draft: dict) -> None:
+    """Audit-Fix: Draft-JSON atomar schreiben (tmp+rename) — ein Crash mitten
+    im Write darf nie eine halb geschriebene/korrupte Draft-Datei hinterlassen."""
+    path = _draft_path(job_dir, publishing_id)
+    tmp = path + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as fh:
+        json.dump(draft, fh, ensure_ascii=False, indent=2)
+    os.replace(tmp, path)
+
+
 # ==========================================================================
 # Quelle auflösen (Auto-Clip oder manueller Export) + Texte vorbefüllen
 # ==========================================================================
@@ -242,8 +252,7 @@ def create_draft(
         "error": None,
     }
     os.makedirs(publishing_dir(job_dir), exist_ok=True)
-    with open(_draft_path(job_dir, draft["publishing_id"]), "w", encoding="utf-8") as fh:
-        json.dump(draft, fh, ensure_ascii=False, indent=2)
+    _write_draft_atomic(job_dir, draft["publishing_id"], draft)
     return draft
 
 
@@ -299,8 +308,7 @@ def update_draft(job_dir: str, publishing_id: str, patch: dict) -> dict:
             value = [str(h) for h in value]
         draft[key] = value
     draft["updated_at"] = _now()
-    with open(_draft_path(job_dir, publishing_id), "w", encoding="utf-8") as fh:
-        json.dump(draft, fh, ensure_ascii=False, indent=2)
+    _write_draft_atomic(job_dir, publishing_id, draft)
     return draft
 
 
@@ -453,8 +461,7 @@ def duplicate_draft(
     if warning:
         new_draft["warning"] = warning
     os.makedirs(publishing_dir(job_dir), exist_ok=True)
-    with open(_draft_path(job_dir, new_draft["publishing_id"]), "w", encoding="utf-8") as fh:
-        json.dump(new_draft, fh, ensure_ascii=False, indent=2)
+    _write_draft_atomic(job_dir, new_draft["publishing_id"], new_draft)
     return validate_draft(job_dir, new_draft["publishing_id"])
 
 
@@ -649,8 +656,7 @@ def validate_draft(job_dir: str, publishing_id: str) -> dict:
     elif not passed and draft.get("status") == "ready":
         draft["status"] = "draft"
     draft["updated_at"] = _now()
-    with open(_draft_path(job_dir, publishing_id), "w", encoding="utf-8") as fh:
-        json.dump(draft, fh, ensure_ascii=False, indent=2)
+    _write_draft_atomic(job_dir, publishing_id, draft)
     return draft
 
 

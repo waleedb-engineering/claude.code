@@ -52,6 +52,10 @@ from clipforge.platforms.youtube_recovery import (
     ReconciliationService,
     default_remote_verifier,
 )
+from clipforge.platforms.youtube_state import (
+    ACTIVE_STATES as YT_ACTIVE_STATES,
+    current_state as yt_current_state,
+)
 from clipforge.ffmpeg_utils import FFmpegNotFound, ensure_ffmpeg
 from clipforge.publishing import (
     PublishingError,
@@ -1350,6 +1354,16 @@ def patch_publishing_draft(
 @app.delete("/api/jobs/{job_id}/publishing/{publishing_id}")
 def delete_publishing_draft_endpoint(job_id: str, publishing_id: str) -> dict:
     job = _require_job(job_id)
+    # Audit-Fix: Draft mit AKTIVEM Upload darf nicht gelöscht werden — sonst
+    # kann ein Remote-Video entstehen, dessen external_post_id/uncertain-Zustand
+    # nirgends mehr persistiert werden kann (verwaistes privates Video).
+    existing = load_publishing_draft(job.job_dir, publishing_id)
+    if existing is not None and yt_current_state(existing) in YT_ACTIVE_STATES:
+        raise HTTPException(
+            status_code=409,
+            detail="Draft hat einen aktiven Upload — löschen erst nach "
+                   "Abschluss/Reconcile möglich.",
+        )
     try:
         deleted = delete_publishing_draft(job.job_dir, publishing_id)
     except PublishingError as exc:
@@ -1546,6 +1560,18 @@ def youtube_reconcile(job_id: str, publishing_id: str) -> dict:
     Antwort enthält den vollständigen upload-status (ohne Secrets)."""
     job = _require_job(job_id)
     draft = _require_youtube_draft(job, publishing_id)
+    # Audit-Fix: Reconcile darf einen FRISCHEN aktiven Upload nicht anfassen
+    # (würde einen laufenden Upload als uncertain markieren). Nur stale-aktive
+    # oder ruhende Zustände (reconciling/uncertain/failed/...) sind erlaubt.
+    svc_check = build_youtube_upload_service()
+    if (yt_current_state(draft) in YT_ACTIVE_STATES
+            and yt_current_state(draft) != "reconciling"
+            and not svc_check.is_stale(draft)):
+        raise HTTPException(
+            status_code=409,
+            detail="Upload läuft noch (nicht stale) — Reconcile erst nach "
+                   "Abschluss oder Staleness möglich.",
+        )
     build_youtube_reconciler().reconcile(job.job_dir, publishing_id, draft)
     fresh = _require_publishing_draft(job, publishing_id)
     return build_youtube_upload_service().upload_status(fresh)

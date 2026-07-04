@@ -251,7 +251,7 @@ export default function GlobalPublishingPage() {
       ) : !data || data.drafts.length === 0 ? (
         <p className="rounded-2xl border border-dashed border-neutral-800 px-4 py-8 text-center text-sm text-neutral-500">
           Keine Publishing-Drafts gefunden. Auf einer Job-Seite bei einem Clip
-          „Publishing vorbereiten" wählen.
+          „Publishing vorbereiten“ wählen.
         </p>
       ) : (
         <div className="space-y-3">

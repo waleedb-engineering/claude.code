@@ -373,7 +373,7 @@ export default function ClipEditPage() {
           </div>
           <p className="rounded-lg bg-neutral-800/40 px-3 py-2 text-xs text-neutral-400">
             ℹ Dieser Export erscheint jetzt im Bereich{" "}
-            <span className="text-neutral-200">„Manuelle Exporte"</span> auf der
+            <span className="text-neutral-200">„Manuelle Exporte“</span> auf der
             Job-Seite und ist Teil von{" "}
             <span className="text-neutral-200">all-exports.zip</span>.
           </p>

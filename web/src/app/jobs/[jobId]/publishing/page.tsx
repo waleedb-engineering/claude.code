@@ -113,7 +113,7 @@ function Checklist({ draft }: { draft: PublishingDraft }) {
   if (!v) {
     return (
       <p className="text-xs text-neutral-500">
-        Noch nicht validiert — „Prüfen" klicken.
+        Noch nicht validiert — „Prüfen“ klicken.
       </p>
     );
   }

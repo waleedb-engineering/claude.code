@@ -509,8 +509,14 @@ class YouTubeUploadService:
     def _persist_refreshed(self, creds) -> None:
         """Speichert den aufgefrischten Tokenstand NUR über den Keychain
         (kein Plaintext). Fehler beim Speichern sind nicht kritisch für den
-        laufenden Upload und leaken nichts."""
-        old = self.token_store.read_token() or {}
+        laufenden Upload und leaken nichts.
+
+        Audit-Fix: Wurde das Token zwischenzeitlich gelöscht (Logout WÄHREND
+        des Refresh), wird NICHT gespeichert — sonst würde der Refresh das
+        gerade ausgeloggte Token „wiederbeleben"."""
+        old = self.token_store.read_token()
+        if old is None:
+            return  # Logout während Refresh → Token bleibt gelöscht
         expiry = getattr(creds, "expiry", None)
         merged = dict(old)
         if getattr(creds, "token", None):
@@ -878,7 +884,8 @@ class YouTubeUploadService:
         current = load_draft(job_dir, publishing_id) or {}
         ex = dict(extra or {})
         if attempt_entry is not None:
-            hist = list(current.get("publish_attempts") or [])
+            raw_att = current.get("publish_attempts")
+            hist = [e for e in raw_att if isinstance(e, dict)] if isinstance(raw_att, list) else []
             hist.append(_safe_attempt_entry(attempt_entry))
             ex["publish_attempts"] = hist[-self._MAX_ATTEMPT_HISTORY:]
             ex.setdefault("publish_completed_at", attempt_entry.get("completed_at"))
@@ -972,7 +979,9 @@ class YouTubeUploadService:
         can_retry = state in (ystate.STATE_IDLE, ystate.STATE_FAILED) and not ext_present
         can_reconcile = state in (ystate.STATE_RECONCILING, ystate.STATE_UNCERTAIN) or (
             stale and state in ystate.ACTIVE_STATES)
-        history = draft.get("publish_attempts") or []
+        history = draft.get("publish_attempts")
+        if not isinstance(history, list):
+            history = []
         att_summary = [_safe_attempt_entry(a) for a in history[-self._MAX_ATTEMPT_HISTORY:]]
         return {
             "status": draft.get("status"),
@@ -1050,8 +1059,6 @@ def _http_reason(error: Exception) -> str | None:
     reason = getattr(error, "reason", None)
     if isinstance(reason, str) and reason and reason[:1].islower():
         return reason
-    for attr in ("_get_reason", "error_details"):
-        pass
     return None
 
 
@@ -1084,7 +1091,11 @@ _ATTEMPT_FIELDS = ("attempt_id", "started_at", "completed_at", "outcome",
                    "error_code", "retry_count")
 
 
-def _safe_attempt_entry(entry: dict) -> dict:
+def _safe_attempt_entry(entry) -> dict:
+    # Audit-Fix: korrupte (Nicht-Dict-)Einträge aus einer beschädigten
+    # Draft-Datei dürfen den Status-Endpoint nie crashen (500).
+    if not isinstance(entry, dict):
+        return {"attempt_id": None, "outcome": "corrupt_entry"}
     out: dict = {}
     for k in _ATTEMPT_FIELDS:
         v = entry.get(k)
