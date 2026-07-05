@@ -272,6 +272,55 @@ App öffnen: <http://127.0.0.1:3000>
 
 ---
 
+## Automatisierte Browser-Tests (E2E, Playwright)
+
+Eine kleine, robuste **Smoke-Suite** prüft die kritischen Flows im echten
+Browser (Chromium) gegen laufendes Frontend **und** Backend. Sie ist
+deterministisch und offline: **keine** echten Google-Calls, **keine** echten
+Uploads, **keine** Tokens/Credentials.
+
+```bash
+cd web
+npm install
+npm run test:e2e            # ganze Suite (startet Backend+Frontend bei Bedarf selbst)
+npm run test:e2e:headed     # sichtbarer Browser
+npm run test:e2e:smoke      # kompakter Report
+```
+
+**Abgedeckte Flows** (`web/e2e/`):
+
+- **A** Upload → Job → Clip (echter Upload über die UI, deterministisch via
+  mitgeliefertem Transkript; kein Whisper).
+- **B** Clip-Editor → Re-Render (echter ffmpeg-Export).
+- **C** Publishing Planner (lokalen Draft anlegen + validieren).
+- **D** Globale Publishing-Übersicht (Suche, Filter, Duplizieren).
+- **E** YouTube Readiness + Dry-Run gegen das **echte** Backend (ohne
+  Credentials → alles blockiert): kein Public/Unlisted, **kein Token im DOM**.
+- **F** Unsicherer Zustand & Recovery-UI (gemockt): Warnung sichtbar, **kein**
+  Retry-Button, „Upload-Status prüfen" führt Reconciliation durch.
+- **G** Reauth-UI (gemockt): „YouTube erneut verbinden", kein Auto-Login, kein
+  Token im DOM, Logout funktioniert weiter.
+- **H** Negativfälle (ungültiger Dateityp, zu viele Batch-Dateien, ungültige
+  Re-Render-Grenzen, nicht existierender Job, leerer Publishing-Zustand,
+  Backend nicht erreichbar) — jeweils **kein** White-Screen.
+
+**Wächter:** Jeder Test scheitert automatisch bei unerwarteten
+`console.error`, `pageerror` oder `unhandledrejection`. Es gibt **keine**
+pauschale Ignore-Liste — ein einzelner, bewusst provozierter Fall (z. B.
+Offline-Backend) gibt nur sein konkretes Netzwerk-Fehlermuster frei. Ein
+DOM-Secret-Scan stellt in E/F/G sicher, dass keine Token-/Secret-Werte im DOM
+erscheinen.
+
+**Testdaten-Isolierung:** Alle erzeugten Jobs tragen ein eindeutiges
+`e2e-smoke`-Präfix und werden am Ende gelöscht; die Suite fasst **nie**
+echte/fremde Jobs oder Drafts an. Screenshots/Traces (nur bei Fehlern) und ein
+isoliertes Backend-Job-Verzeichnis sind in `.gitignore` ausgenommen. Chromium
+wird **nicht** heruntergeladen — die Suite nutzt den in der Umgebung
+vorinstallierten Browser (`playwright.config.ts`, `E2E_CHROMIUM_PATH`
+überschreibbar).
+
+---
+
 ## Zustände in der UI
 
 - **Loading:** Spinner auf Job- und Übersichtsseiten.

@@ -187,9 +187,15 @@ Tokens/Session-URIs im DOM (Backend liefert sie nie); alte Clips ohne
 analyzer-v2-Felder kompatibel (optionale Typen). Behoben: 3 unescapte
 JSX-Anführungszeichen (Lint-Fehler). Bekannte Schuld: 3×
 `react-hooks/set-state-in-effect` (Load-on-Mount-Muster; funktional korrekt,
-Build grün — Refactor wäre reines Regressionsrisiko). **Kein Playwright-Setup
-vorhanden** — es gibt keine Browser-E2E-Tests; verifiziert wird über tsc,
-ESLint, `next build` und die HTTP-Testsuite (ehrliche Lücke, §16).
+Build grün — Refactor wäre reines Regressionsrisiko).
+
+> **Nachtrag Prompt 31:** Die zuvor gemeldete Lücke „keine Browser-E2E" ist
+> nun **teilweise geschlossen**: eine deterministische Playwright-Smoke-Suite
+> (`web/e2e/`, 8 Spec-Dateien / 13 Tests) prüft die kritischen Flows im echten
+> Browser gegen laufendes Frontend **und** Backend — inkl. zentraler
+> `console.error`/`pageerror`-Wächter und DOM-Secret-Scan. Keine echten
+> Google-Calls/Uploads/Tokens. Verifikation weiterhin zusätzlich über tsc,
+> ESLint, `next build` und die HTTP-Testsuite.
 
 ## 12. Dependency Audit
 
@@ -204,17 +210,19 @@ Build ohne Warnungen. Keine Upgrades vorgenommen (bewusst).
 
 | Bereich | Unit | Integr. | HTTP | Race | Recovery | Security | Browser-E2E |
 |---|---|---|---|---|---|---|---|
-| Pipeline/Silence/Captions/Reframe | ✅ | ✅ | — | — | — | — | ❌ |
-| Jobs/Restore/Cancel/Delete/Storage | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ Traversal | ❌ |
-| Analyzer | ✅ | ✅ | — | — | — | — | ❌ |
-| Publishing Planner | ✅ | ✅ | ✅ | — | — | ✅ | ❌ |
-| OAuth/Token | ✅ | ✅ | ✅ | — | — | ✅ Sentinel | ❌ |
-| Upload/Retry/StateMachine | ✅ | ✅ | ✅ | ✅ 2→1 | ✅ | ✅ | ❌ |
-| Recovery/Reconcile | ✅ | ✅ | ✅ | ✅ | ✅ A/B/C | ✅ | ❌ |
+| Pipeline/Silence/Captions/Reframe | ✅ | ✅ | — | — | — | — | ✅ Smoke (A/B) |
+| Jobs/Restore/Cancel/Delete/Storage | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ Traversal | ✅ Smoke (A/H) |
+| Analyzer | ✅ | ✅ | — | — | — | — | ✅ Smoke (A) |
+| Publishing Planner | ✅ | ✅ | ✅ | — | — | ✅ | ✅ Smoke (C/D) |
+| OAuth/Token | ✅ | ✅ | ✅ | — | — | ✅ Sentinel | ✅ Smoke (E/G) |
+| Upload/Retry/StateMachine | ✅ | ✅ | ✅ | ✅ 2→1 | ✅ | ✅ | ✅ Smoke (F/G) |
+| Recovery/Reconcile | ✅ | ✅ | ✅ | ✅ | ✅ A/B/C | ✅ | ✅ Smoke (F) |
 | Audit-Fixes | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ ZIP | ❌ |
 
-**Exakte Zahlen: 20 Testdateien, 300 Einzeltests, 0 Failures** (davon neu in
-diesem Audit: test_audit_fixes.py mit 10).
+**Exakte Zahlen (Backend): 20 Testdateien, 300 Einzeltests, 0 Failures** (davon
+neu im Audit: test_audit_fixes.py mit 10). **Browser-E2E (Prompt 31): 8
+Playwright-Spec-Dateien, 13 Tests, 0 Failures** — deterministisch, ohne echte
+Google-Calls/Uploads/Tokens.
 
 ## 14. Gefundene Probleme
 
@@ -244,8 +252,11 @@ F7 teilweise (3 Entities gefixt). Jeder Fix hat einen Test in
    Draft-Endpoint; force-Job-Delete löscht den Ordner trotzdem (erfordert
    bewusstes force + zeitgleichen Upload; Cross-Modul-Guard wäre Kopplung
    jobs↔publishing).
-3. **Keine Browser-E2E (Playwright)** — UI nur durch tsc/ESLint/Build + HTTP-
-   Tests abgesichert.
+3. **Browser-E2E-Breite begrenzt** — seit Prompt 31 existiert eine
+   Playwright-**Smoke**-Suite (13 Tests) für die kritischen Flows; sie ersetzt
+   keine vollständige UI-Regression und läuft für YouTube-Recovery/Reauth über
+   gemockte `/youtube/*`-Endpoints (der echte private Upload bleibt
+   ungetestet — siehe §17).
 4. **3× `set-state-in-effect`-Lint** — funktional unkritisch, Refactor vertagt.
 5. **clips.json/Sidecar-Writes nicht atomar** — Leser sind korruptionstolerant;
    Restrisiko: Verlust einzelner Metadaten bei Crash im Write.
@@ -261,9 +272,10 @@ Sicherheits-Invarianten (kein Secret-Leak, Traversal-fest, PRIVATE-only,
 kein Fake-Success) sind durch Tests bewiesen; Race-/Crash-Pfade des
 Upload-Systems sind deterministisch getestet (2→1-Race, Recovery A/B/C).
 **Nicht D (PUBLIC BETA)**, weil: kein Auth/CORS-Härtung (Netz-Exposition
-unzulässig), keine Browser-E2E-Abdeckung, und der echte YouTube-Upload bisher
-nur über den Mock-Pfad + manuellen Real-Testmodus verifiziert ist (ein echter
-manueller E2E-Lauf mit realem Google-Konto steht aus — `REAL TEST NOT RUN`
-in dieser Umgebung, ehrlich dokumentiert). **Mehr als B**, weil alle für eine
+unzulässig), Browser-E2E nur als Smoke-Suite (kritische Flows, keine
+Vollabdeckung), und der echte YouTube-Upload bisher nur über den Mock-Pfad +
+manuellen Real-Testmodus verifiziert ist (ein echter manueller E2E-Lauf mit
+realem Google-Konto steht aus — `REAL TEST NOT RUN` in dieser Umgebung, ehrlich
+dokumentiert). **Mehr als B**, weil alle für eine
 geschlossene, lokal installierende Testgruppe relevanten Integritäts- und
 Sicherheitspfade getestet sind und Datenverlust-Szenarien behandelt werden.

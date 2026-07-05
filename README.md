@@ -409,6 +409,27 @@ python -m clipforge.cli testdata/sample.mp4 \
 
 Danach liegen abspielbare 9:16-MP4s in `testdata/out/`.
 
+### Browser-E2E-Smoke-Suite (Playwright)
+
+Kritische UI-Flows werden zusätzlich im **echten Browser** gegen laufendes
+Frontend **und** Backend geprüft (Upload → Job → Clip, Re-Render, Publishing
+Planner, globale Publishing-Übersicht, YouTube-Readiness/Dry-Run, Recovery- &
+Reauth-UI, Negativfälle). Deterministisch/offline: **keine** echten
+Google-Calls, **keine** echten Uploads, **keine** Tokens. Jeder Test scheitert
+automatisch bei unerwarteten `console.error`/`pageerror`; ein DOM-Secret-Scan
+stellt sicher, dass keine Tokens im DOM landen.
+
+```bash
+cd web
+npm install                    # installiert @playwright/test (Browser nicht neu laden)
+npm run test:e2e               # ganze Smoke-Suite (startet Server bei Bedarf selbst)
+npm run test:e2e:headed        # mit sichtbarem Browser
+npm run test:e2e:smoke         # gleiche Suite, kompakter Report
+```
+
+Testdaten sind isoliert (eindeutiges `e2e-smoke`-Präfix, Cleanup am Ende) —
+echte/fremde Jobs werden nie angefasst. Details in `docs/WEB.md`.
+
 ---
 
 ## Konfiguration (ENV)

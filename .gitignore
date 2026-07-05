@@ -29,3 +29,11 @@ node_modules/
 .next/
 out/
 scratchpad/
+
+# Playwright E2E-Artefakte (Screenshots/Traces/Reports) + isoliertes Job-Dir
+web/test-results/
+web/playwright-report/
+web/blob-report/
+web/.e2e-jobs/
+test-results/
+playwright-report/
