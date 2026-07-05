@@ -23,10 +23,13 @@ test("Globale Publishing-Übersicht: Suche, Filter, Duplizieren", async ({
 
   // Plattform-Filter (zweites Select) auf YouTube Shorts — Draft bleibt sichtbar.
   await page.locator("select").nth(1).selectOption("youtube_shorts");
+  // Über die Pack-ZIP-URL (enthält publishing_id) eindeutig identifizieren —
+  // NICHT per .first(), da "Duplizieren" selbst einen zweiten, ebenfalls
+  // passenden Eintrag erzeugt und die Liste danach neu lädt (Reihenfolge/
+  // Position sind nach dem Duplizieren nicht mehr verlässlich).
   const row = page
     .locator("article")
-    .filter({ hasText: `${E2E_PREFIX} draft` })
-    .first();
+    .filter({ has: page.locator(`a[href*="/publishing/${seeded.publishingId}/pack.zip"]`) });
   await expect(row).toBeVisible();
 
   // Duplizieren.

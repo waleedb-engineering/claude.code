@@ -27,6 +27,7 @@ export interface JobSummary {
 }
 
 export interface ClipForgeConfig {
+  version?: string;
   max_upload_mb: number;
   max_batch_files: number;
   max_workers: number;

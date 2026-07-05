@@ -30,6 +30,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
 
+from clipforge import __version__ as CLIPFORGE_VERSION
 from clipforge.brand_kit import (
     BrandKitError,
     load_brand_kit,
@@ -135,7 +136,7 @@ def _upload_size(file: UploadFile) -> int:
         return 0
 
 
-app = FastAPI(title="ClipForge AI API", version="0.1.0")
+app = FastAPI(title="ClipForge AI API", version=CLIPFORGE_VERSION)
 
 # CORS offen für lokale Entwicklung (Next.js-Client kommt in Schritt 3).
 app.add_middleware(
@@ -504,6 +505,7 @@ def get_config() -> dict:
     settings = get_settings()
     llm = bool(settings.llm_available)
     return {
+        "version": CLIPFORGE_VERSION,
         "max_upload_mb": _max_upload_mb(),
         "max_batch_files": _max_batch_files(),
         "max_workers": _max_workers(),

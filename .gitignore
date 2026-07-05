@@ -44,3 +44,6 @@ playwright-report/
 .clipforge-frontend.log
 .clipforge-frontend.pid
 api/.venv/
+
+# Beta-Package-Build-Ausgabe (build_beta_package.sh)
+dist/

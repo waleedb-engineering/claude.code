@@ -16,6 +16,7 @@ from __future__ import annotations
 import argparse
 import sys
 
+from . import __version__
 from .config import get_settings
 from .ffmpeg_utils import FFmpegNotFound, ensure_ffmpeg
 from .pipeline import run_pipeline
@@ -30,6 +31,11 @@ def build_parser() -> argparse.ArgumentParser:
         prog="clipforge",
         description="Erzeuge aus langen Videos automatisch Kurzclips (9:16) "
         "mit Untertiteln, Performance-Potential-Score und Plattform-Metadaten.",
+    )
+    p.add_argument(
+        "--version",
+        action="version",
+        version=f"clipforge {__version__}",
     )
     p.add_argument("video", help="Pfad zum Quellvideo")
     p.add_argument("--out", default="./clipforge_out", help="Ausgabe-Verzeichnis")
