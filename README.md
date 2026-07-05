@@ -12,14 +12,27 @@ MVP-Scope, Architektur, Risiken und Akzeptanzkriterien.
 ## Schnellstart Web-App
 
 ```bash
-# Terminal A — Backend
-cd api && export PYTHONPATH=$PWD && pip install -r requirements.txt
-uvicorn app:app --reload --port 8000
-
-# Terminal B — Frontend
-cd web && npm install && cp .env.example .env.local
-npm run dev      # http://127.0.0.1:3000
+./scripts/setup_local.sh    # 1) Setup: venv, Dependencies, .env, ffmpeg-Check
+./scripts/start_local.sh    # 2) Start: Backend + Frontend, ein Befehl, Strg+C zum Stoppen
 ```
+
+Danach im Browser öffnen: **http://127.0.0.1:3000/upload**
+
+Umgebung prüfen (Python/Node/ffmpeg/Dependencies/Ports/optionale Features):
+
+```bash
+python3 scripts/clipforge_doctor.py
+```
+
+Tests laufen lassen:
+
+```bash
+cd api && python3 tests/test_pipeline_core.py   # Backend-Regressionstests
+cd web && npm run test:e2e                       # Browser-E2E-Smoke-Suite
+```
+
+📘 **Ausführliche Anleitung (Voraussetzungen, erster Test, typische Fehler,
+Reset):** [`docs/LOCAL_BETA_GUIDE.md`](docs/LOCAL_BETA_GUIDE.md)
 
 > **Ehrlicher Hinweis:** ClipForge garantiert **keine** Viralität. Es
 > **maximiert die Wahrscheinlichkeit** für starke Performance durch messbare

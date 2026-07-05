@@ -67,9 +67,15 @@ export default function UploadPage() {
   const [config, setConfig] = useState<ClipForgeConfig | null>(null);
   const [styles, setStyles] = useState<CaptionStyleInfo[]>([]);
   const [brand, setBrand] = useState<BrandKit | null>(null);
+  const [backendUnreachable, setBackendUnreachable] = useState(false);
 
   useEffect(() => {
-    getConfig().then(setConfig).catch(() => {});
+    getConfig()
+      .then((c) => {
+        setConfig(c);
+        setBackendUnreachable(false);
+      })
+      .catch(() => setBackendUnreachable(true));
     getCaptionStyles().then(setStyles).catch(() => {});
     getBrandKit()
       .then((k) => {
@@ -191,6 +197,13 @@ export default function UploadPage() {
           die Analyse startet automatisch im Hintergrund.
         </p>
       </div>
+
+      {backendUnreachable && (
+        <div className="rounded-xl border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-300">
+          Backend nicht erreichbar. Läuft FastAPI auf Port 8000? (Siehe{" "}
+          <code className="text-rose-200">./scripts/start_local.sh</code>)
+        </div>
+      )}
 
       {/* Drop-Zone (mehrere Dateien) */}
       <div

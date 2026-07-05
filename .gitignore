@@ -37,3 +37,10 @@ web/blob-report/
 web/.e2e-jobs/
 test-results/
 playwright-report/
+
+# start_local.sh Laufzeit-Artefakte (PID/Logs) + Python venv aus setup_local.sh
+.clipforge-backend.log
+.clipforge-backend.pid
+.clipforge-frontend.log
+.clipforge-frontend.pid
+api/.venv/
