@@ -1,13 +1,42 @@
 # ClipForge AI
 
-KI-gestütztes Tool, das aus **langen Videos automatisch starke Kurzclips** für
-TikTok, Instagram Reels und YouTube Shorts erzeugt.
+**Local-first AI video-shorts tool.** Aus einem langen Video (Podcast, Talk,
+Coaching-Call) werden lokal automatisch mehrere kurze, vertikale 9:16-Clips mit
+eingebrannten Untertiteln, einem transparenten Performance-Potential-Score und
+publizierfertigen Plattform-Texten — für YouTube Shorts, TikTok und Instagram
+Reels.
 
-📄 **Produktdefinition:** [`docs/PRODUCT.md`](docs/PRODUCT.md) — Problem, Lösung,
-MVP-Scope, Architektur, Risiken und Akzeptanzkriterien.
-🌐 **Web-Plan:** [`docs/WEB_PLAN.md`](docs/WEB_PLAN.md) · **HTTP-API:**
-[`docs/API.md`](docs/API.md) — FastAPI-Bridge über dem Pipeline-Kern ·
-🖥️ **Web-App:** [`docs/WEB.md`](docs/WEB.md) — Next.js-UI lokal starten.
+> *Turn one long video into several ready-to-post vertical shorts — entirely on
+> your own machine. No account, no mandatory cloud.*
+
+`Version 0.1.0-beta.1` · **Closed Beta / Release Candidate** · local-first ·
+kein Account, keine Pflicht-Cloud · PRIVATE-only YouTube-Pfad (default aus) ·
+kein Public/Unlisted, kein TikTok/Instagram-Auto-Upload.
+
+> **Projektstatus (ehrlich):** Bereit für **lokales Beta-Testing**. Kein
+> produktionsreifes SaaS, nicht für Internet-Exposition gehärtet. Der echte
+> YouTube-Upload-Pfad ist implementiert und mit gemocktem Client getestet, aber
+> **noch nicht** mit einem realen Google-Konto End-to-End verifiziert.
+
+### Beta-Einstieg
+
+- 🚀 **Beta-Tester:** [`docs/BETA_TESTER_GUIDE.md`](docs/BETA_TESTER_GUIDE.md)
+- 📋 **Release Notes:** [`docs/RELEASE_NOTES_0.1.0-beta.1.md`](docs/RELEASE_NOTES_0.1.0-beta.1.md)
+- ⚠️ **Bekannte Grenzen:** [`docs/KNOWN_ISSUES.md`](docs/KNOWN_ISSUES.md)
+- 🔒 **Security & Privacy:** [`docs/SECURITY_PRIVACY_REVIEW.md`](docs/SECURITY_PRIVACY_REVIEW.md)
+
+### Technische Dokumentation
+
+- 📄 **Produktdefinition:** [`docs/PRODUCT.md`](docs/PRODUCT.md) — Problem, Lösung, MVP-Scope, Architektur, Risiken.
+- 🌐 **Web-Plan:** [`docs/WEB_PLAN.md`](docs/WEB_PLAN.md) · **HTTP-API:** [`docs/API.md`](docs/API.md) — FastAPI-Bridge über dem Pipeline-Kern.
+- 🖥️ **Web-App:** [`docs/WEB.md`](docs/WEB.md) — Next.js-UI lokal starten.
+- 🎬 **YouTube-Konzept:** [`docs/YOUTUBE_PUBLISHING.md`](docs/YOUTUBE_PUBLISHING.md) · **Real-Test:** [`docs/YOUTUBE_REAL_TEST_CHECKLIST.md`](docs/YOUTUBE_REAL_TEST_CHECKLIST.md)
+
+### Preview
+
+> _Screenshots/GIFs folgen. Bis dahin: lokal starten (siehe Schnellstart) und
+> `http://127.0.0.1:3000/upload` öffnen — die UI führt durch Upload → Job →
+> Clips → Editor → Publishing Planner → YouTube Dry-Run._
 
 ## Schnellstart Web-App
 
@@ -39,6 +68,50 @@ Reset):** [`docs/LOCAL_BETA_GUIDE.md`](docs/LOCAL_BETA_GUIDE.md)
 > Signale: Hook-Erkennung, Retention-Optimierung, automatische Clip-Auswahl,
 > Untertitel, schnelle Schnitte, einen transparenten **Performance-Potential-
 > Score**, Plattform-Metadaten und Varianten-Testing.
+
+---
+
+## Funktionsüberblick
+
+| Bereich | Was es kann |
+|---|---|
+| **Analyse** | Lokale Transkription (faster-whisper) oder mitgeliefertes Transkript · Clip-Analyzer v2 mit nachvollziehbarem Score, Deduplizierung, Risk-Flags · optional per Claude verstärkt |
+| **Rendering** | 9:16-Export (FFmpeg) · wortgenaue Karaoke-Untertitel · Silence-Removal · Smart-Reframe (lokale Gesichtserkennung) · Brand Kit |
+| **Editor & Export** | Web-Clip-Editor mit Re-Render · manuelle Exporte · `exports.zip` / `all-exports.zip` |
+| **Content** | Titel, Hook-Varianten, Hashtags, Plattform-Beschreibungen pro Clip (regelbasiert, optional KI) |
+| **Publishing** | Lokaler Planner (Drafts, kein Auto-Upload) · globale Übersicht · YouTube **Dry-Run** · echter **privater** YouTube-Upload-Pfad (Flag, default aus) mit Retry/Recovery/Reconciliation/Race-Schutz |
+| **DX / Release** | One-Command Setup/Start · Environment Doctor · Playwright-Browser-E2E · `release_check.sh` · reproduzierbares Beta-Package |
+
+## Sichere Defaults
+
+- **Local-first:** Videos/Clips/Drafts bleiben unter `api/jobs/`. Kein
+  Cloud-Sync, kein Account. Cloud nur bei bewusst gesetzten optionalen Features
+  (KI-Analyzer via `ANTHROPIC_API_KEY`, echter YouTube-Upload via Flags).
+- **YouTube-Upload standardmäßig AUS** (`CLIPFORGE_ENABLE_YOUTUBE_UPLOAD=false`)
+  und **ausschließlich `private`** — kein Public/Unlisted im Code vorhanden.
+- **Kein Auto-Posting, kein Scheduling-Daemon, kein TikTok/Instagram-Upload.**
+- **Keine Secrets im DOM/Log/Response**; YouTube-Tokens nur im OS-Keychain.
+- **Nicht für Internet-Exposition** gedacht (kein Auth, offene CORS für lokale
+  Entwicklung). Details: [`docs/SECURITY_PRIVACY_REVIEW.md`](docs/SECURITY_PRIVACY_REVIEW.md).
+
+## YouTube-Status
+
+Der private Upload-Pfad ist implementiert und mit gemocktem Google-Client
+getestet, **aber noch nicht** mit einem echten Konto End-to-End verifiziert
+(einziger offener Blocker). Standard-Testflow bleibt **Dry-Run**. Realer Test:
+[`docs/YOUTUBE_REAL_TEST_CHECKLIST.md`](docs/YOUTUBE_REAL_TEST_CHECKLIST.md).
+
+## Release-Package
+
+Ein reproduzierbares, secret-freies Beta-Tarball wird lokal gebaut:
+
+```bash
+./scripts/build_beta_package.sh   # -> dist/clipforge-beta-0.1.0-beta.1.tar.gz
+./scripts/release_check.sh        # Voll-QA-Gate: RELEASE CHECK PASSED/FAILED
+```
+
+Das Package enthält nur Quellcode, Skripte, Docs und Test-Fixtures — **keine**
+`node_modules`, `.venv`, `.env`, Videos, Tokens oder Build-Artefakte.
 
 ---
 
@@ -461,3 +534,47 @@ echte/fremde Jobs werden nie angefasst. Details in `docs/WEB.md`.
 | `CLIPFORGE_MAX_BATCH_FILES` | `10` | Maximale Dateien pro Batch-Upload |
 | `CLIPFORGE_JOBS_DIR` | `api/jobs` | Speicherort der Job-Ordner |
 | `CLIPFORGE_BRAND_KIT` | `api/config/brand_kit.json` | Speicherort des lokalen Brand Kits |
+
+> YouTube-/OAuth-/Upload-Flags (alle default sicher/aus) und alle weiteren
+> Variablen sind vollständig in [`.env.example`](.env.example) dokumentiert.
+
+---
+
+## Entwicklung
+
+```bash
+cd api && export PYTHONPATH=$PWD
+python3 tests/test_pipeline_core.py     # schnelle Regressionstests (keine Modelle/Keys nötig)
+
+cd web
+npm run test:e2e      # Playwright-Browser-E2E
+npx tsc --noEmit      # TypeScript
+npm run lint          # ESLint
+npm run build         # Produktions-Build
+
+# Voll-QA-Gate vor einem Release:
+./scripts/release_check.sh
+```
+
+Codeüberblick: `api/clipforge/` (Pipeline-Kern), `api/app.py` (FastAPI-Bridge),
+`web/src/` (Next.js-UI), `web/e2e/` (Playwright), `scripts/` (Setup/Start/
+Doctor/Release), `docs/` (Konzept + Beta-Dokumentation).
+
+## Bekannte Grenzen
+
+Ehrlich und vollständig mit Auswirkung/Workaround/Status:
+[`docs/KNOWN_ISSUES.md`](docs/KNOWN_ISSUES.md). Kurz: echter YouTube-Upload
+noch nicht mit realem Konto E2E-verifiziert · local-first (kein Multi-User/Auth,
+keine CORS-Härtung für Internet) · kein Public/Unlisted · kein
+TikTok/Instagram-Auto-Upload · kein Scheduling-Daemon · kein dynamisches
+Reframe · kein Auto-Resume unterbrochener Uploads nach Prozessneustart
+(sichere Recovery statt Blind-Retry) · 3 dokumentierte ESLint-Tech-Debt-Punkte.
+
+## Projektstatus (ehrlich)
+
+**Geschlossene Beta / Release Candidate `0.1.0-beta.1`** — bereit für lokales
+Beta-Testing. **Kein** produktionsreifes SaaS, **nicht** für Internet-Exposition
+gehärtet, **kein** verifizierter Live-YouTube-Upload gegen ein reales Konto.
+Der Score ist eine Einschätzung, **keine** Garantie für Reichweite oder Erfolg.
+Positionierung/Formulierungen für Portfolio & LinkedIn:
+[`docs/PORTFOLIO_LINKEDIN_SNIPPETS.md`](docs/PORTFOLIO_LINKEDIN_SNIPPETS.md).

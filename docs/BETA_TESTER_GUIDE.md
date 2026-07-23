@@ -1,226 +1,257 @@
-# ClipForge AI — Beta-Tester-Guide
+# ClipForge AI — Beta-Tester-Guide (0.1.0-beta.1)
 
-## 1. Willkommen
+Praktische Anleitung für technische Beta-Tester. Ziel: von „Paket erhalten" zu
+„erster Clip erzeugt und geprüft" in wenigen Minuten, plus klare Kriterien,
+was zu testen ist und was bewusst (noch) nicht funktioniert.
 
-Schön, dass du ClipForge testest. ClipForge macht aus einem langen Video
-automatisch mehrere kurze, vertikale Clips (9:16) mit Untertiteln — für
-YouTube Shorts, TikTok und Instagram Reels gedacht.
-
-Das hier ist eine **geschlossene Beta**. Es läuft komplett auf deinem
-eigenen Rechner — kein Account, keine Cloud, deine Videos verlassen deinen
-Computer nicht (außer du aktivierst bewusst eine der optionalen
-Cloud-Funktionen). Manche Dinge sind noch nicht fertig — dafür bist du ja da.
-
-Danke, dass du dir die Zeit nimmst.
+> **Status:** geschlossene Beta / Release Candidate `0.1.0-beta.1`.
+> Local-first, keine Pflicht-Cloud, kein Account. Kein produktionsreifes SaaS.
 
 ---
 
-## 2. Voraussetzungen
+## Was ist ClipForge?
 
-Du brauchst auf deinem Rechner:
+Ein **lokales** Tool, das aus einem langen Video (Podcast, Talk,
+Coaching-Call) automatisch mehrere kurze, vertikale Clips (9:16) mit
+eingebrannten Untertiteln erzeugt — für YouTube Shorts, TikTok und Instagram
+Reels gedacht. Alles läuft auf deinem Rechner; Videos verlassen die Maschine
+nur, wenn du eine der optionalen Cloud-Funktionen bewusst aktivierst
+(KI-Analyzer via API-Key, oder echter privater YouTube-Upload).
 
-- **Python** (Version 3.10 oder neuer)
-- **Node.js** (Version 20 oder neuer)
-- **ffmpeg** (das Werkzeug, das die Videos schneidet — muss separat
-  installiert sein, z. B. `brew install ffmpeg` auf dem Mac oder
-  `apt install ffmpeg` auf Linux)
+## Für wen ist die Beta gedacht?
 
-Kein Konto, kein API-Key, keine Kreditkarte nötig, um loszulegen.
+- Technische Tester, die lokal Python + Node ausführen können.
+- Content-Creator/Editoren, die den Clip-Vorschlag und die Textausgaben an
+  echten eigenen Videos beurteilen wollen.
+- Nicht gedacht für: nicht-technische Endnutzer ohne Terminal, produktive
+  Kanäle, Multi-User-Setups, Server-/Internet-Deployment.
+
+## Was kann getestet werden?
+
+- Upload (einzeln + Batch), Analyse, Clip-Auswahl, Score-Plausibilität
+- Untertitel (Karaoke), Silence-Removal, Smart-Reframe, Brand Kit
+- Web-Clip-Editor + Re-Render
+- Content-Package-Texte (Titel/Hashtags/Beschreibungen)
+- ZIP-Exporte
+- Publishing Planner (lokale Drafts) + globale Übersicht
+- YouTube **Dry-Run** (Vorschau ohne Upload)
+- Optional & bewusst: echter privater YouTube-Upload (siehe unten)
+- Fehler-/Randfälle (kaputte Datei, Netzwerkausfall, Abbruch)
 
 ---
 
-## 3. Installation
+## Systemanforderungen
 
-1. Terminal öffnen, in den entpackten ClipForge-Ordner wechseln.
-2. Einmalig ausführen:
-   ```bash
-   ./scripts/setup_local.sh
-   ```
-3. Das Skript installiert alles Nötige und meldet sich am Ende mit einer
-   Übersicht — grüne Häkchen sind gut. Steht dort etwas mit „FAIL" (rot),
-   fehlt noch eine Voraussetzung (meistens ffmpeg) — die Meldung sagt dir,
-   was fehlt.
+| Komponente | Version | Prüfen |
+|---|---|---|
+| Python | ≥ 3.10 | `python3 --version` |
+| Node.js | ≥ 20.9 | `node --version` |
+| npm | (mit Node) | `npm --version` |
+| ffmpeg + ffprobe | aktuell | `ffmpeg -version` |
+
+`ffmpeg` wird **nicht** automatisch installiert (nur geprüft). Fehlt es:
+`apt install ffmpeg` (Linux) / `brew install ffmpeg` (macOS) /
+[ffmpeg.org](https://ffmpeg.org/download.html) (Windows).
+
+Optional (ohne läuft ClipForge vollständig): `ANTHROPIC_API_KEY` für den
+KI-Analyzer-Modus; ein Google-Cloud-Projekt nur für den optionalen
+YouTube-Real-Test.
 
 ---
 
-## 4. Start
+## Installation aus dem Beta-Package
+
+Du hast ein Tarball erhalten, z. B. `clipforge-beta-0.1.0-beta.1.tar.gz`.
+
+```bash
+tar -xzf clipforge-beta-0.1.0-beta.1.tar.gz
+cd clipforge-beta-0.1.0-beta.1
+```
+
+Das entpackte Verzeichnis ist **kein** Git-Repository und enthält keine
+`node_modules`, kein `.venv`, keine `.env`, keine Videos, keine Secrets — nur
+Quellcode, Skripte, Docs und die eingecheckten Test-Fixtures.
+
+## Setup
+
+```bash
+./scripts/setup_local.sh
+```
+
+Legt ein Python-venv an, installiert Backend- und Frontend-Abhängigkeiten,
+erzeugt `.env`/`web/.env.local` aus den `*.example`-Vorlagen (überschreibt
+vorhandene nicht), prüft ffmpeg und führt am Ende den **Environment Doctor**
+aus. Erneutes Ausführen ist sicher (idempotent).
+
+## Start
 
 ```bash
 ./scripts/start_local.sh
 ```
 
-Ein Befehl startet alles. Nach ein paar Sekunden siehst du im Terminal:
+Startet Backend (`:8000`) und Frontend (`:3000`) mit einem Befehl. Beenden:
+**Strg+C** (beendet beide sauber). Ports belegt? Mit
+`CLIPFORGE_API_PORT` / `CLIPFORGE_WEB_PORT` überschreiben.
 
-```
-Öffnen: http://127.0.0.1:3000/upload
-```
+Danach im Browser öffnen: **http://127.0.0.1:3000/upload**
 
-Diesen Link im Browser öffnen — fertig. Zum Beenden: im selben Terminal
-**Strg+C** drücken.
-
----
-
-## 5. Erster Upload
-
-1. Auf der Upload-Seite ein Video auswählen (per Klick oder Drag & Drop).
-2. Unten auf **„Videos analysieren"** klicken.
-3. Du wirst zur Job-Seite weitergeleitet — dort läuft die Analyse live mit
-   Fortschrittsanzeige. Das dauert je nach Videolänge und Rechner ein paar
-   Minuten.
-   - **Erster Job dauert länger:** ClipForge lädt beim allerersten Mal ein
-     Spracherkennungs-Modell herunter (~140 MB, einmalig).
-
----
-
-## 6. Clips ansehen
-
-Sobald der Job fertig ist, erscheinen die Clips als Karten:
-
-- **Video-Vorschau** direkt abspielbar
-- **Score** — eine Einschätzung, wie stark der Clip wahrscheinlich
-  performt (keine Garantie, nur ein Hinweis)
-- **Content-Paket** — vorgeschlagener Titel, Hashtags, Beschreibungstexte
-  für die jeweilige Plattform (aufklappen, um sie zu sehen/kopieren)
-- **MP4 herunterladen** — lädt den fertigen Clip auf deinen Rechner
-
----
-
-## 7. Re-render
-
-Gefällt dir der Zuschnitt eines Clips nicht ganz? Auf **„Bearbeiten"**
-klicken:
-
-1. Start-/Endzeit anpassen (Schieberegler/Zahlenfelder).
-2. Untertitel-Stil und Bildausrichtung nach Wunsch ändern.
-3. **„Neu rendern"** klicken — erzeugt eine neue Version, ohne den
-   ursprünglichen Clip zu löschen.
-
----
-
-## 8. Publishing Planner
-
-Auf einer Clip-Karte **„Publishing vorbereiten"** klicken, um einen
-**lokalen Entwurf** anzulegen — Titel, Caption, Hashtags editierbar. Das ist
-**kein echter Upload**, sondern eine Planungshilfe: du bekommst am Ende ein
-ZIP-Paket (Video + fertige Texte) zum **manuellen** Hochladen auf der
-jeweiligen Plattform.
-
-Unter **„Publishing"** (oben in der Navigation) siehst du alle Entwürfe über
-alle Videos hinweg an einem Ort, mit Suche und Filter.
-
----
-
-## 9. YouTube Dry-Run
-
-Bei einem YouTube-Shorts-Entwurf gibt es einen Button **„YouTube Dry-Run
-prüfen"**. Er zeigt dir **genau, was hochgeladen würde** (Titel,
-Beschreibung, technische Checks) — **ohne** tatsächlich etwas hochzuladen.
-Reiner Vorschau-Modus, komplett gefahrlos.
-
-Es gibt in dieser Beta auch einen Pfad für einen **echten, aber
-ausschließlich privaten** YouTube-Upload (nur du selbst siehst das Video
-danach). Er ist **standardmäßig deaktiviert** und erfordert eine bewusste,
-mehrstufige Bestätigung. Für die Beta empfehlen wir: **beim Dry-Run
-bleiben**, außer wir bitten dich ausdrücklich um einen echten Testupload.
-
----
-
-## 10. Was aktuell NICHT funktioniert
-
-- **Kein öffentlicher oder „Unlisted"-Upload** — YouTube-Upload ist
-  ausschließlich **privat**.
-- **Kein TikTok- oder Instagram-Auto-Upload** — nur lokale Text-/Video-Pakete
-  zum manuellen Hochladen.
-- **Kein automatisches Planen/Posten** — nichts passiert von selbst zu einer
-  bestimmten Uhrzeit.
-- **Kein Mehrbenutzer-Betrieb** — ClipForge ist für einen einzelnen Nutzer
-  auf einem Rechner gedacht.
-- Der echte private YouTube-Upload ist implementiert, aber noch nicht mit
-  einem echten YouTube-Konto vollständig durchgetestet — sei hier besonders
-  vorsichtig und melde uns jede Auffälligkeit.
-
-Ausführliche, laufend gepflegte Liste: [`docs/KNOWN_ISSUES.md`](KNOWN_ISSUES.md).
-
----
-
-## 11. Fehler melden
-
-Am hilfreichsten für uns:
-
-1. **Was hast du versucht?** (z. B. „Video hochgeladen, dann auf Bearbeiten
-   geklickt")
-2. **Was ist passiert?** (die genaue Fehlermeldung, am besten als Text oder
-   Screenshot)
-3. **Was hast du erwartet?**
-4. Die Ausgabe von:
-   ```bash
-   python3 scripts/clipforge_doctor.py
-   ```
-
-Je genauer die Schritte zum Nachstellen, desto schneller können wir es
-reparieren.
-
----
-
-## 12. Welche Logs geteilt werden dürfen
-
-Unbedenklich zu teilen:
-
-- Die Terminal-Ausgabe von `start_local.sh` bzw. `clipforge_doctor.py`
-- Fehlermeldungen, die **im Browser** angezeigt werden
-- Screenshots der ClipForge-Oberfläche
-
-Diese enthalten keine Passwörter oder Zugangsdaten — ClipForge gibt so
-etwas grundsätzlich nirgends aus (auch nicht in Logs oder Fehlermeldungen).
-
----
-
-## 13. Welche Daten niemals geteilt werden dürfen
-
-Bitte **niemals** öffentlich teilen (z. B. in einem GitHub-Issue, Screenshot
-oder Chat):
-
-- Den Inhalt deiner `.env`-Datei
-- Alles, was wie ein Google-„Client-Secrets"-JSON aussieht
-  (`client_secret.json` o. ä.)
-- Irgendetwas, das mit `ya29.`, `1//`, `GOCSPX-` oder `Bearer ` beginnt —
-  das sind Formate echter Google-Zugangstoken
-- Deine eigenen Videos, falls sie privat/vertraulich sind (das ist dein
-  Content, nicht unserer)
-
-Falls du dir unsicher bist, ob etwas ein Geheimnis ist: **lieber nicht
-teilen** und uns kurz fragen.
-
----
-
-## 14. Reset
-
-Alles an Job-Daten zurücksetzen, ohne ClipForge neu zu installieren:
+## Healthcheck
 
 ```bash
-# ClipForge vorher stoppen (Strg+C im Start-Terminal), dann:
-rm -rf api/jobs/*
+# Umgebung prüfen (PASS/WARN/FAIL):
+python3 scripts/clipforge_doctor.py
+
+# Backend-Health direkt:
+curl -s http://127.0.0.1:8000/health
+# -> {"status":"ok", ..., "version":"0.1.0-beta.1", "ffmpeg":true, ...}
 ```
 
-Das entfernt alle hochgeladenen Videos und erzeugten Clips lokal — nichts
-davon war je irgendwo hochgeladen.
+Die Version steht auch in der Fußzeile der Web-App.
 
 ---
 
-## 15. Uninstall / Entfernen
+## Erstes Video verarbeiten
 
-ClipForge installiert nichts systemweit. Zum vollständigen Entfernen reicht:
+1. **http://127.0.0.1:3000/upload** öffnen.
+2. Video wählen (MP4/MOV/MKV/WEBM/AVI/M4V, max. 500 MB) → **„Videos
+   analysieren"**.
+3. Auf der Job-Seite läuft die Analyse live (Polling alle 2 s).
+   - **Erster Lauf ohne Transkript** lädt einmalig das Whisper-Modell
+     (~140 MB) — dauert entsprechend länger.
+   - **Schneller/deterministisch:** kein Video zur Hand? Mit ffmpeg eins
+     erzeugen und das mitgelieferte Transkript anhängen:
+     ```bash
+     ./scripts/make_sample_video.sh   # -> api/testdata/sample.mp4 (60s)
+     ```
+     Beim Upload zusätzlich `api/testdata/transcript.json` als „Transkript
+     (optional)" anhängen → überspringt Whisper.
+4. Nach `completed` erscheinen die Clip-Karten mit Score, Aufschlüsselung und
+   eingebetteter Vorschau.
 
-1. ClipForge stoppen (Strg+C).
-2. Den ClipForge-Ordner löschen.
+## Export testen
 
-Das war's — keine Registry-Einträge, keine Hintergrunddienste, keine
-versteckten Dateien außerhalb des Ordners (mit einer Ausnahme: falls du den
-YouTube-OAuth-Testpfad genutzt hast, liegt ein Token im
-Betriebssystem-Schlüsselbund/Keychain — dafür gibt es in der App den Button
-„YouTube-Token löschen").
+- Auf einer Clip-Karte **„MP4 herunterladen"** → fertiger 9:16-Clip lokal.
+- Job-Seite: **„Alle Clips als ZIP"** (nur Auto-Clips) und **„Alle Exporte als
+  ZIP"** (Auto-Clips + manuelle Exporte + `data/`-Metadaten).
+
+## Editor testen
+
+1. Clip-Karte → **„Bearbeiten"**.
+2. Start-/Endzeit anpassen, Caption-Style/Reframe/Titel wählen.
+3. **„Neu rendern"** → erzeugt einen neuen manuellen Export (echter
+   ffmpeg-Lauf), der ursprüngliche Auto-Clip bleibt erhalten.
+
+## Content Package prüfen
+
+Auf einer Clip-Karte das **„📦 Content-Paket"**-Panel aufklappen: Primary
+Hook, Hook-Varianten, YouTube-Shorts-Titel/-Beschreibung, TikTok-/Reels-Caption
++ Hashtags + Pinned Comment, Plattform-Empfehlung, A/B/C-Varianten. Jeder Text
+hat einen Copy-Button. **Ohne API-Key** entstehen die Texte regelbasiert
+(DE+EN); mit `ANTHROPIC_API_KEY` optional durch Claude verbessert.
+
+## ZIP-Download prüfen
+
+`all-exports.zip` öffnen und Struktur prüfen: `auto_clips/`, `manual_exports/`,
+`data/` (u. a. `clips.json`, `transcript.json`, `content_packages.json`,
+`manual_exports.json`, `metadata.json`). Videos abspielbar, JSON valide.
+
+## YouTube Dry-Run testen
+
+Bei einem YouTube-Shorts-Draft → **„YouTube Dry-Run prüfen"**. Zeigt exakt,
+**was hochgeladen würde** (Titel, Beschreibung, `privacy: private`, technische
+Checks) — **ohne** Upload. Ohne konfigurierte Credentials zeigt die
+Upload-Bereitschaft `blocked_reasons` und **keinen** aktivierbaren
+Upload-Button (korrekter, sicherer Default).
+
+## YouTube Real Upload — nur optional und bewusst
+
+Ein echter Upload ist **nicht** Teil des Standard-Beta-Testflows. Falls du
+ausdrücklich darum gebeten wirst, ihn beizutragen: folge Schritt für Schritt
+[`docs/YOUTUBE_REAL_TEST_CHECKLIST.md`](YOUTUBE_REAL_TEST_CHECKLIST.md). Er
+erfordert ein eigenes Google-Cloud-Projekt, ein **Test-Konto**, zwei bewusst
+gesetzte Feature-Flags und eine interaktive `UPLOAD_PRIVATE`-Bestätigung.
+
+### Private-only Upload-Hinweis
+
+Ein echter Upload ist **immer** `private` (nur du siehst das Video). Es gibt
+**keinen** Code-Pfad für `public` oder `unlisted` — das ist keine Einstellung,
+sondern eine Grenze im Code (`ALLOWED_PRIVACY = "private"`). Kein Auto-Posting,
+kein Scheduling.
 
 ---
 
-Danke fürs Testen. Bei Fragen: siehe [`docs/LOCAL_BETA_GUIDE.md`](LOCAL_BETA_GUIDE.md)
-für die technischere Variante dieser Anleitung.
+## Was Tester NICHT erwarten sollten
+
+- Kein öffentlicher/Unlisted-YouTube-Upload.
+- Kein automatischer TikTok-/Instagram-Upload (nur lokale Pakete zum manuellen
+  Hochladen).
+- Kein automatisches Planen/Posten (kein Hintergrunddienst).
+- Kein Mehrbenutzer-Betrieb, kein Login, keine Cloud-Sync.
+- Keine Garantie für Reichweite/Viralität — der Score ist eine Einschätzung.
+- Kein produktionsreifes, internet-exponierbares Deployment.
+
+## Bekannte Einschränkungen
+
+Vollständig mit Auswirkung/Workaround/Status:
+[`docs/KNOWN_ISSUES.md`](KNOWN_ISSUES.md). Kern: echter YouTube-Upload noch
+nicht mit realem Konto E2E-verifiziert; local-first (kein Multi-User/CORS-
+Härtung); kein dynamisches Reframe; kein Auto-Resume eines unterbrochenen
+Uploads nach Prozess-Neustart (dafür sichere Recovery); 3 dokumentierte
+ESLint-Tech-Debt-Punkte.
+
+---
+
+## Wie man Fehler meldet
+
+Am hilfreichsten:
+
+1. **Was** hast du getan? (konkrete Schritte zum Nachstellen)
+2. **Was** ist passiert? (genaue Fehlermeldung / Screenshot)
+3. **Was** hast du erwartet?
+4. Umgebung: Ausgabe von `python3 scripts/clipforge_doctor.py` und
+   `curl -s http://127.0.0.1:8000/health`.
+
+## Welche Logs/Infos bei Bug-Reports hilfreich sind
+
+Unbedenklich zu teilen (enthalten per Design keine Secrets):
+
+- Terminal-Ausgabe von `start_local.sh` / `clipforge_doctor.py`
+- Backend-Log `./.clipforge-backend.log`
+- Im Browser angezeigte Fehlermeldungen, Screenshots der UI
+- API-Antworten wie `GET /api/config`, `GET …/youtube/upload-status`
+  (`no_secrets: true`)
+
+**Niemals teilen:** Inhalt von `.env`, `client_secrets.json`,
+Keychain-Einträge, oder irgendetwas mit `ya29.` / `1//` / `GOCSPX-` /
+`Bearer ` / `sk-…`.
+
+## Wie man lokale Daten löscht
+
+```bash
+# ClipForge stoppen (Strg+C), dann:
+rm -rf api/jobs/*            # alle Jobs, Uploads, Clips, Exporte
+rm -f  api/config/brand_kit.json   # Brand Kit (optional)
+```
+
+Vollständiges Zurücksetzen inkl. venv/Config: siehe
+[`docs/LOCAL_BETA_GUIDE.md`](LOCAL_BETA_GUIDE.md) („Alles lokal zurücksetzen").
+Uninstall = ClipForge stoppen und den Ordner löschen (nichts wird systemweit
+installiert; einzige Ausnahme: ein evtl. angelegter YouTube-Token im
+OS-Keychain — dafür gibt es in der App „YouTube-Token löschen").
+
+## Datenschutz / Local-first-Hinweis
+
+Deine Videos, Clips, Transkripte und Publishing-Drafts liegen ausschließlich
+lokal unter `api/jobs/`. Es gibt keinen Cloud-Sync. Zwei optionale, bewusst
+von dir zu aktivierende Ausnahmen: der KI-Analyzer sendet Transkript-Text an
+die Anthropic-API (nur mit `ANTHROPIC_API_KEY`), und der echte
+YouTube-Upload sendet das Video an Google (nur mit gesetzten Flags +
+Bestätigung). ClipForge gibt **nie** Tokens/Secrets im DOM, in Logs oder in
+API-Antworten aus. Betrieb ist für `127.0.0.1` gedacht — **nicht** ins offene
+Internet exponieren (kein Auth, offene CORS für lokale Entwicklung).
+
+---
+
+Danke fürs Testen. Technische Tiefe zu einzelnen Themen:
+[`README.md`](../README.md), [`docs/WEB.md`](WEB.md),
+[`docs/LOCAL_BETA_GUIDE.md`](LOCAL_BETA_GUIDE.md).

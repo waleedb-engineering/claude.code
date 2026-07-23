@@ -1,106 +1,115 @@
 # ClipForge AI — Release Notes 0.1.0-beta.1
 
-## 1. Was ist ClipForge?
+**Release-Typ:** geschlossene Beta / Release Candidate · local-first ·
+kein Account, keine Pflicht-Cloud.
 
-Ein lokales Tool, das aus einem langen Video (Podcast, Talk, Coaching-Call)
-automatisch mehrere kurze, vertikale Clips (9:16) mit eingebrannten
-Untertiteln erzeugt — für YouTube Shorts, TikTok und Instagram Reels
-gedacht. Läuft komplett auf dem eigenen Rechner, kein Account nötig.
+## Kurzbeschreibung
 
-## 2. Was kann diese Beta?
+ClipForge AI verwandelt ein langes Video (Podcast, Talk, Coaching-Call) lokal
+in mehrere kurze, vertikale 9:16-Clips mit eingebrannten Untertiteln,
+Performance-Potential-Score und publizierfertigen Plattform-Texten. Alles läuft
+auf dem eigenen Rechner; nichts wird automatisch hochgeladen.
 
-- Video hochladen (einzeln oder als Batch), automatische Clip-Auswahl aus
-  dem Transkript
-- Lokale Transkription (faster-whisper) oder ein mitgeliefertes Transkript
-  nutzen
-- Wortgenaue Karaoke-Untertitel, Silence-Removal, Smart-Reframe
-  (Gesichtserkennung, statischer Crop pro Clip), Brand Kit
-- Performance-Potential-Score mit nachvollziehbarer Aufschlüsselung
-  (regelbasiert, optional durch Claude verstärkt)
-- Automatisch generierte Titel/Hashtags/Beschreibungstexte pro Clip
-- Web-Editor zum Nachjustieren einzelner Clips + Re-Render
-- Publishing Planner (lokale Entwürfe, plattformübergreifende Übersicht,
-  Duplizieren)
-- YouTube Dry-Run (zeigt, was hochgeladen würde — ohne es zu tun)
-- Ein echter, ausschließlich **privater** YouTube-Upload-Pfad (standardmäßig
-  deaktiviert, mehrstufig bestätigungspflichtig)
-- One-Command Setup/Start, Environment Doctor, Browser-E2E-Testsuite
+## Zielgruppe
 
-## 3. Was sollte getestet werden?
+Technische Beta-Tester und Content-Creator, die lokal Python + Node ausführen
+können und den Clip-Vorschlag an eigenen Videos beurteilen wollen. **Nicht** für
+produktive Kanäle, Multi-User-Setups oder Internet-Deployment.
 
-- Der komplette Kernablauf: Upload → Job beobachten → Clips ansehen →
-  Editor/Re-Render → Publishing-Entwurf → YouTube Dry-Run
-- Verhalten bei ungewöhnlichen Eingaben (sehr lange/kurze Videos, viele
-  Dateien auf einmal, ungewöhnliche Formate)
-- Ob Fehlermeldungen verständlich sind, wenn etwas schiefgeht
-- Das Setup/Start-Erlebnis selbst (ist die Anleitung klar? Bricht irgendwo
-  etwas unerwartet ab?)
-- Auf ausdrückliche Bitte: ein einzelner, bewusster manueller
-  YouTube-Real-Test (siehe unten)
+## Hauptfunktionen
 
-## 4. Was ist bewusst deaktiviert?
+- Upload (einzeln + Batch), lokale Transkription (faster-whisper) oder
+  mitgeliefertes Transkript
+- Clip-Analyzer v2 mit nachvollziehbarem Score (regelbasiert, optional per
+  Claude verstärkt), Deduplizierung, Risk-Flags
+- Karaoke-Untertitel, Silence-Removal, Smart-Reframe (Gesichtserkennung,
+  statischer Crop), Brand Kit
+- Content-Package-Generator (Titel/Hashtags/Beschreibungen pro Plattform)
+- Web-Clip-Editor + Re-Render, manuelle Exporte, ZIP-Exporte
+- Publishing Planner (lokale Drafts), globale Übersicht, Draft-Duplizieren
+- YouTube Dry-Run; echter **privater** Upload-Pfad (Feature-Flag, default aus)
+- One-Command Setup/Start, Environment Doctor, Browser-E2E-Suite
 
-- Öffentlicher oder „Unlisted"-YouTube-Upload — existiert nicht, kein
-  Umgehen möglich
-- Automatischer TikTok-/Instagram-Upload — nur lokale Pakete zum manuellen
-  Hochladen
-- Automatisches Scheduling/Posting — kein Hintergrunddienst
-- Echter YouTube-Upload standardmäßig **aus**
-  (`CLIPFORGE_ENABLE_YOUTUBE_UPLOAD=false`) — auch mit konfigurierten
-  Credentials passiert ohne diese bewusste Einstellung nichts automatisch
+## Was neu/fertig in dieser Version ist
 
-## 5. Wichtigste Sicherheitsregeln
+- Zentrale Versionierung über eine `VERSION`-Datei (Single Source of Truth) —
+  konsistent in Backend (`/health`, `/api/config`), CLI (`--version`),
+  Frontend-Footer und `package.json`.
+- `CHANGELOG.md`, automatisierter `release_check.sh`, reproduzierbarer
+  `build_beta_package.sh`.
+- Beta-Dokumentation: Tester-Guide, Known Issues, YouTube-Real-Test-Checkliste,
+  Security-/Privacy-Review, Release-Decision.
 
-- Kein Upload ohne explizite, mehrstufige Bestätigung
-  (Checkbox + Eingabe von `UPLOAD_PRIVATE`)
-- Tokens/Secrets werden **nie** im Browser-DOM, in Logs oder
-  API-Antworten ausgegeben — nur Status-Booleans
-- YouTube-Tokens liegen ausschließlich im OS-Keychain, nie als Klartext-Datei
-- Jeder automatisierte Test läuft ohne echte Google-Calls und ohne echten
-  Upload
+## Qualitätsstand
 
-## 6. Daten bleiben lokal, soweit aktuelle Architektur
+Kern-Funktionalität vollständig und durch Tests belegt. Sicherheits-Invarianten
+(kein Secret-Leak, PRIVATE-only, kein Fake-Success) sind durch Tests bewiesen;
+Race-/Crash-Pfade des Upload-Systems sind deterministisch getestet. Einziger
+offener Verifikationspunkt: der echte YouTube-Upload gegen ein reales Konto.
 
-Videos, Clips, Transkripte und Publishing-Entwürfe liegen ausschließlich in
-`api/jobs/` auf deinem Rechner. Es gibt keinen Cloud-Sync. Zwei Ausnahmen,
-beide **optional und bewusst von dir aktiviert**:
+## Tests
 
-- Der KI-Analyzer sendet Transkript-Text an die Anthropic-API, **nur** wenn
-  du einen `ANTHROPIC_API_KEY` gesetzt hast (sonst regelbasiert, komplett
-  lokal).
-- Ein echter YouTube-Upload sendet das Video an Google, **nur** wenn du das
-  Feature-Flag aktivierst UND den Upload explizit bestätigst.
+Exakte Zahlen, Evidenz und ggf. SKIPPED/BLOCKED-Begründungen:
+[`docs/FINAL_BETA_QA_0.1.0-beta.1.md`](FINAL_BETA_QA_0.1.0-beta.1.md).
+Umfang: Backend-Suite (inkl. YouTube-OAuth/Upload/Recovery/Race), CLI-
+Regression, TypeScript, ESLint, `next build`, Playwright-Browser-E2E, Secret-
+Scan (Repo + Package), frische Package-Installation.
 
-## 7. YouTube-Upload: nur privat, standardmäßig deaktiviert
+## Bekannte Einschränkungen
 
-Falls du den echten Upload-Pfad testest: Das Video ist **immer** `private`
-(nur du siehst es in YouTube Studio). Es gibt keine Option für „public" oder
-„unlisted" — das ist keine Einstellung, die man versehentlich ändern könnte,
-sondern eine Grenze im Code selbst.
+Vollständig mit Auswirkung/Workaround/Status:
+[`docs/KNOWN_ISSUES.md`](KNOWN_ISSUES.md). Kern: echter YouTube-Upload noch
+nicht mit realem Konto E2E-verifiziert; local-first (kein Multi-User/Auth,
+keine CORS-Härtung für Internet-Exposition); kein Public/Unlisted; kein
+TikTok/Instagram-Auto-Upload; kein Scheduling-Daemon; kein dynamisches
+Reframe; kein Auto-Resume eines unterbrochenen Uploads nach Prozessneustart;
+3 dokumentierte ESLint-Tech-Debt-Punkte.
 
-## 8. Bekannte Grenzen
+## Sicherheits-/Privacy-Hinweise
 
-Vollständige, laufend gepflegte Liste mit Auswirkung/Workaround/Status:
-[`docs/KNOWN_ISSUES.md`](KNOWN_ISSUES.md). Kurzfassung: echter YouTube-Upload
-noch nicht mit realem Konto E2E-verifiziert, local-first (kein
-Multi-User/Auth/CORS-Härtung für Internet-Exposition), kein dynamisches
-Reframe, 3 dokumentierte ESLint-Tech-Debt-Punkte, kein automatisches
-Resume eines unterbrochenen Uploads nach Prozessneustart (dafür sichere
-Recovery/Reconciliation).
+Details: [`docs/SECURITY_PRIVACY_REVIEW.md`](SECURITY_PRIVACY_REVIEW.md).
 
-## 9. Feedback-Schwerpunkte
+- Kein Upload ohne explizite, mehrstufige Bestätigung (`UPLOAD_PRIVATE`).
+- Tokens/Secrets erscheinen **nie** im DOM, in Logs oder API-Antworten.
+- YouTube-Tokens liegen ausschließlich im OS-Keychain (kein Plaintext-Fallback).
+- Betrieb ist für `127.0.0.1` gedacht — **nicht** ins offene Internet
+  exponieren (kein Auth, offene CORS für lokale Entwicklung).
 
-Besonders hilfreich für uns:
+## YouTube-Status
 
-1. Bricht der Setup-/Start-Prozess irgendwo ab, oder ist eine Meldung
-   unklar?
-2. Wirkt der Score/die Clip-Auswahl bei deinen eigenen Videos plausibel?
-3. Sind die generierten Titel/Hashtags/Texte brauchbar oder daneben?
-4. Gibt es Stellen, an denen die Oberfläche etwas verspricht, das sie nicht
-   hält (z. B. ein Button, der nichts Sichtbares tut)?
-5. Alles rund um Fehlerfälle: Absturz, Netzwerkausfall, ungewöhnliche
-   Dateien — zeigt ClipForge dabei immer eine verständliche Meldung statt
-   einer leeren/kaputten Seite?
+Der private Upload-Pfad ist implementiert und mit gemocktem Google-Client
+getestet, **aber noch nicht** mit einem echten Google-Konto End-to-End
+verifiziert. Er ist standardmäßig deaktiviert und ausschließlich `private`
+(kein Public/Unlisted). Vorgehen für den Real-Test:
+[`docs/YOUTUBE_REAL_TEST_CHECKLIST.md`](YOUTUBE_REAL_TEST_CHECKLIST.md).
 
-Kein Punkt hier ist ein Versprechen für Viralität oder Erfolg — der Score
-ist eine Einschätzung, keine Garantie.
+## Installationshinweis
+
+```bash
+tar -xzf clipforge-beta-0.1.0-beta.1.tar.gz
+cd clipforge-beta-0.1.0-beta.1
+./scripts/setup_local.sh    # venv, Deps, .env, Doctor
+./scripts/start_local.sh    # Backend + Frontend
+# Browser: http://127.0.0.1:3000/upload
+```
+
+Ausführlich: [`docs/BETA_TESTER_GUIDE.md`](BETA_TESTER_GUIDE.md).
+
+## Upgrade-/Reset-Hinweis
+
+Diese Beta hält keinen Zustand außerhalb von `api/jobs/` (und optional
+`api/config/brand_kit.json` + einem YouTube-Token im Keychain). Ein „Upgrade"
+auf ein späteres Beta-Package erfolgt durch Entpacken der neuen Version und
+erneutes `setup_local.sh`; die Job-Daten sind nicht an eine Version gebunden,
+sollten bei Beta-Wechseln aber als potenziell wegwerfbar betrachtet werden.
+Zurücksetzen: `rm -rf api/jobs/*` (Details:
+[`docs/LOCAL_BETA_GUIDE.md`](LOCAL_BETA_GUIDE.md)).
+
+## Beta-Feedback
+
+Fehler bitte mit Reproduktionsschritten und der Ausgabe von
+`python3 scripts/clipforge_doctor.py` melden — welche Logs unbedenklich sind
+und welche Daten **nie** geteilt werden dürfen, steht im
+[`Beta-Tester-Guide`](BETA_TESTER_GUIDE.md). Kein Punkt in dieser Beta ist ein
+Versprechen für Reichweite oder Erfolg — der Score ist eine Einschätzung,
+keine Garantie.
