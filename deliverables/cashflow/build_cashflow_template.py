@@ -121,9 +121,12 @@ A_HEAD = 6
 A_FIRST = A_HEAD + 1
 A_LAST = A_HEAD + N_ORDER_ROWS
 TBL = "tblAuftraege"
-ORDER_COLS = ["Themenfeld", "Kategorie", "Auftrag", "Kostenstelle",
+ORDER_COLS = ["Auftrag", "Themenfeld", "Kategorie", "Kostenstelle",
               "Datum Einnahmen", "Datum Ausgaben", "Einnahmen", "Ausgaben",
               "Auftragswahrscheinlichkeit"]
+A_COL_AUFTRAG = 1     # A – Schlüsselspalte, entspricht "Position" im Cashflow
+A_COL_TFD = 2         # B – Dropdown Themenfeld
+A_COL_KTG = 3         # C – Dropdown Kategorie
 C_EINNAHMEN = f"{TBL}[Einnahmen]"
 C_AUSGABEN = f"{TBL}[Ausgaben]"
 C_DAT_EIN = f"{TBL}[Datum Einnahmen]"
@@ -283,8 +286,8 @@ def build_orders(wb):
         c.font = f(10, True, "FFFFFF")
         c.fill = FILL_HEAD
         c.border = BORDER
-        c.alignment = Alignment(horizontal="center", vertical="center",
-                                wrap_text=True)
+        c.alignment = Alignment(horizontal="left" if i <= 4 else "center",
+                                vertical="center", wrap_text=i > 4)
     ws.row_dimensions[A_HEAD].height = 30
 
     fmt = {5: DATE_FMT, 6: DATE_FMT, 7: EUR, 8: EUR, 9: PCT}
@@ -296,7 +299,9 @@ def build_orders(wb):
             c.font = f(10, color="0000FF")      # blau = manuelle Eingabe
             if col in fmt:
                 c.number_format = fmt[col]
-            if col <= 4:
+            if col == A_COL_AUFTRAG:
+                c.alignment = Alignment(horizontal="left", indent=1)
+            elif col <= 4:
                 c.alignment = Alignment(horizontal="left")
 
     tab = Table(displayName=TBL, ref=f"A{A_HEAD}:I{A_LAST}")
@@ -328,21 +333,22 @@ def build_orders(wb):
     dv_dat.errorTitle = "Ungültiges Datum"
     dv_dat.error = "Bitte ein Datum im Format TT.MM.JJJJ eintragen."
 
-    for dv, rng in ((dv_tf, f"A{A_FIRST}:A{extra}"),
-                    (dv_kat, f"B{A_FIRST}:B{extra}"),
+    for dv, rng in ((dv_tf, f"B{A_FIRST}:B{extra}"),
+                    (dv_kat, f"C{A_FIRST}:C{extra}"),
                     (dv_dat, f"E{A_FIRST}:F{extra}"),
                     (dv_pct, f"I{A_FIRST}:I{extra}")):
         ws.add_data_validation(dv)
         dv.add(rng)
 
     for col, width in zip("ABCDEFGHI",
-                          (14, 26, 20, 18, 17, 17, 16, 16, 22)):
+                          (28, 14, 26, 20, 17, 17, 16, 16, 22)):
         ws.column_dimensions[col].width = width
 
-    ws.freeze_panes = f"A{A_FIRST}"
+    ws.freeze_panes = f"B{A_FIRST}"          # Kopfzeile + Spalte "Auftrag"
     ws.sheet_view.showGridLines = False
     ws.print_area = f"A1:I{A_LAST}"
     ws.print_title_rows = f"{A_HEAD}:{A_HEAD}"
+    ws.print_title_cols = "$A:$A"
     ws.page_setup.orientation = "landscape"
     ws.page_setup.paperSize = ws.PAPERSIZE_A4
     ws.page_setup.fitToWidth = 1
