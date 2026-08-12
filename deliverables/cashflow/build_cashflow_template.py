@@ -106,9 +106,20 @@ R_KPI_NET = R_KPI_OUT + 1
 R_KPI_CUM = R_KPI_NET + 1
 R_SEC_TF = R_KPI_CUM + 2                           # Auswertung nach Themenfeld
 R_TF_FIRST = R_SEC_TF + 1
-R_SEC_KAT = R_TF_FIRST + 2 * len(THEMENFELDER) + 1  # Auswertung nach Kategorie
+R_SEC_KAT = R_TF_FIRST + 3 * len(THEMENFELDER) + 1  # Auswertung nach Kategorie
 R_KAT_FIRST = R_SEC_KAT + 1
-R_SEC_KST_IN = R_KAT_FIRST + 2 * len(KATEGORIEN) + 1   # Einnahmen je Kostenstelle
+R_SEC_FC = R_KAT_FIRST + 2 * len(KATEGORIEN) + 1       # Forecast-Bereich
+R_FCBOX = R_SEC_FC + 1                                 # Titel "Pipeline Forecast"
+R_FCBOX_FIRST = R_FCBOX + 1                            # Kennzahlen der Box
+N_FCBOX_ROWS = 15
+R_FC_SUB1 = R_FCBOX_FIRST + N_FCBOX_ROWS               # Zwischenüberschrift
+R_FC_FIRST = R_FC_SUB1 + 1                             # 4 gewichtete Monatszeilen
+R_FC_NET = R_FC_FIRST + 2
+R_FC_CUM = R_FC_FIRST + 3
+R_FC_SUB2 = R_FC_FIRST + 4                             # Zwischenüberschrift 100 %
+R_SAFE_FIRST = R_FC_SUB2 + 1                           # 3 sichere Monatszeilen
+R_SAFE_NET = R_SAFE_FIRST + 2
+R_SEC_KST_IN = R_SAFE_NET + 2                          # Einnahmen je Kostenstelle
 R_KST_IN_FIRST = R_SEC_KST_IN + 1
 R_SEC_KST_OUT = R_KST_IN_FIRST + N_KST_ROWS + 1        # Ausgaben je Kostenstelle
 R_KST_OUT_FIRST = R_SEC_KST_OUT + 1
@@ -135,6 +146,7 @@ C_KST = f"{TBL}[Kostenstelle]"
 C_AUFTRAG = f"{TBL}[Auftrag]"
 C_TF = f"{TBL}[Themenfeld]"
 C_KAT = f"{TBL}[Kategorie]"
+C_WSK = f"{TBL}[Auftragswahrscheinlichkeit]"
 
 META_DEFAULT = [
     "Cashflow-Planung",
@@ -150,11 +162,13 @@ C_SECTION = "D9E2F3"     # helles blau
 C_INPUT = "FFF9E1"       # helles gelb  -> Eingabezellen
 C_CALC = "F2F2F2"        # hellgrau     -> berechnete Zellen
 C_RESULT = "E2EFDA"      # helles gruen -> Ergebniszeilen
+C_FORECAST = "EDF2F9"    # sehr helles blau -> Forecast (gewichtet)
 C_BORDER = "BFBFBF"
 
 EUR = '#,##0.00\\ "€";[Red]-#,##0.00\\ "€";"–"'
 DATE_FMT = "DD.MM.YYYY"
 PCT = "0 %"
+COUNT_FMT = "#,##0"
 
 thin = Side(style="thin", color=C_BORDER)
 BORDER = Border(left=thin, right=thin, top=thin, bottom=thin)
@@ -165,6 +179,7 @@ FILL_INPUT = PatternFill("solid", fgColor=C_INPUT)
 FILL_CALC = PatternFill("solid", fgColor=C_CALC)
 FILL_RESULT = PatternFill("solid", fgColor=C_RESULT)
 FILL_SECTION = PatternFill("solid", fgColor=C_SECTION)
+FILL_FORECAST = PatternFill("solid", fgColor=C_FORECAST)
 FILL_HEAD = PatternFill("solid", fgColor=C_HEAD)
 NO_FILL = PatternFill(fill_type=None)
 
@@ -189,6 +204,21 @@ def month_window(col):
     letter = get_column_letter(col)
     return (f'">="&{letter}${R_MONTHKEY}',
             f'"<"&EDATE({letter}${R_MONTHKEY},1)')
+
+
+def weighted(value_col, date_col, col, extra=None):
+    """Betrag x Auftragswahrscheinlichkeit, auf den Monat der Spalte begrenzt.
+
+    Die Mehrargument-Form von SUMMENPRODUKT behandelt leere und nicht
+    numerische Zellen als 0 – eine leere Wahrscheinlichkeit wirkt damit wie
+    0 % und ein leeres Datum fällt aus dem Zeitfenster."""
+    letter = get_column_letter(col)
+    parts = [value_col, C_WSK,
+             f"({date_col}>={letter}${R_MONTHKEY})*1",
+             f"({date_col}<EDATE({letter}${R_MONTHKEY},1))*1"]
+    if extra:
+        parts += list(extra)
+    return "=SUMPRODUCT(" + ",".join(parts) + ")"
 
 
 def sumifs(value_col, date_col, col, extra=None):
@@ -542,7 +572,7 @@ def build_cashflow(wb, meta, kostenstellen):
     calc_row(R_KPI_CUM, "Kumulierter Cashflow", cum_formula, FILL_RESULT, bold=True)
 
     # ---- 4./5. Auswertung nach Themenfeld und Kategorie (nachrichtlich) -----
-    def dimension_block(sec_row, first_row, title, field, values):
+    def dimension_block(sec_row, first_row, title, field, values, weighted_net=False):
         section(sec_row, title)
         r = first_row
         for value in values:
@@ -554,13 +584,125 @@ def build_cashflow(wb, meta, kostenstellen):
                              if col <= COL_LAST_M else period_sum(col, rr)),
                          FILL_CALC)
                 r += 1
+            if weighted_net:
+                # gewichtete Einnahmen minus gewichtete Ausgaben des Themenfelds
+                calc_row(r, f"{value} – gewichteter Netto-Forecast",
+                         lambda col, v=value, rr=r: (
+                             (weighted(C_EINNAHMEN, C_DAT_EIN, col,
+                                       extra=[f"({field}=\"{v}\")*1"])
+                              + "-" +
+                              weighted(C_AUSGABEN, C_DAT_AUS, col,
+                                       extra=[f"({field}=\"{v}\")*1"])[1:])
+                             if col <= COL_LAST_M else period_sum(col, rr)),
+                         FILL_FORECAST)
+                r += 1
 
     dimension_block(R_SEC_TF, R_TF_FIRST,
                     "4  AUSWERTUNG NACH THEMENFELD (nachrichtlich, nicht in der "
-                    "Cashflow-Summe enthalten)", C_TF, THEMENFELDER)
+                    "Cashflow-Summe enthalten)", C_TF, THEMENFELDER,
+                    weighted_net=True)
     dimension_block(R_SEC_KAT, R_KAT_FIRST,
                     "5  AUSWERTUNG NACH KATEGORIE (nachrichtlich, nicht in der "
                     "Cashflow-Summe enthalten)", C_KAT, KATEGORIEN)
+
+    # ---- 6. Forecast nach Auftragswahrscheinlichkeit ------------------------
+    section(R_SEC_FC, "6  FORECAST NACH AUFTRAGSWAHRSCHEINLICHKEIT")
+
+    def subsection(row, title):
+        for col in range(COL_POS, COL_TOTAL + 1):
+            c = ws.cell(row=row, column=col)
+            c.fill = FILL_FORECAST
+            c.border = BORDER
+        c = ws.cell(row=row, column=COL_POS, value=title)
+        c.font = f(10, True, C_HEAD)
+
+    # Management-Box: Kennzahlen über den gesamten Auftragsbestand
+    subsection(R_FCBOX, "Pipeline Forecast  (Zusammenfassung über alle Aufträge)")
+
+    def box_ref(i):
+        return f"{get_column_letter(COL_KTG)}{R_FCBOX_FIRST + i}"
+
+    box = [
+        ("Pipeline Einnahmen gesamt", f"=SUM({C_EINNAHMEN})", EUR, False),
+        ("Pipeline Ausgaben gesamt", f"=SUM({C_AUSGABEN})", EUR, False),
+        ("Pipeline Netto-Cashflow", f"={box_ref(0)}-{box_ref(1)}", EUR, True),
+        ("Gewichtete Einnahmen", f"=SUMPRODUCT({C_EINNAHMEN},{C_WSK})", EUR, False),
+        ("Gewichtete Ausgaben", f"=SUMPRODUCT({C_AUSGABEN},{C_WSK})", EUR, False),
+        ("Gewichteter Netto-Cashflow", f"={box_ref(3)}-{box_ref(4)}", EUR, True),
+        ("Sichere Einnahmen (100 %)", f"=SUMIFS({C_EINNAHMEN},{C_WSK},1)", EUR, False),
+        ("Sichere Ausgaben (100 %)", f"=SUMIFS({C_AUSGABEN},{C_WSK},1)", EUR, False),
+        ("Sicherer Netto-Cashflow", f"={box_ref(6)}-{box_ref(7)}", EUR, True),
+        ("Durchschnittliche Auftragswahrscheinlichkeit",
+         f"=IFERROR(AVERAGE({C_WSK}),0)", PCT, False),
+        ("Anzahl offene Aufträge (> 0 % und < 100 %)",
+         f'=COUNTIFS({C_WSK},">0",{C_WSK},"<1")', COUNT_FMT, False),
+        ("Anzahl sichere Aufträge (100 %)", f"=COUNTIF({C_WSK},1)", COUNT_FMT, False),
+        ("Pipeline-Wert (Einnahmen gesamt)", f"=SUM({C_EINNAHMEN})", EUR, False),
+        ("Gewichteter Pipeline-Wert", f"=SUMPRODUCT({C_EINNAHMEN},{C_WSK})", EUR, False),
+        ("Conversion Gap (gefährdeter Umsatz)", f"={box_ref(12)}-{box_ref(13)}",
+         EUR, True),
+    ]
+    assert len(box) == N_FCBOX_ROWS
+    for i, (label, formula, fmt, bold) in enumerate(box):
+        row = R_FCBOX_FIRST + i
+        fill = FILL_FORECAST if bold else FILL_CALC
+        for col in (COL_POS, COL_KST, COL_TFD):
+            c = ws.cell(row=row, column=col)
+            c.fill = fill
+            c.border = BORDER
+        lab = ws.cell(row=row, column=COL_POS, value=label)
+        lab.font = f(10, bold, C_HEAD if bold else "000000")
+        lab.alignment = Alignment(indent=1)
+        val = ws.cell(row=row, column=COL_KTG, value=formula)
+        val.font = f(10, bold)
+        val.fill = fill
+        val.border = BORDER
+        val.number_format = fmt
+        val.alignment = Alignment(horizontal="right")
+
+    # Gewichteter Forecast je Monat
+    subsection(R_FC_SUB1, "Gewichteter Forecast je Monat  "
+                          "(Betrag × Auftragswahrscheinlichkeit)")
+    calc_row(R_FC_FIRST, "Gewichtete Einnahmen",
+             lambda col: (weighted(C_EINNAHMEN, C_DAT_EIN, col)
+                          if col <= COL_LAST_M else period_sum(col, R_FC_FIRST)),
+             FILL_CALC)
+    calc_row(R_FC_FIRST + 1, "Gewichtete Ausgaben",
+             lambda col: (weighted(C_AUSGABEN, C_DAT_AUS, col)
+                          if col <= COL_LAST_M else period_sum(col, R_FC_FIRST + 1)),
+             FILL_CALC)
+    calc_row(R_FC_NET, "Gewichteter Netto-Cashflow",
+             lambda col: (f"={get_column_letter(col)}{R_FC_FIRST}"
+                          f"-{get_column_letter(col)}{R_FC_FIRST + 1}"),
+             FILL_FORECAST, bold=True)
+
+    def fc_cum(col):
+        if col == COL_M1:
+            return f"={L_M1}{R_FC_NET}"
+        if col <= COL_LAST_M:
+            return (f"={get_column_letter(col - 1)}{R_FC_CUM}"
+                    f"+{get_column_letter(col)}{R_FC_NET}")
+        if col == COL_SUM_H2:
+            return f"={L_H2_END}{R_FC_CUM}"
+        return f"={L_LAST_M}{R_FC_CUM}"
+
+    calc_row(R_FC_CUM, "Kumulierter gewichteter Cashflow", fc_cum,
+             FILL_FORECAST, bold=True)
+
+    # Sichere Aufträge (100 %)
+    subsection(R_FC_SUB2, "Cashflow nur 100%-Aufträge  (bereits gesicherte Aufträge)")
+    calc_row(R_SAFE_FIRST, "Sichere Einnahmen (100 %)",
+             lambda col: (sumifs(C_EINNAHMEN, C_DAT_EIN, col, extra=[C_WSK, "1"])
+                          if col <= COL_LAST_M else period_sum(col, R_SAFE_FIRST)),
+             FILL_CALC)
+    calc_row(R_SAFE_FIRST + 1, "Sichere Ausgaben (100 %)",
+             lambda col: (sumifs(C_AUSGABEN, C_DAT_AUS, col, extra=[C_WSK, "1"])
+                          if col <= COL_LAST_M else period_sum(col, R_SAFE_FIRST + 1)),
+             FILL_CALC)
+    calc_row(R_SAFE_NET, "Sicherer Netto-Cashflow",
+             lambda col: (f"={get_column_letter(col)}{R_SAFE_FIRST}"
+                          f"-{get_column_letter(col)}{R_SAFE_FIRST + 1}"),
+             FILL_RESULT, bold=True)
 
     def kst_block(sec_row, first_row, title, value_col, date_col):
         section(sec_row, title)
@@ -575,10 +717,10 @@ def build_cashflow(wb, meta, kostenstellen):
                 b.fill = FILL_INPUT
 
     kst_block(R_SEC_KST_IN, R_KST_IN_FIRST,
-              "6  EINNAHMEN NACH KOSTENSTELLE (nachrichtlich, nicht in der "
+              "7  EINNAHMEN NACH KOSTENSTELLE (nachrichtlich, nicht in der "
               "Cashflow-Summe enthalten)", C_EINNAHMEN, C_DAT_EIN)
     kst_block(R_SEC_KST_OUT, R_KST_OUT_FIRST,
-              "7  AUSGABEN NACH KOSTENSTELLE (nachrichtlich, nicht in der "
+              "8  AUSGABEN NACH KOSTENSTELLE (nachrichtlich, nicht in der "
               "Cashflow-Summe enthalten)", C_AUSGABEN, C_DAT_AUS)
 
     # ---- Legende ------------------------------------------------------------
@@ -603,9 +745,16 @@ def build_cashflow(wb, meta, kostenstellen):
         (f"Zeile {R_MONTHKEY} ist ausgeblendet und enthält die echten Monatsanfänge "
          "(Datumswerte), mit denen die SUMMEWENNS-Formeln die Monatsgrenzen bilden.",
          None, f(9, italic=True, color="808080")),
-        ("Die Auftragswahrscheinlichkeit wird im Reiter „Aufträge“ nur gespeichert "
-         "und nicht eingerechnet. Ein gewichteter Forecast lässt sich später über "
-         "SUMMENPRODUKT bzw. eine zusätzliche Kennzahlenzeile ergänzen.",
+        ("Hellblau hinterlegt – gewichteter Forecast (Betrag × Auftrags"
+         "wahrscheinlichkeit)", C_FORECAST, f(9)),
+        (f"Bereich 6 ist eine reine Analyse und wird nirgends zum Cashflow "
+         f"addiert: Zeilen {R_FC_FIRST}–{R_FC_CUM} zeigen den gewichteten "
+         f"Forecast, Zeilen {R_SAFE_FIRST}–{R_SAFE_NET} nur die Aufträge mit "
+         "100 % Wahrscheinlichkeit. Die Kennzahlen in Bereich 3 bleiben "
+         "unverändert der vollständige Cashflow.",
+         None, f(9, italic=True, color="808080")),
+        ("Eine leere Auftragswahrscheinlichkeit wirkt im Forecast wie 0 % – der "
+         "normale Cashflow zeigt den Betrag trotzdem vollständig.",
          None, f(9, italic=True, color="808080")),
     ]
     for i, (text, fill, font) in enumerate(legend):
@@ -625,7 +774,12 @@ def build_cashflow(wb, meta, kostenstellen):
         CellIsRule(operator="lessThan", formula=["0"],
                    font=Font(name=FONT, size=10, color="9C0006"),
                    fill=PatternFill("solid", bgColor="FFC7CE")))
-    result_range = f"{L_M1}{R_KPI_NET}:{L_TOTAL}{R_KPI_CUM}"
+    result_ranges = [f"{L_M1}{R_KPI_NET}:{L_TOTAL}{R_KPI_CUM}",
+                     f"{L_M1}{R_FC_NET}:{L_TOTAL}{R_FC_CUM}",
+                     f"{L_M1}{R_SAFE_NET}:{L_TOTAL}{R_SAFE_NET}",
+                     f"{get_column_letter(COL_KTG)}{R_FCBOX_FIRST}:"
+                     f"{get_column_letter(COL_KTG)}{R_FCBOX_FIRST + 8}"]
+    result_range = " ".join(result_ranges)
     ws.conditional_formatting.add(
         result_range, CellIsRule(operator="greaterThan", formula=["0"],
                                  font=Font(name=FONT, size=10, bold=True,
