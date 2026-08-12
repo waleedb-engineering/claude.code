@@ -22,6 +22,7 @@ Es werden keine Auftraege, Umsaetze oder Kosten erfunden.
 """
 
 import argparse
+import re
 from datetime import date
 from pathlib import Path
 
@@ -42,8 +43,9 @@ OUT = HERE / "Cashflow_SmartInfra_IoT_DusL_Plus_Autostrom_2026_2027.xlsx"
 # ----------------------------------------------------------------------------
 FONT = "Arial"
 
-N_INCOME_ROWS = 30          # Kostenstellen-Zeilen im Einnahmenblock
-N_EXPENSE_ROWS = 30         # Kostenstellen-Zeilen im Ausgabenblock
+N_INCOME_ROWS = 50          # Auftragszeilen im Einnahmenblock
+N_EXPENSE_ROWS = 50         # Auftragszeilen im Ausgabenblock
+N_KST_ROWS = 15             # Zeilen je Kostenstellen-Auswertung
 N_ORDER_ROWS = 150          # vorbereitete Zeilen der Auftragstabelle
 
 MONTH_STARTS = [date(2026, 7, 1)]
@@ -61,22 +63,27 @@ assert len(MONTHS) == len(MONTH_STARTS) == 18
 THEMENFELDER = ["IoT", "EDM", "Parking", "LLM"]
 KATEGORIEN = ["Hardware", "Hardware + Dienstleistung", "Lizenzen", "Dienstleistung"]
 
-COL_POS, COL_KST = 1, 2          # A = Position, B = Kostenstelle (Filterschlüssel)
-COL_M1 = 3                       # C  = Jul 26
-COL_H2_END = COL_M1 + 5          # H  = Dez 26
-COL_Y27_START = COL_M1 + 6       # I  = Jan 27
-COL_LAST_M = COL_M1 + 17         # T  = Dez 27
-COL_SUM_H2 = COL_LAST_M + 1      # U
-COL_SUM_27 = COL_LAST_M + 2      # V
-COL_TOTAL = COL_LAST_M + 3       # W
+COL_POS = 1                      # A = Auftrag (Schlüssel, Eingabe)
+COL_KST = 2                      # B = Kostenstelle   (automatisch nachgeschlagen)
+COL_TFD = 3                      # C = Themenfeld     (automatisch nachgeschlagen)
+COL_KTG = 4                      # D = Kategorie      (automatisch nachgeschlagen)
+COL_LABELS = (COL_POS, COL_KST, COL_TFD, COL_KTG)
+COL_M1 = 5                       # E  = Jul 26
+COL_H2_END = COL_M1 + 5          # J  = Dez 26
+COL_Y27_START = COL_M1 + 6       # K  = Jan 27
+COL_LAST_M = COL_M1 + 17         # V  = Dez 27
+COL_SUM_H2 = COL_LAST_M + 1      # W
+COL_SUM_27 = COL_LAST_M + 2      # X
+COL_TOTAL = COL_LAST_M + 3       # Y
 
-L_M1 = get_column_letter(COL_M1)            # C
-L_H2_END = get_column_letter(COL_H2_END)    # H
-L_Y27 = get_column_letter(COL_Y27_START)    # I
-L_LAST_M = get_column_letter(COL_LAST_M)    # T
-L_SUM_H2 = get_column_letter(COL_SUM_H2)    # U
-L_SUM_27 = get_column_letter(COL_SUM_27)    # V
-L_TOTAL = get_column_letter(COL_TOTAL)      # W
+L_KEY = get_column_letter(COL_POS)          # A  = Schlüsselspalte
+L_M1 = get_column_letter(COL_M1)            # E
+L_H2_END = get_column_letter(COL_H2_END)    # J
+L_Y27 = get_column_letter(COL_Y27_START)    # K
+L_LAST_M = get_column_letter(COL_LAST_M)    # V
+L_SUM_H2 = get_column_letter(COL_SUM_H2)    # W
+L_SUM_27 = get_column_letter(COL_SUM_27)    # X
+L_TOTAL = get_column_letter(COL_TOTAL)      # Y
 
 # Zeilenraster des Cashflow-Blatts (aus den Blockgrößen abgeleitet)
 R_TITLE = 1
@@ -101,7 +108,12 @@ R_SEC_TF = R_KPI_CUM + 2                           # Auswertung nach Themenfeld
 R_TF_FIRST = R_SEC_TF + 1
 R_SEC_KAT = R_TF_FIRST + 2 * len(THEMENFELDER) + 1  # Auswertung nach Kategorie
 R_KAT_FIRST = R_SEC_KAT + 1
-R_LEGEND = R_KAT_FIRST + 2 * len(KATEGORIEN) + 2
+R_SEC_KST_IN = R_KAT_FIRST + 2 * len(KATEGORIEN) + 1   # Einnahmen je Kostenstelle
+R_KST_IN_FIRST = R_SEC_KST_IN + 1
+R_SEC_KST_OUT = R_KST_IN_FIRST + N_KST_ROWS + 1        # Ausgaben je Kostenstelle
+R_KST_OUT_FIRST = R_SEC_KST_OUT + 1
+R_MEMO_LAST = R_KST_OUT_FIRST + N_KST_ROWS - 1
+R_LEGEND = R_MEMO_LAST + 3
 
 # Auftragsblatt
 A_TITLE = 1
@@ -117,6 +129,7 @@ C_AUSGABEN = f"{TBL}[Ausgaben]"
 C_DAT_EIN = f"{TBL}[Datum Einnahmen]"
 C_DAT_AUS = f"{TBL}[Datum Ausgaben]"
 C_KST = f"{TBL}[Kostenstelle]"
+C_AUFTRAG = f"{TBL}[Auftrag]"
 C_TF = f"{TBL}[Themenfeld]"
 C_KAT = f"{TBL}[Kategorie]"
 
@@ -126,16 +139,7 @@ META_DEFAULT = [
     "Zeitraum:  Juli 2026 – Dezember 2027  (18 Monate, monatliche Granularität)",
 ]
 META_HINT = ("Alle Beträge werden automatisch aus dem Reiter „Aufträge“ berechnet – "
-             "im Cashflow werden nur Position und Kostenstelle (gelb) gepflegt.")
-
-INCOME_DEFAULT = ["Projektumsätze", "Dienstleistungen", "Hardware / IoT",
-                  "Sonstige Einnahmen"]
-EXPENSE_DEFAULT = ["Personalkosten", "Hardware / Sensorik",
-                   "Gateways / Kommunikationstechnik",
-                   "SIM / Mobilfunk / Connectivity", "Software / Lizenzen",
-                   "Cloud / Hosting", "Fremdleistungen", "Installation / Montage",
-                   "Dienstreisen / Fahrtkosten", "Büro / Betriebsmittel",
-                   "Sonstige Kosten"]
+             "hier wird links nur die Auftragsnummer (gelb) eingetragen.")
 
 # Farben (dezentes Controlling-Layout)
 C_HEAD = "1F3864"        # dunkelblau
@@ -167,7 +171,7 @@ def f(size=10, bold=False, color="000000", italic=False):
 
 
 def period_sum(col, row):
-    """Formel der Summenspalten U/V/W für eine Zeile."""
+    """Formel der Summenspalten W/X/Y für eine Zeile."""
     if col == COL_SUM_H2:
         return f"=SUM({L_M1}{row}:{L_H2_END}{row})"
     if col == COL_SUM_27:
@@ -222,9 +226,10 @@ def read_source(path):
     def labels(first, last):
         out = []
         for r in range(first, last + 1):
-            v = ws.cell(row=r, column=COL_POS).value
+            v = ws.cell(row=r, column=1).value
             if isinstance(v, str) and v.strip() and not v.lower().startswith(
-                    ("summe", "nicht zugeordnet")):
+                    ("summe", "nicht zugeordnet", "aufträge ohne",
+                     "noch nicht erfasste")):
                 out.append(v.strip())
         return out
 
@@ -234,10 +239,22 @@ def read_source(path):
         if isinstance(v, str) and v.strip() and not v.startswith("Alle Beträge"):
             meta.append(v.strip())
 
+    # Kostenstellen aus den bisherigen Zeilenbeschriftungen ableiten
+    # ("87004006 - LKW / Autostrom+"  ->  Nummer "87004006", Name "LKW / ...").
+    kostenstellen, seen = [], {}
+    for label in labels(marks["in"] + 1, marks["sum_in"] - 1) + \
+            labels(marks["out"] + 1, marks["sum_out"] - 1):
+        m = re.match(r"^\s*(\d{4,})\s*[-–—]\s*(.+)$", label)
+        nummer, name = (m.group(1), m.group(2).strip()) if m else (label, "")
+        if nummer in seen:
+            if name and name not in seen[nummer]:
+                seen[nummer].append(name)
+            continue
+        seen[nummer] = [name] if name else []
+        kostenstellen.append(nummer)
     return {
         "meta": meta[:3] or META_DEFAULT,
-        "income": labels(marks["in"] + 1, marks["sum_in"] - 1),
-        "expense": labels(marks["out"] + 1, marks["sum_out"] - 1),
+        "kostenstellen": [(n, " / ".join(seen[n])) for n in kostenstellen],
     }
 
 
@@ -339,10 +356,9 @@ def build_orders(wb):
 # ----------------------------------------------------------------------------
 # Blatt "Cashflow"
 # ----------------------------------------------------------------------------
-def build_cashflow(wb, meta, income, expense):
-    if len(income) > N_INCOME_ROWS or len(expense) > N_EXPENSE_ROWS:
-        raise SystemExit("Mehr Positionen als Zeilen – N_INCOME_ROWS / "
-                         "N_EXPENSE_ROWS erhöhen.")
+def build_cashflow(wb, meta, kostenstellen):
+    if len(kostenstellen) > N_KST_ROWS:
+        raise SystemExit("Mehr Kostenstellen als Zeilen – N_KST_ROWS erhöhen.")
 
     ws = wb.active
     ws.title = "Cashflow"
@@ -362,15 +378,15 @@ def build_cashflow(wb, meta, income, expense):
     ws.row_dimensions[R_MONTHKEY].hidden = True
 
     # ---- Tabellenkopf -------------------------------------------------------
-    headers = ["Position", "Kostenstelle"] + MONTHS + [
+    headers = ["Auftrag", "Kostenstelle", "Themenfeld", "Kategorie"] + MONTHS + [
         "Summe H2 2026", "Summe 2027", "Gesamt"]
     for i, text in enumerate(headers, start=1):
         c = ws.cell(row=R_HEAD, column=i, value=text)
         c.font = f(10, True, "FFFFFF")
         c.fill = FILL_HEAD
         c.border = BORDER
-        c.alignment = Alignment(horizontal="left" if i <= 2 else "center",
-                                vertical="center", wrap_text=i > 2)
+        c.alignment = Alignment(horizontal="left" if i in COL_LABELS else "center",
+                                vertical="center", wrap_text=i not in COL_LABELS)
     ws.row_dimensions[R_HEAD].height = 30
 
     def section(row, title):
@@ -382,37 +398,65 @@ def build_cashflow(wb, meta, income, expense):
         c.font = f(11, True, C_HEAD)
         ws.row_dimensions[row].height = 20
 
-    def detail_row(row, position, value_col, date_col):
-        """Kostenstellen-Zeile: A und B sind Eingabe, alle Beträge sind Formeln."""
-        p = ws.cell(row=row, column=COL_POS, value=position)
-        p.font = f(10)
-        p.fill = FILL_INPUT
-        p.border = BORDER
-        p.alignment = Alignment(indent=1)
+    def lookup(row, table_col):
+        """Holt eine Zusatzangabe zur Auftragsnummer aus dem Reiter „Aufträge“."""
+        return (f'=IF(${L_KEY}{row}="","",IFERROR(INDEX({table_col},'
+                f'MATCH(${L_KEY}{row},{C_AUFTRAG},0)),""))')
 
-        k = ws.cell(row=row, column=COL_KST)
+    def detail_row(row, value_col, date_col):
+        """Auftragszeile: nur Spalte A ist Eingabe, alles andere ist Formel."""
+        k = ws.cell(row=row, column=COL_POS)
         k.font = f(10, color="0000FF")
         k.fill = FILL_INPUT
         k.border = BORDER
+        k.alignment = Alignment(indent=1)
+
+        for col, table_col in ((COL_KST, C_KST), (COL_TFD, C_TF), (COL_KTG, C_KAT)):
+            c = ws.cell(row=row, column=col, value=lookup(row, table_col))
+            c.font = f(10, color="595959")
+            c.fill = FILL_CALC
+            c.border = BORDER
 
         for col in range(COL_M1, COL_LAST_M + 1):
             formula = sumifs(value_col, date_col, col,
-                             extra=[C_KST, f"${get_column_letter(COL_KST)}{row}"])
-            # ohne Kostenstellen-Schlüssel bleibt die Zeile bei 0
+                             extra=[C_AUFTRAG, f"${L_KEY}{row}"])
+            # ohne Auftragsnummer bleibt die Zeile bei 0
             c = ws.cell(row=row, column=col,
-                        value=f'=IF(${get_column_letter(COL_KST)}{row}="",0,'
-                              f'{formula[1:]})')
+                        value=f'=IF(${L_KEY}{row}="",0,{formula[1:]})')
             c.fill = FILL_CALC
             c.border = BORDER
             c.number_format = EUR
             c.font = f(10)
 
-        for col, formula in (
-            (COL_SUM_H2, f"=SUM({L_M1}{row}:{L_H2_END}{row})"),
-            (COL_SUM_27, f"=SUM({L_Y27}{row}:{L_LAST_M}{row})"),
-            (COL_TOTAL, f"=SUM({L_M1}{row}:{L_LAST_M}{row})"),
-        ):
-            c = ws.cell(row=row, column=col, value=formula)
+        for col in (COL_SUM_H2, COL_SUM_27, COL_TOTAL):
+            c = ws.cell(row=row, column=col, value=period_sum(col, row))
+            c.fill = FILL_CALC
+            c.border = BORDER
+            c.number_format = EUR
+            c.font = f(10, bold=(col == COL_TOTAL))
+
+    def key_row(row, value_col, date_col, field):
+        """Auswertungszeile mit frei eingetragenem Schlüssel (z. B. Kostenstelle)."""
+        k = ws.cell(row=row, column=COL_POS)
+        k.font = f(10, color="0000FF")
+        k.fill = FILL_INPUT
+        k.border = BORDER
+        k.alignment = Alignment(indent=1)
+        for col in (COL_KST, COL_TFD, COL_KTG):
+            c = ws.cell(row=row, column=col)
+            c.fill = FILL_CALC
+            c.border = BORDER
+        for col in range(COL_M1, COL_LAST_M + 1):
+            formula = sumifs(value_col, date_col, col,
+                             extra=[field, f"${L_KEY}{row}"])
+            c = ws.cell(row=row, column=col,
+                        value=f'=IF(${L_KEY}{row}="",0,{formula[1:]})')
+            c.fill = FILL_CALC
+            c.border = BORDER
+            c.number_format = EUR
+            c.font = f(10)
+        for col in (COL_SUM_H2, COL_SUM_27, COL_TOTAL):
+            c = ws.cell(row=row, column=col, value=period_sum(col, row))
             c.fill = FILL_CALC
             c.border = BORDER
             c.number_format = EUR
@@ -428,6 +472,10 @@ def build_cashflow(wb, meta, income, expense):
         n.font = f(9, color="808080")
         n.fill = fill
         n.border = border
+        for col in (COL_TFD, COL_KTG):
+            c = ws.cell(row=row, column=col)
+            c.fill = fill
+            c.border = border
         for col in range(COL_M1, COL_TOTAL + 1):
             c = ws.cell(row=row, column=col, value=formula_for_col(col))
             c.font = f(10, bold)
@@ -436,11 +484,10 @@ def build_cashflow(wb, meta, income, expense):
             c.number_format = EUR
 
     # ---- 1. Einnahmen -------------------------------------------------------
-    section(R_SEC_IN, "1  EINNAHMEN  (Quelle: Reiter „Aufträge“)")
+    section(R_SEC_IN, "1  EINNAHMEN JE AUFTRAG  (Quelle: Reiter „Aufträge“)")
     for i in range(N_INCOME_ROWS):
-        detail_row(R_IN_FIRST + i, income[i] if i < len(income) else None,
-                   C_EINNAHMEN, C_DAT_EIN)
-    calc_row(R_IN_REST, "Aufträge ohne Kostenstellen-Zuordnung",
+        detail_row(R_IN_FIRST + i, C_EINNAHMEN, C_DAT_EIN)
+    calc_row(R_IN_REST, "Noch nicht erfasste Aufträge",
              lambda col: (f"={get_column_letter(col)}{R_SUM_IN}"
                           f"-SUM({get_column_letter(col)}{R_IN_FIRST}:"
                           f"{get_column_letter(col)}{R_IN_LAST})"),
@@ -451,11 +498,10 @@ def build_cashflow(wb, meta, income, expense):
              FILL_RESULT, bold=True, border=TOP_LINE)
 
     # ---- 2. Ausgaben --------------------------------------------------------
-    section(R_SEC_OUT, "2  AUSGABEN  (Quelle: Reiter „Aufträge“)")
+    section(R_SEC_OUT, "2  AUSGABEN JE AUFTRAG  (Quelle: Reiter „Aufträge“)")
     for i in range(N_EXPENSE_ROWS):
-        detail_row(R_OUT_FIRST + i, expense[i] if i < len(expense) else None,
-                   C_AUSGABEN, C_DAT_AUS)
-    calc_row(R_OUT_REST, "Aufträge ohne Kostenstellen-Zuordnung",
+        detail_row(R_OUT_FIRST + i, C_AUSGABEN, C_DAT_AUS)
+    calc_row(R_OUT_REST, "Noch nicht erfasste Aufträge",
              lambda col: (f"={get_column_letter(col)}{R_SUM_OUT}"
                           f"-SUM({get_column_letter(col)}{R_OUT_FIRST}:"
                           f"{get_column_letter(col)}{R_OUT_LAST})"),
@@ -500,7 +546,7 @@ def build_cashflow(wb, meta, income, expense):
                          lambda col, v=value, vc=vcol, dc=dcol, rr=r: (
                              sumifs(vc, dc, col, extra=[field, f'"{v}"'])
                              if col <= COL_LAST_M else period_sum(col, rr)),
-                         FILL_CALC, note="nachrichtlich")
+                         FILL_CALC)
                 r += 1
 
     dimension_block(R_SEC_TF, R_TF_FIRST,
@@ -510,21 +556,43 @@ def build_cashflow(wb, meta, income, expense):
                     "5  AUSWERTUNG NACH KATEGORIE (nachrichtlich, nicht in der "
                     "Cashflow-Summe enthalten)", C_KAT, KATEGORIEN)
 
+    def kst_block(sec_row, first_row, title, value_col, date_col):
+        section(sec_row, title)
+        for i in range(N_KST_ROWS):
+            row = first_row + i
+            key_row(row, value_col, date_col, C_KST)
+            if i < len(kostenstellen):
+                nummer, name = kostenstellen[i]
+                ws.cell(row=row, column=COL_POS).value = nummer
+                b = ws.cell(row=row, column=COL_KST, value=name)
+                b.font = f(10, color="595959")
+                b.fill = FILL_INPUT
+
+    kst_block(R_SEC_KST_IN, R_KST_IN_FIRST,
+              "6  EINNAHMEN NACH KOSTENSTELLE (nachrichtlich, nicht in der "
+              "Cashflow-Summe enthalten)", C_EINNAHMEN, C_DAT_EIN)
+    kst_block(R_SEC_KST_OUT, R_KST_OUT_FIRST,
+              "7  AUSGABEN NACH KOSTENSTELLE (nachrichtlich, nicht in der "
+              "Cashflow-Summe enthalten)", C_AUSGABEN, C_DAT_AUS)
+
     # ---- Legende ------------------------------------------------------------
     legend = [
         ("Legende", None, f(10, True, C_HEAD)),
-        ("Eingabezelle – nur Position und Kostenstelle werden hier gepflegt",
-         C_INPUT, f(9)),
+        ("Eingabezelle – hier wird die Auftragsnummer bzw. die Kostenstelle "
+         "eingetragen", C_INPUT, f(9)),
         ("Automatisch aus dem Reiter „Aufträge“ berechnet – nicht überschreiben",
          C_CALC, f(9)),
         ("Ergebniszeile – automatisch berechnet", C_RESULT, f(9)),
         ("Datenfluss:  Aufträge  →  Cashflow  →  Übersicht. Alle Beträge werden "
          "ausschließlich im Reiter „Aufträge“ erfasst.",
          None, f(9, italic=True, color="808080")),
-        (f"Die Zuordnung erfolgt über die Kostenstelle in Spalte B: Der Eintrag "
-         f"muss mit der Kostenstelle im Reiter „Aufträge“ übereinstimmen. Nicht "
-         f"zugeordnete Aufträge erscheinen in Zeile {R_IN_REST} bzw. {R_OUT_REST} "
-         f"und sind in den Summen trotzdem enthalten.",
+        ("Spalte A: Auftragsnummer aus dem Reiter „Aufträge“ eintragen – "
+         "Kostenstelle, Themenfeld und Kategorie werden automatisch daneben "
+         "ergänzt, die Monatswerte über das jeweilige Datum zugeordnet.",
+         None, f(9, italic=True, color="808080")),
+        (f"Zeile {R_IN_REST} bzw. {R_OUT_REST} zeigt Beträge aus Aufträgen, die "
+         "oben noch keine eigene Zeile haben. Die Summenzeilen enthalten immer "
+         "den vollständigen Monatswert, es geht also nie ein Betrag verloren.",
          None, f(9, italic=True, color="808080")),
         (f"Zeile {R_MONTHKEY} ist ausgeblendet und enthält die echten Monatsanfänge "
          "(Datumswerte), mit denen die SUMMEWENNS-Formeln die Monatsgrenzen bilden.",
@@ -547,7 +615,7 @@ def build_cashflow(wb, meta, income, expense):
 
     # ---- Bedingte Formatierung ---------------------------------------------
     ws.conditional_formatting.add(
-        f"{L_M1}{R_IN_FIRST}:{L_TOTAL}{R_KAT_FIRST + 2 * len(KATEGORIEN) - 1}",
+        f"{L_M1}{R_IN_FIRST}:{L_TOTAL}{R_MEMO_LAST}",
         CellIsRule(operator="lessThan", formula=["0"],
                    font=Font(name=FONT, size=10, color="9C0006"),
                    fill=PatternFill("solid", bgColor="FFC7CE")))
@@ -564,8 +632,10 @@ def build_cashflow(wb, meta, income, expense):
                                  fill=PatternFill("solid", bgColor="FFC7CE")))
 
     # ---- Spaltenbreiten / Fixierung / Druck ---------------------------------
-    ws.column_dimensions["A"].width = 38
-    ws.column_dimensions["B"].width = 16
+    ws.column_dimensions["A"].width = 24
+    ws.column_dimensions["B"].width = 22
+    ws.column_dimensions["C"].width = 14
+    ws.column_dimensions["D"].width = 24
     for col in range(COL_M1, COL_LAST_M + 1):
         ws.column_dimensions[get_column_letter(col)].width = 13
     for col in (COL_SUM_H2, COL_SUM_27, COL_TOTAL):
@@ -575,7 +645,7 @@ def build_cashflow(wb, meta, income, expense):
     ws.sheet_view.showGridLines = False
     ws.print_area = f"A1:{L_TOTAL}{R_LEGEND + len(legend) - 1}"
     ws.print_title_rows = f"{R_HEAD}:{R_HEAD}"
-    ws.print_title_cols = "$A:$B"
+    ws.print_title_cols = "$A:$D"
     ws.page_setup.orientation = "landscape"
     ws.page_setup.paperSize = ws.PAPERSIZE_A4
     ws.page_setup.fitToWidth = 1
@@ -712,13 +782,14 @@ def main():
 
     if args.source:
         src = read_source(args.source)
-        meta, income, expense = src["meta"], src["income"], src["expense"]
-        print(f"übernommen: {len(income)} Einnahmen-, {len(expense)} Ausgabenzeilen")
+        meta, kostenstellen = src["meta"], src["kostenstellen"]
+        print(f"übernommen: {len(kostenstellen)} Kostenstellen "
+              f"({', '.join(n for n, _ in kostenstellen)})")
     else:
-        meta, income, expense = META_DEFAULT, INCOME_DEFAULT, EXPENSE_DEFAULT
+        meta, kostenstellen = META_DEFAULT, []
 
     wb = Workbook()
-    ws_cf = build_cashflow(wb, meta, income, expense)
+    ws_cf = build_cashflow(wb, meta, kostenstellen)
     build_orders(wb)                       # direkt nach "Cashflow"
     build_overview(wb, ws_cf)
     wb.save(args.out)
