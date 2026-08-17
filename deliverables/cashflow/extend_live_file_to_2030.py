@@ -236,6 +236,22 @@ def rebuild_overview(ov, cf):
             a._style, b._style = copy(style[0]), copy(style[1])
             row += 1
 
+    # ---- Bedingte Formatierung auf alle Kennzahlenzeilen ausdehnen ---------
+    # Sie endete bisher bei Zeile 17; die neuen Blöcke 2029/2030/Gesamt
+    # blieben dadurch ungefärbt und der Block wirkte uneinheitlich.
+    last_row = row - 1
+    rules = [(str(rng.sqref), list(rng.rules)) for rng in ov.conditional_formatting]
+    ov.conditional_formatting._cf_rules.clear()
+    for sqref, rule_list in rules:
+        parts = []
+        for part in sqref.split():
+            a, _, b = part.partition(":")
+            if b and b.startswith("B"):
+                b = f"B{last_row}"
+            parts.append(f"{a}:{b}" if b else a)
+        for rule in rule_list:
+            ov.conditional_formatting.add(" ".join(parts), rule)
+
     # ---- Diagramme neu aufsetzen -------------------------------------------
     # Die bisherigen Datenreihen begannen in Spalte B, also bei der
     # Beschriftungszelle – dadurch waren alle Werte um einen Monat gegenüber
@@ -252,6 +268,8 @@ def rebuild_overview(ov, cf):
     bar.add_data(Reference(cf, min_col=C_FIRST_M, max_col=C_NEW_LAST_M,
                            min_row=R_KPI_IN, max_row=R_KPI_OUT), from_rows=True)
     bar.set_categories(cats)
+    bar.x_axis.tickLblSkip = 3          # 54 Monate: nur jedes Quartal beschriften
+    bar.x_axis.tickMarkSkip = 3
     for ser, r in zip(bar.series, (R_KPI_IN, R_KPI_OUT)):
         ser.tx = SeriesLabel(strRef=StrRef(f"Cashflow!$B${r}"))
     bar.series[0].graphicalProperties.solidFill = "4472C4"
@@ -265,6 +283,8 @@ def rebuild_overview(ov, cf):
     line.add_data(Reference(cf, min_col=C_FIRST_M, max_col=C_NEW_LAST_M,
                             min_row=R_KPI_NET, max_row=R_KPI_CUM), from_rows=True)
     line.set_categories(cats)
+    line.x_axis.tickLblSkip = 3
+    line.x_axis.tickMarkSkip = 3
     for ser, r in zip(line.series, (R_KPI_NET, R_KPI_CUM)):
         ser.tx = SeriesLabel(strRef=StrRef(f"Cashflow!$B${r}"))
     line.series[0].graphicalProperties.line.solidFill = "1F3864"
