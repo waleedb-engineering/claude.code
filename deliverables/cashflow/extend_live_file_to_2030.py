@@ -17,8 +17,10 @@ from openpyxl import load_workbook
 from openpyxl.chart import BarChart, LineChart, Reference
 from openpyxl.chart.data_source import StrRef
 from openpyxl.chart.series import SeriesLabel
+from openpyxl.chart.shapes import GraphicalProperties
 from openpyxl.formula.translate import Translator
 from openpyxl.utils import get_column_letter, column_index_from_string
+from openpyxl.styles import PatternFill
 from openpyxl.worksheet.datavalidation import DataValidation
 from openpyxl.worksheet.table import TableColumn
 
@@ -206,6 +208,12 @@ def rebuild_overview(ov, cf):
     st_row = (copy(ov["A7"]._style), copy(ov["B7"]._style))
     st_bold = (copy(ov["A9"]._style), copy(ov["B9"]._style))
 
+    # Die Beschriftungsspalte war ohne Füllung – bei ausgeschaltetem
+    # Gitternetz wirkte die Tabelle dadurch hintergrundlos. Sie bekommt
+    # jetzt dieselbe Fläche wie die zugehörige Wertzelle.
+    FILL_ROW = PatternFill("solid", fgColor="FFF2F2F2")
+    FILL_NET = PatternFill("solid", fgColor="FFE2EFDA")
+
     ov["A2"] = "SmartInfra / DuSL  ·  Juli 2026 – Dezember 2030"
 
     groups = [
@@ -234,6 +242,7 @@ def rebuild_overview(ov, cf):
             a = ov.cell(row=row, column=1, value=label)
             b = ov.cell(row=row, column=2, value=f"=Cashflow!{L(col)}{src_row}")
             a._style, b._style = copy(style[0]), copy(style[1])
+            a.fill = copy(FILL_NET if i == 2 else FILL_ROW)
             row += 1
 
     # ---- Bedingte Formatierung auf alle Kennzahlenzeilen ausdehnen ---------
@@ -299,6 +308,14 @@ def rebuild_overview(ov, cf):
 
 
 def tidy_axes(chart):
+    """Achsen und Flächen so setzen, wie Excel sie erwartet."""
+    gp = GraphicalProperties(solidFill="FFFFFF")
+    gp.line.solidFill = "BFBFBF"
+    chart.graphical_properties = gp
+    _axes(chart)
+
+
+def _axes(chart):
     """Achsen so setzen, wie Excel sie für ein stehendes Diagramm erwartet.
 
     openpyxl legt die Kategorienachse standardmäßig links an (axPos "l") und
