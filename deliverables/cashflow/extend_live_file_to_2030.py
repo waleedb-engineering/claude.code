@@ -264,7 +264,8 @@ def rebuild_overview(ov, cf):
     bar.type, bar.grouping = "col", "clustered"
     bar.title = "Einnahmen vs. Ausgaben (monatlich)"
     bar.y_axis.title, bar.y_axis.numFmt = "EUR", "#,##0"
-    bar.height, bar.width, bar.gapWidth = 8, 30, 40
+    bar.height, bar.width = 9, 32
+    bar.gapWidth, bar.overlap = 60, -10
     bar.add_data(Reference(cf, min_col=C_FIRST_M, max_col=C_NEW_LAST_M,
                            min_row=R_KPI_IN, max_row=R_KPI_OUT), from_rows=True)
     bar.set_categories(cats)
@@ -274,12 +275,13 @@ def rebuild_overview(ov, cf):
         ser.tx = SeriesLabel(strRef=StrRef(f"Cashflow!$B${r}"))
     bar.series[0].graphicalProperties.solidFill = "4472C4"
     bar.series[1].graphicalProperties.solidFill = "C00000"
+    tidy_axes(bar)
     ov.add_chart(bar, "D5")
 
     line = LineChart()
     line.title = "Netto-Cashflow und kumulierter Cashflow (monatlich)"
     line.y_axis.title, line.y_axis.numFmt = "EUR", "#,##0"
-    line.height, line.width = 8, 30
+    line.height, line.width = 9, 32
     line.add_data(Reference(cf, min_col=C_FIRST_M, max_col=C_NEW_LAST_M,
                             min_row=R_KPI_NET, max_row=R_KPI_CUM), from_rows=True)
     line.set_categories(cats)
@@ -290,7 +292,26 @@ def rebuild_overview(ov, cf):
     line.series[0].graphicalProperties.line.solidFill = "1F3864"
     line.series[1].graphicalProperties.line.solidFill = "70AD47"
     line.series[1].graphicalProperties.line.dashStyle = "dash"
+    for ser in line.series:            # keine Spline-Glättung: der kumulierte
+        ser.smooth = False             # Verlauf ist eine Treppe, keine Kurve
+    tidy_axes(line)
     ov.add_chart(line, "D24")
+
+
+def tidy_axes(chart):
+    """Achsen so setzen, wie Excel sie für ein stehendes Diagramm erwartet.
+
+    openpyxl legt die Kategorienachse standardmäßig links an (axPos "l") und
+    zeichnet ihre Beschriftungen am Achsenschnittpunkt – bei negativen Werten
+    also mitten durch die Zeichenfläche. Beides wird hier korrigiert."""
+    chart.x_axis.axPos = "b"
+    chart.y_axis.axPos = "l"
+    chart.x_axis.tickLblPos = "low"      # Monatsnamen immer unterhalb
+    chart.y_axis.tickLblPos = "nextTo"
+    chart.x_axis.delete = False          # sonst blendet Excel die Achse aus
+    chart.y_axis.delete = False
+    chart.x_axis.majorTickMark = "out"
+    chart.y_axis.majorTickMark = "out"
 
 
 def restore_kostenstellen_dropdown(ws):
