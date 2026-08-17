@@ -250,7 +250,9 @@ def sheet_register(wb, rows):
                    fill=PatternFill("solid", bgColor="FFC7CE")))
 
     ws.freeze_panes = f"E{R_FIRST}"
-    ws.auto_filter.ref = f"A{R_HEAD}:O{last}"
+    # KEIN ws.auto_filter setzen: die Tabelle tblAnf bringt ihren eigenen
+    # Autofilter mit. Zwei Filter über demselben Bereich lässt Excel nicht zu –
+    # es repariert die Datei und verwirft dabei die ganze Tabelle.
     ws.print_title_rows = f"{R_HEAD}:{R_HEAD}"
     ws.page_setup.orientation = "landscape"
     ws.page_setup.paperSize = ws.PAPERSIZE_A3
