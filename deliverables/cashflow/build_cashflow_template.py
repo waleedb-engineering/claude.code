@@ -2,7 +2,7 @@
 """Erzeugt die Cashflow-Mappe fuer SmartInfra / IoT-Buero.
 
 Projekt : DusL Plus Autostrom
-Zeitraum: Juli 2026 - Dezember 2027 (18 Monate, monatlich)
+Zeitraum: Juli 2026 - Dezember 2030 (54 Monate, monatlich)
 
 Datenfluss:  Auftraege  ->  Cashflow  ->  Uebersicht
 
@@ -28,6 +28,8 @@ from pathlib import Path
 
 from openpyxl import Workbook, load_workbook
 from openpyxl.chart import BarChart, LineChart, Reference
+from openpyxl.chart.data_source import StrRef
+from openpyxl.chart.series import SeriesLabel
 from openpyxl.formatting.rule import CellIsRule
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
@@ -36,7 +38,7 @@ from openpyxl.worksheet.properties import PageSetupProperties
 from openpyxl.worksheet.table import Table, TableStyleInfo
 
 HERE = Path(__file__).resolve().parent
-OUT = HERE / "Cashflow_SmartInfra_IoT_DusL_Plus_Autostrom_2026_2027.xlsx"
+OUT = HERE / "Cashflow_SmartInfra_IoT_DusL_Plus_Autostrom_2026_2030.xlsx"
 
 # ----------------------------------------------------------------------------
 # Layout-Konstanten
@@ -46,19 +48,40 @@ FONT = "Arial"
 N_INCOME_ROWS = 50          # Auftragszeilen im Einnahmenblock
 N_EXPENSE_ROWS = 50         # Auftragszeilen im Ausgabenblock
 N_KST_ROWS = 15             # Zeilen je Kostenstellen-Auswertung
-N_ORDER_ROWS = 150          # vorbereitete Zeilen der Auftragstabelle
+N_ORDER_ROWS = 300          # vorbereitete Zeilen der Auftragstabelle
 
-MONTH_STARTS = [date(2026, 7, 1)]
-for _ in range(17):
+PERIOD_START = date(2026, 7, 1)
+PERIOD_END = date(2030, 12, 1)          # letzter Monat des Planungszeitraums
+
+MONTH_STARTS = [PERIOD_START]
+while MONTH_STARTS[-1] < PERIOD_END:
     _y, _m = MONTH_STARTS[-1].year, MONTH_STARTS[-1].month + 1
     MONTH_STARTS.append(date(_y + (_m > 12), 1 if _m > 12 else _m, 1))
 
-MONTHS = [
-    "Jul 26", "Aug 26", "Sep 26", "Okt 26", "Nov 26", "Dez 26",
-    "Jan 27", "Feb 27", "Mär 27", "Apr 27", "Mai 27", "Jun 27",
-    "Jul 27", "Aug 27", "Sep 27", "Okt 27", "Nov 27", "Dez 27",
-]
-assert len(MONTHS) == len(MONTH_STARTS) == 18
+MONTH_ABBR = ["Jan", "Feb", "Mär", "Apr", "Mai", "Jun",
+              "Jul", "Aug", "Sep", "Okt", "Nov", "Dez"]
+MONTHS = [f"{MONTH_ABBR[d.month - 1]} {d:%y}" for d in MONTH_STARTS]
+N_MONTHS = len(MONTHS)
+
+
+def _periods():
+    """Summenspalten je Geschäftsjahr; ein angebrochenes erstes Jahr wird als
+    Halbjahr ausgewiesen. Liefert (Beschriftung, erster Index, letzter Index)."""
+    out = []
+    for year in sorted({d.year for d in MONTH_STARTS}):
+        idx = [i for i, d in enumerate(MONTH_STARTS) if d.year == year]
+        full = len(idx) == 12
+        if full:
+            label = f"Summe {year}"
+        elif MONTH_STARTS[idx[0]].month >= 7:
+            label = f"Summe H2 {year}"
+        else:
+            label = f"Summe {year} (Teiljahr)"
+        out.append((label, idx[0], idx[-1]))
+    return out
+
+
+PERIODS = _periods()
 
 THEMENFELDER = ["IoT", "EDM", "Parking", "LLM"]
 KATEGORIEN = ["Hardware", "Hardware + Dienstleistung", "Lizenzen", "Dienstleistung"]
@@ -68,22 +91,22 @@ COL_KST = 2                      # B = Kostenstelle   (automatisch nachgeschlage
 COL_TFD = 3                      # C = Themenfeld     (automatisch nachgeschlagen)
 COL_KTG = 4                      # D = Kategorie      (automatisch nachgeschlagen)
 COL_LABELS = (COL_POS, COL_KST, COL_TFD, COL_KTG)
-COL_M1 = 5                       # E  = Jul 26
-COL_H2_END = COL_M1 + 5          # J  = Dez 26
-COL_Y27_START = COL_M1 + 6       # K  = Jan 27
-COL_LAST_M = COL_M1 + 17         # V  = Dez 27
-COL_SUM_H2 = COL_LAST_M + 1      # W
-COL_SUM_27 = COL_LAST_M + 2      # X
-COL_TOTAL = COL_LAST_M + 3       # Y
+COL_M1 = 5                                  # E = erster Monat
+COL_LAST_M = COL_M1 + N_MONTHS - 1          # letzter Monat
+COL_PERIOD = {label: COL_LAST_M + 1 + i     # eine Summenspalte je Periode
+              for i, (label, _, _) in enumerate(PERIODS)}
+COL_TOTAL = COL_LAST_M + len(PERIODS) + 1   # Gesamtspalte
 
-L_KEY = get_column_letter(COL_POS)          # A  = Schlüsselspalte
-L_M1 = get_column_letter(COL_M1)            # E
-L_H2_END = get_column_letter(COL_H2_END)    # J
-L_Y27 = get_column_letter(COL_Y27_START)    # K
-L_LAST_M = get_column_letter(COL_LAST_M)    # V
-L_SUM_H2 = get_column_letter(COL_SUM_H2)    # W
-L_SUM_27 = get_column_letter(COL_SUM_27)    # X
-L_TOTAL = get_column_letter(COL_TOTAL)      # Y
+L_KEY = get_column_letter(COL_POS)
+L_M1 = get_column_letter(COL_M1)
+L_LAST_M = get_column_letter(COL_LAST_M)
+L_TOTAL = get_column_letter(COL_TOTAL)
+
+# Spalte -> (erster Monatsindex, letzter Monatsindex) der zugehörigen Periode
+PERIOD_BY_COL = {COL_PERIOD[label]: (first, last)
+                 for label, first, last in PERIODS}
+PERIOD_BY_COL[COL_TOTAL] = (0, N_MONTHS - 1)
+SUM_COLS = tuple(COL_PERIOD[label] for label, _, _ in PERIODS) + (COL_TOTAL,)
 
 # Zeilenraster des Cashflow-Blatts (aus den Blockgrößen abgeleitet)
 R_TITLE = 1
@@ -148,10 +171,12 @@ C_TF = f"{TBL}[Themenfeld]"
 C_KAT = f"{TBL}[Kategorie]"
 C_WSK = f"{TBL}[Auftragswahrscheinlichkeit]"
 
+PERIOD_LABEL = (f"Juli {MONTH_STARTS[0].year} – "
+                f"Dezember {MONTH_STARTS[-1].year}")
 META_DEFAULT = [
     "Cashflow-Planung",
     "Bereich:  SmartInfra / IoT-Büro",
-    "Zeitraum:  Juli 2026 – Dezember 2027  (18 Monate, monatliche Granularität)",
+    f"Zeitraum:  {PERIOD_LABEL}  ({N_MONTHS} Monate, monatliche Granularität)",
 ]
 META_HINT = ("Alle Beträge werden automatisch aus dem Reiter „Aufträge“ berechnet – "
              "hier wird links nur die Auftragsnummer (gelb) eingetragen.")
@@ -189,12 +214,17 @@ def f(size=10, bold=False, color="000000", italic=False):
 
 
 def period_sum(col, row):
-    """Formel der Summenspalten W/X/Y für eine Zeile."""
-    if col == COL_SUM_H2:
-        return f"=SUM({L_M1}{row}:{L_H2_END}{row})"
-    if col == COL_SUM_27:
-        return f"=SUM({L_Y27}{row}:{L_LAST_M}{row})"
-    return f"=SUM({L_M1}{row}:{L_LAST_M}{row})"
+    """Formel einer Summenspalte: Summe über die Monate ihrer Periode."""
+    first, last = PERIOD_BY_COL[col]
+    a = get_column_letter(COL_M1 + first)
+    b = get_column_letter(COL_M1 + last)
+    return f"=SUM({a}{row}:{b}{row})"
+
+
+def period_end_ref(col, row):
+    """Letzter Monat einer Periode – für kumulierte Zeilen (Endstand)."""
+    _, last = PERIOD_BY_COL[col]
+    return f"={get_column_letter(COL_M1 + last)}{row}"
 
 
 def month_window(col):
@@ -285,8 +315,12 @@ def read_source(path):
             continue
         seen[nummer] = [name] if name else []
         kostenstellen.append(nummer)
+    # Zeitraumzeile stammt immer aus den aktuellen Konstanten, nie aus der
+    # Quelldatei – sonst würde ein alter Planungszeitraum weitergeschleppt.
+    meta = [m for m in meta if not m.lower().startswith("zeitraum")][:2]
+    meta = (meta or META_DEFAULT[:2]) + [META_DEFAULT[2]]
     return {
-        "meta": meta[:3] or META_DEFAULT,
+        "meta": meta,
         "kostenstellen": [(n, " / ".join(seen[n])) for n in kostenstellen],
     }
 
@@ -415,7 +449,7 @@ def build_cashflow(wb, meta, kostenstellen):
 
     # ---- Tabellenkopf -------------------------------------------------------
     headers = ["Auftrag", "Kostenstelle", "Themenfeld", "Kategorie"] + MONTHS + [
-        "Summe H2 2026", "Summe 2027", "Gesamt"]
+        *[label for label, _, _ in PERIODS], "Gesamt"]
     for i, text in enumerate(headers, start=1):
         c = ws.cell(row=R_HEAD, column=i, value=text)
         c.font = f(10, True, "FFFFFF")
@@ -464,7 +498,7 @@ def build_cashflow(wb, meta, kostenstellen):
             c.number_format = EUR
             c.font = f(10)
 
-        for col in (COL_SUM_H2, COL_SUM_27, COL_TOTAL):
+        for col in SUM_COLS:
             c = ws.cell(row=row, column=col, value=period_sum(col, row))
             c.fill = FILL_CALC
             c.border = BORDER
@@ -491,7 +525,7 @@ def build_cashflow(wb, meta, kostenstellen):
             c.border = BORDER
             c.number_format = EUR
             c.font = f(10)
-        for col in (COL_SUM_H2, COL_SUM_27, COL_TOTAL):
+        for col in SUM_COLS:
             c = ws.cell(row=row, column=col, value=period_sum(col, row))
             c.fill = FILL_CALC
             c.border = BORDER
@@ -565,9 +599,7 @@ def build_cashflow(wb, meta, kostenstellen):
         if col <= COL_LAST_M:
             return (f"={get_column_letter(col - 1)}{R_KPI_CUM}"
                     f"+{get_column_letter(col)}{R_KPI_NET}")
-        if col == COL_SUM_H2:
-            return f"={L_H2_END}{R_KPI_CUM}"          # Stand 31.12.2026
-        return f"={L_LAST_M}{R_KPI_CUM}"              # Stand 31.12.2027
+        return period_end_ref(col, R_KPI_CUM)      # Periodenendstand
 
     calc_row(R_KPI_CUM, "Kumulierter Cashflow", cum_formula, FILL_RESULT, bold=True)
 
@@ -682,9 +714,7 @@ def build_cashflow(wb, meta, kostenstellen):
         if col <= COL_LAST_M:
             return (f"={get_column_letter(col - 1)}{R_FC_CUM}"
                     f"+{get_column_letter(col)}{R_FC_NET}")
-        if col == COL_SUM_H2:
-            return f"={L_H2_END}{R_FC_CUM}"
-        return f"={L_LAST_M}{R_FC_CUM}"
+        return period_end_ref(col, R_FC_CUM)       # Periodenendstand
 
     calc_row(R_FC_CUM, "Kumulierter gewichteter Cashflow", fc_cum,
              FILL_FORECAST, bold=True)
@@ -798,7 +828,7 @@ def build_cashflow(wb, meta, kostenstellen):
     ws.column_dimensions["D"].width = 24
     for col in range(COL_M1, COL_LAST_M + 1):
         ws.column_dimensions[get_column_letter(col)].width = 13
-    for col in (COL_SUM_H2, COL_SUM_27, COL_TOTAL):
+    for col in SUM_COLS:
         ws.column_dimensions[get_column_letter(col)].width = 16
 
     ws.freeze_panes = f"{L_M1}{R_HEAD + 1}"
@@ -808,7 +838,7 @@ def build_cashflow(wb, meta, kostenstellen):
     ws.print_title_cols = "$A:$D"
     ws.page_setup.orientation = "landscape"
     ws.page_setup.paperSize = ws.PAPERSIZE_A4
-    ws.page_setup.fitToWidth = 1
+    ws.page_setup.fitToWidth = 3      # 54 Monate: 3 Seiten breit, sonst unlesbar
     ws.page_setup.fitToHeight = 0
     ws.sheet_properties.pageSetUpPr = PageSetupProperties(fitToPage=True)
     ws.page_margins.left = ws.page_margins.right = 0.4
@@ -826,21 +856,22 @@ def build_overview(wb, ws_cf):
 
     ov["A1"] = "Übersicht Cashflow – DusL Plus Autostrom"
     ov["A1"].font = f(16, True, C_HEAD)
-    ov["A2"] = "SmartInfra / IoT-Büro  ·  Juli 2026 – Dezember 2027"
+    ov["A2"] = f"SmartInfra / IoT-Büro  ·  {PERIOD_LABEL}"
     ov["A2"].font = f(10, color="595959")
     ov["A3"] = "Alle Werte werden automatisch aus dem Blatt „Cashflow“ übernommen."
     ov["A3"].font = f(9, italic=True, color="808080")
 
-    kpis = [
-        ("H2 2026 (Jul – Dez 2026)", None, None),
-        ("Einnahmen H2 2026", f"=Cashflow!{L_SUM_H2}{R_KPI_IN}", False),
-        ("Ausgaben H2 2026", f"=Cashflow!{L_SUM_H2}{R_KPI_OUT}", False),
-        ("Netto-Cashflow H2 2026", f"=Cashflow!{L_SUM_H2}{R_KPI_NET}", True),
-        ("Geschäftsjahr 2027", None, None),
-        ("Einnahmen 2027", f"=Cashflow!{L_SUM_27}{R_KPI_IN}", False),
-        ("Ausgaben 2027", f"=Cashflow!{L_SUM_27}{R_KPI_OUT}", False),
-        ("Netto-Cashflow 2027", f"=Cashflow!{L_SUM_27}{R_KPI_NET}", True),
-        ("Gesamtzeitraum (18 Monate)", None, None),
+    kpis = []
+    for label, first, last in PERIODS:
+        name = label.replace("Summe ", "")
+        letter = get_column_letter(COL_PERIOD[label])
+        von, bis = MONTHS[first], MONTHS[last]
+        kpis.append((f"{name}  ({von} – {bis})", None, None))
+        kpis.append((f"Einnahmen {name}", f"=Cashflow!{letter}{R_KPI_IN}", False))
+        kpis.append((f"Ausgaben {name}", f"=Cashflow!{letter}{R_KPI_OUT}", False))
+        kpis.append((f"Netto-Cashflow {name}", f"=Cashflow!{letter}{R_KPI_NET}", True))
+    kpis += [
+        (f"Gesamtzeitraum ({N_MONTHS} Monate)", None, None),
         ("Gesamteinnahmen", f"=Cashflow!{L_TOTAL}{R_KPI_IN}", False),
         ("Gesamtausgaben", f"=Cashflow!{L_TOTAL}{R_KPI_OUT}", False),
         ("Gesamt-Netto-Cashflow", f"=Cashflow!{L_TOTAL}{R_KPI_NET}", True),
@@ -909,10 +940,14 @@ def build_overview(wb, ws_cf):
     bar.y_axis.numFmt = '#,##0'
     bar.height, bar.width = 8, 26
     bar.gapWidth = 40
-    bar.add_data(Reference(ws_cf, min_col=COL_POS, max_col=COL_LAST_M,
-                           min_row=R_KPI_IN, max_row=R_KPI_OUT),
-                 titles_from_data=True, from_rows=True)
+    # Werte erst ab der ersten Monatsspalte, sonst kippen die drei
+    # Beschriftungsspalten als Datenpunkte in die Reihe und verschieben sie
+    # gegenüber den Monatskategorien.
+    bar.add_data(Reference(ws_cf, min_col=COL_M1, max_col=COL_LAST_M,
+                           min_row=R_KPI_IN, max_row=R_KPI_OUT), from_rows=True)
     bar.set_categories(cats)
+    for ser, row in zip(bar.series, (R_KPI_IN, R_KPI_OUT)):
+        ser.tx = SeriesLabel(strRef=StrRef(f"Cashflow!$A${row}"))
     bar.series[0].graphicalProperties.solidFill = "4472C4"
     bar.series[1].graphicalProperties.solidFill = "C00000"
     ov.add_chart(bar, "D5")
@@ -922,10 +957,11 @@ def build_overview(wb, ws_cf):
     line.y_axis.title = "EUR"
     line.y_axis.numFmt = '#,##0'
     line.height, line.width = 8, 26
-    line.add_data(Reference(ws_cf, min_col=COL_POS, max_col=COL_LAST_M,
-                            min_row=R_KPI_NET, max_row=R_KPI_CUM),
-                  titles_from_data=True, from_rows=True)
+    line.add_data(Reference(ws_cf, min_col=COL_M1, max_col=COL_LAST_M,
+                            min_row=R_KPI_NET, max_row=R_KPI_CUM), from_rows=True)
     line.set_categories(cats)
+    for ser, row in zip(line.series, (R_KPI_NET, R_KPI_CUM)):
+        ser.tx = SeriesLabel(strRef=StrRef(f"Cashflow!$A${row}"))
     line.series[0].graphicalProperties.line.solidFill = "1F3864"
     line.series[1].graphicalProperties.line.solidFill = "70AD47"
     line.series[1].graphicalProperties.line.dashStyle = "dash"
