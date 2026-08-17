@@ -32,8 +32,16 @@ Statuslogik, dieselbe Optik. Es wurde kein zusätzlicher Reiter angelegt.
   Bemerkung / Schnittstelle.
 * Zählung und Gesamtstatus rechnen über `SUMPRODUCT(ISNUMBER(SEARCH(...)))`
   und erfassen damit auch Mehrfachzuordnungen einer Anforderung.
-* Darunter ein formelbasiertes Organigramm
-  (SmartInfra → Vergabeeinheit → Partner → Art → Komponente) mit Statusfarben.
+* Darunter ein Organigramm aus echten Excel-Zeichenobjekten
+  (SmartInfra → Vergabeeinheit → Partner → Art → Komponente). Die Beschriftung
+  jeder Box ist über `textlink` mit einer Formelzelle in Spalte M verknüpft –
+  dieselbe Verknüpfung, die Excel anlegt, wenn man bei einer markierten Form
+  `=Zelle` in die Bearbeitungsleiste schreibt. Namen, Anzahlen und Status
+  aktualisieren sich damit automatisch; die Boxenanordnung ist fest und wird
+  bei struktureller Änderung neu erzeugt (`tools/inject_shapes.py`).
+* Darunter zusätzlich eine zellbasierte Statusansicht derselben Hierarchie, die
+  sich per bedingter Formatierung automatisch nach dem Status einfärbt und auch
+  eine Umsortierung der Tabelle ohne Nacharbeit mitmacht.
 
 ### Auswertung / Cockpit
 * Bezüge auf den erweiterten Datenbereich nachgezogen.
@@ -53,15 +61,22 @@ eindeutig ableiten lassen.
 | Datei | Zweck |
 |---|---|
 | `tools/classify.py` | Liest die aus dem PDF extrahierten Tabellenzeilen, leitet Themenfeld, Komponenten, Partner und Kernaussage ab |
-| `tools/build.py` | Lädt die bestehende Mappe und ergänzt sie gezielt |
+| `tools/build.py` | Lädt die bestehende Mappe, ergänzt sie gezielt und legt den Bauplan des Organigramms ab |
+| `tools/inject_shapes.py` | Schreibt das Organigramm als Zeichenobjekte in die Mappe |
 | `tools/verify.py` | Prüft die fertige Mappe nach dem Neuberechnen |
 
 Ablauf:
 
 ```bash
 pip install openpyxl pdfplumber
-python3 extract_pdf.py     # Bieterfragenkatalog -> pdf_rows.json
-python3 classify.py        # pdf_rows.json -> bieterfragen.json
-python3 build.py           # original.xlsx + bieterfragen.json -> Ergebnisdatei
-python3 verify.py <datei>  # Kontrolle
+python3 extract_pdf.py       # Bieterfragenkatalog -> pdf_rows.json
+python3 classify.py          # pdf_rows.json -> bieterfragen.json
+python3 build.py             # original.xlsx + bieterfragen.json -> Ergebnisdatei
+#   danach die Mappe neu berechnen lassen (Excel oder LibreOffice),
+#   damit die Textquellen in Spalte M Werte haben
+python3 inject_shapes.py <datei>   # Organigramm-Boxen einsetzen
+python3 verify.py <datei>          # Kontrolle
 ```
+
+Der Zwischenschritt „neu berechnen" ist nötig, weil die Boxen den berechneten
+Zellwert als Anzeigetext mitbekommen, bis Excel die Verknüpfung selbst auffrischt.

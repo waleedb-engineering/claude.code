@@ -377,38 +377,136 @@ KOMP.conditional_formatting.add(f'A{K_START}:A{K_ENDE}',
                                           'FF7F6000', None))
 
 # --------------------------------------------------------------------------
-# 2b  Organigramm (formelbasiert, direkt aus der Tabelle oberhalb)
+# 2b  Organigramm als echte Excel-Zeichenobjekte
 # --------------------------------------------------------------------------
-O_TITEL = K_ENDE + 2
-O_WURZEL = O_TITEL + 3
-O_START = O_WURZEL + 2                       # erste Komponentenzeile
-VERSATZ = O_START - K_START                  # Organigrammzeile -> Tabellenzeile
+# Die Boxen werden nach dem Neuberechnen von inject_shapes.py in die Mappe
+# geschrieben. Ihr Text ist ueber "textlink" mit den Formelzellen in Spalte M
+# verbunden und aktualisiert sich damit automatisch aus der Tabelle.
+# Hier werden nur die Zeichenflaeche reserviert und die Textquellen angelegt.
 
-KOMP.cell(O_TITEL, 1).value = 'Organigramm – automatische Struktur- und Statusansicht'
-KOMP.cell(O_TITEL, 1).font = Font(name=ARIAL, size=14, bold=True, color=C_TITEL)
+# Hierarchie aus der Tabelle ableiten: Vergabeeinheit -> Partner -> Art -> Komponente
+gruppen = []                                  # [(VE, Partner, Art, [Tabellenzeilen])]
+for i, (partner, art, komponente, _b) in enumerate(KOMPONENTEN):
+    r = K_START + i
+    schluessel = ('Zuordnung prüfen', partner, art)
+    if gruppen and gruppen[-1][0] == schluessel:
+        gruppen[-1][1].append(r)
+    else:
+        gruppen.append((schluessel, [r]))
+
+BOX_B, ABSTAND = 200, 16                      # Boxbreite / Abstand in Pixel
+RASTER = BOX_B + ABSTAND
+Y_WURZEL, H_WURZEL = 0, 52
+Y_VE, H_VE = 86, 48
+Y_PARTNER, H_PARTNER = 166, 48
+Y_ART, H_ART = 246, 32
+Y_KOMP, H_KOMP, RASTER_KOMP = 302, 70, 80
+
+max_komp = max(len(z) for _s, z in gruppen)
+DIA_BREITE = len(gruppen) * RASTER
+DIA_HOEHE = Y_KOMP + max_komp * RASTER_KOMP + 12
+
+SH_TITEL = K_ENDE + 2
+SH_START = SH_TITEL + 3                       # erste Zeile der Zeichenflaeche
+SH_ZEILEN = -(-DIA_HOEHE // 24) + 1           # Zeilen a 18 pt (= 24 px)
+SH_ENDE = SH_START + SH_ZEILEN - 1
+
+KOMP.cell(SH_TITEL, 1).value = 'Organigramm – Vergabe- und Komponentenstruktur'
+KOMP.cell(SH_TITEL, 1).font = Font(name=ARIAL, size=14, bold=True, color=C_TITEL)
+KOMP.cell(SH_TITEL + 1, 1).value = (
+    'SmartInfra → Vergabeeinheit → Partner → Art → Komponente. Die Beschriftung jeder Box ist '
+    'mit einer Formelzelle verknüpft (Spalte M) und aktualisiert sich automatisch, sobald sich '
+    'Name, Anzahl oder Status in der Tabelle oberhalb ändern.')
+KOMP.cell(SH_TITEL + 1, 1).font = Font(name=ARIAL, size=9, color='FF808080')
+KOMP.merge_cells(start_row=SH_TITEL + 1, start_column=1, end_row=SH_TITEL + 1, end_column=11)
+KOMP.cell(SH_TITEL + 1, 1).alignment = Alignment(wrap_text=True, vertical='center')
+KOMP.row_dimensions[SH_TITEL].height = 24
+KOMP.row_dimensions[SH_TITEL + 1].height = 28
+for r in range(SH_START, SH_ENDE + 1):
+    KOMP.row_dimensions[r].height = 18
+
+# --- Textquellen (Spalte M) -----------------------------------------------
+M_KOPF = SH_TITEL
+KOMP.cell(M_KOPF, 13).value = 'Textquellen Organigramm (Formeln – bitte nicht löschen)'
+KOMP.cell(M_KOPF, 13).font = Font(name=ARIAL, size=9, bold=True, color='FF808080')
+KOMP.column_dimensions['M'].width = 46
+
+knoten = []                                   # Bauplan fuer inject_shapes.py
+m_zeile = SH_START
+
+
+def textquelle(formel, ebene, **rest):
+    """Legt eine Formelzelle in Spalte M an und meldet den Knoten."""
+    global m_zeile
+    zelle = f'M{m_zeile}'
+    KOMP[zelle] = formel
+    KOMP[zelle].font = Font(name=ARIAL, size=8, color='FF808080')
+    KOMP[zelle].alignment = Alignment(wrap_text=False, vertical='center')
+    knoten.append(dict(zelle=zelle, ebene=ebene, **rest))
+    m_zeile += 1
+    return zelle
+
+
+textquelle(f'="SMARTINFRA"&CHAR(10)&COUNTA($D${K_START}:$D${K_ENDE})&'
+           f'" Komponenten / Schnittstellen"', 'wurzel', spalte_von=0,
+           spalte_bis=len(gruppen) - 1)
+
+ve_gruppen = {}
+for idx, (schluessel, zeilen) in enumerate(gruppen):
+    ve_gruppen.setdefault(schluessel[0], []).append(idx)
+for ve, idxs in ve_gruppen.items():
+    r = gruppen[idxs[0]][1][0]
+    textquelle(f'=$A{r}&CHAR(10)&COUNTIF($A${K_START}:$A${K_ENDE},$A{r})&'
+               f'IF(COUNTIF($A${K_START}:$A${K_ENDE},$A{r})=1," Komponente"," Komponenten")',
+               've', spalte_von=min(idxs), spalte_bis=max(idxs))
+
+partner_gruppen = {}
+for idx, (schluessel, zeilen) in enumerate(gruppen):
+    partner_gruppen.setdefault(schluessel[:2], []).append(idx)
+for (ve, partner), idxs in partner_gruppen.items():
+    r = gruppen[idxs[0]][1][0]
+    zaehler = (f'COUNTIFS($A${K_START}:$A${K_ENDE},$A{r},$B${K_START}:$B${K_ENDE},$B{r})')
+    textquelle(f'=$B{r}&CHAR(10)&{zaehler}&IF({zaehler}=1," Komponente"," Komponenten")',
+               'partner', spalte_von=min(idxs), spalte_bis=max(idxs))
+
+for idx, (schluessel, zeilen) in enumerate(gruppen):
+    r = zeilen[0]
+    zaehler = (f'COUNTIFS($A${K_START}:$A${K_ENDE},$A{r},$B${K_START}:$B${K_ENDE},$B{r},'
+               f'$C${K_START}:$C${K_ENDE},$C{r})')
+    textquelle(f'=$C{r}&CHAR(10)&{zaehler}&IF({zaehler}=1," Eintrag"," Einträge")',
+               'art', spalte_von=idx, spalte_bis=idx)
+    for platz, tr in enumerate(zeilen):
+        textquelle(f'=IF($D{tr}="","",$D{tr}&CHAR(10)&$E{tr}&IF($E{tr}=1," Anforderung",'
+                   f'" Anforderungen")&" · "&$H{tr}&"/"&$E{tr}&" erfüllt"&CHAR(10)&'
+                   f'"Status: "&$J{tr})',
+                   'komponente', spalte_von=idx, spalte_bis=idx, platz=platz,
+                   status_zelle=f'J{tr}')
+
+bauplan = dict(
+    blatt='Komponenten', start_zeile=SH_START, ende_zeile=SH_ENDE,
+    box_breite=BOX_B, raster=RASTER, dia_breite=DIA_BREITE, dia_hoehe=DIA_HOEHE,
+    ebenen=dict(wurzel=[Y_WURZEL, H_WURZEL], ve=[Y_VE, H_VE], partner=[Y_PARTNER, H_PARTNER],
+                art=[Y_ART, H_ART], komponente=[Y_KOMP, H_KOMP, RASTER_KOMP]),
+    knoten=knoten)
+
+# --------------------------------------------------------------------------
+# 2c  Kompakte Statusansicht (formelbasiert, passt sich Umsortierungen an)
+# --------------------------------------------------------------------------
+O_TITEL = SH_ENDE + 2
+O_START = O_TITEL + 2
+VERSATZ = O_START - K_START
+
+KOMP.cell(O_TITEL, 1).value = 'Statusansicht – dieselbe Struktur mit automatischer Statusfarbe'
+KOMP.cell(O_TITEL, 1).font = Font(name=ARIAL, size=12, bold=True, color=C_TITEL)
 KOMP.cell(O_TITEL + 1, 1).value = (
-    'SmartInfra → Vergabeeinheit → Partner → Art → Komponente. Jede Box rechnet direkt aus der '
-    'Tabelle oberhalb; die Farbe folgt dem Komponentenstatus. Hinweis: Die Tabelle nach '
-    'Vergabeeinheit, Partner und Art sortieren, damit die Gruppierung sauber zusammenfällt.')
+    'Ergänzung zum Organigramm: Diese Ansicht färbt sich über bedingte Formatierung automatisch '
+    'nach dem Komponentenstatus und passt sich auch einer Umsortierung der Tabelle an.')
 KOMP.cell(O_TITEL + 1, 1).font = Font(name=ARIAL, size=9, color='FF808080')
 KOMP.merge_cells(start_row=O_TITEL + 1, start_column=1, end_row=O_TITEL + 1, end_column=11)
 KOMP.cell(O_TITEL + 1, 1).alignment = Alignment(wrap_text=True, vertical='center')
-KOMP.row_dimensions[O_TITEL].height = 24
-KOMP.row_dimensions[O_TITEL + 1].height = 28
-
-# Wurzelknoten
-KOMP.merge_cells(start_row=O_WURZEL, start_column=1, end_row=O_WURZEL, end_column=5)
-wurzel = KOMP.cell(O_WURZEL, 1)
-wurzel.value = (f'="SMARTINFRA"&CHAR(10)&COUNTA($D${K_START}:$D${K_ENDE})&" Komponenten / '
-                f'Schnittstellen  ·  "&SUM($E${K_START}:$E${K_ENDE})&" Anforderungszuordnungen"')
-wurzel.font = Font(name=ARIAL, size=12, bold=True, color='FFFFFFFF')
-wurzel.fill = fill(C_TITEL)
-wurzel.alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
-wurzel.border = RAHMEN
-KOMP.row_dimensions[O_WURZEL].height = 40
-KOMP.cell(O_WURZEL + 1, 1).value = '│'
-KOMP.cell(O_WURZEL + 1, 1).font = Font(name=ARIAL, size=10, color='FF808080')
-KOMP.row_dimensions[O_WURZEL + 1].height = 12
+KOMP.row_dimensions[O_TITEL].height = 22
+KOMP.row_dimensions[O_TITEL + 1].height = 26
+O_START = O_TITEL + 2
 
 for i in range(len(KOMPONENTEN) + RESERVE):
     o = O_START + i
@@ -468,17 +566,27 @@ for i, (text, farbe) in enumerate([('erfasst', C_ERFASST), ('bewertet', C_BEWERT
 KOMP.row_dimensions[L0 + 1].height = 20
 KOMP.cell(L0 + 3, 1).value = (
     'Pflegehinweis: Es werden ausschließlich Vergabeeinheit, Partner, Art, Komponente und '
-    'Bemerkung eingetragen. Anzahl, Statusverteilung, Gesamtstatus und das gesamte Organigramm '
-    'aktualisieren sich daraus automatisch. „Zuordnung prüfen“ bedeutet: aus den vorliegenden '
+    'Bemerkung eingetragen. Anzahl, Statusverteilung, Gesamtstatus, die Beschriftung der '
+    'Organigramm-Boxen und die Statusansicht aktualisieren sich daraus automatisch. Kommen '
+    'Komponenten hinzu oder ändert sich die Gruppierung, muss die Boxenanordnung des '
+    'Organigramms neu erzeugt werden. „Zuordnung prüfen“ bedeutet: aus den vorliegenden '
     'Unterlagen nicht eindeutig ableitbar.')
 KOMP.cell(L0 + 3, 1).font = Font(name=ARIAL, size=9, color='FF808080')
 KOMP.merge_cells(start_row=L0 + 3, start_column=1, end_row=L0 + 3, end_column=11)
 KOMP.cell(L0 + 3, 1).alignment = Alignment(wrap_text=True, vertical='top')
-KOMP.row_dimensions[L0 + 3].height = 30
+KOMP.row_dimensions[L0 + 3].height = 40
 KOMP.sheet_view.showGridLines = False
 KOMP.freeze_panes = 'A6'
 
-print(f'Komponenten: Tabelle {K_START}-{K_ENDE}, Organigramm {O_START}-{O_ENDE}')
+# Zeilenhoehen oberhalb der Zeichenflaeche vollstaendig festlegen, damit die
+# absolute Position der Zeichenobjekte exakt berechnet werden kann.
+for r in range(1, SH_START):
+    if KOMP.row_dimensions[r].height is None:
+        KOMP.row_dimensions[r].height = 15
+bauplan['y_versatz_pt'] = sum(KOMP.row_dimensions[r].height for r in range(1, SH_START))
+json.dump(bauplan, open('organigramm.json', 'w'), ensure_ascii=False, indent=1)
+
+print(f'Komponenten: Tabelle {K_START}-{K_ENDE}, Zeichenflaeche {SH_START}-{SH_ENDE}, Statusansicht {O_START}-{O_ENDE}, Knoten {len(knoten)}')
 
 # ==========================================================================
 # 3  Register "Auswertung" neu aufbauen (gleiche Optik, korrigierte Formeln)
@@ -671,8 +779,14 @@ neu = [
      'steht daher überall auf „Zuordnung prüfen“. Sobald sie im Register „Komponenten“ '
      'eingetragen wird, gruppiert sich das Organigramm automatisch neu.'),
     ('Organigramm', 'Im Register „Komponenten“ unterhalb der Tabelle: SmartInfra → '
-     'Vergabeeinheit → Partner → Art → Komponente. Vollständig formelbasiert, Farbe je '
-     'Komponentenstatus. Tabelle nach Vergabeeinheit, Partner und Art sortieren.'),
+     'Vergabeeinheit → Partner → Art → Komponente, gezeichnet mit Excel-Zeichenobjekten. '
+     'Die Beschriftung jeder Box ist über die Bearbeitungsleiste mit einer Formelzelle in '
+     'Spalte M verknüpft und aktualisiert sich automatisch. Die Boxenanordnung selbst ist '
+     'fest; kommen Komponenten hinzu oder ändert sich die Gruppierung, muss sie neu erzeugt '
+     'werden.'),
+    ('Statusansicht', 'Unterhalb des Organigramms, gleiche Hierarchie in Zellen. Sie färbt '
+     'sich über bedingte Formatierung automatisch nach dem Komponentenstatus und passt sich '
+     'auch einer Umsortierung der Tabelle ohne Nacharbeit an.'),
 ]
 r = 23
 for a, b in neu:
