@@ -135,7 +135,13 @@ def build_clip(duration_s=14.0, fps=30.0, cadence_rpm=80.0, phase0=0.0,
                  (chain.L_ELBOW, chain.R_ELBOW), (chain.L_WRIST, chain.R_WRIST)):
         xy[:, l, :] = xy[:, r, :] + np.array([6.0, 0.0])
         conf[:, l] = 0.45
-    xy[:, chain.NOSE, :] = xy[:, chain.R_SHOULDER, :] + np.array([90.0, -110.0])
+    # Kopfpunkte mitsetzen: sonst stehen Augen und Ohren auf (0,0) und der
+    # Rahmen um die Person waere im Test kuenstlich riesig.
+    nose = xy[:, chain.R_SHOULDER, :] + np.array([96.0, -112.0])
+    xy[:, chain.NOSE, :] = nose
+    for i, off in ((1, (-8, -14)), (2, (6, -16)), (3, (-40, -8)), (4, (-30, -12))):
+        xy[:, i, :] = nose + np.array(off, float)
+    conf[:, 1:5] = 0.6
 
     if noise_px:
         xy = xy + rng.normal(0.0, noise_px, xy.shape)

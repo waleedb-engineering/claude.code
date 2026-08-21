@@ -1,0 +1,57 @@
+==========================================================================
+SCHRITT 6  --  Ergebnis
+==========================================================================
+
+  KNIEBEUGUNG AM UNTEREN TOTPUNKT:  35.2 GRAD
+
+  Kniebeugung 35.2 Grad -- im Sollband 30-40. Sattel so lassen.
+
+--------------------------------------------------------------------------
+Messwerte am unteren Totpunkt
+--------------------------------------------------------------------------
+  Kniebeugung                         35.2 Grad      Soll 30-40 Grad   im Bereich
+  Rumpfneigung zur Waagerechten       45.0 Grad      Soll 40-50 Grad   im Bereich
+  Ellbogenbeugung                     20.0 Grad      Soll 15-30 Grad   im Bereich
+  Schulterwinkel                     100.9 Grad                  ---   ohne Bewertung
+  Hueftwinkel                        110.3 Grad                  ---   ohne Bewertung
+
+  Rumpf und Ellbogen sind Erfahrungswerte aus der Praxis, keine belegte Norm.
+  Schulter und Huefte werden gemessen und angezeigt, aber NICHT bewertet:
+  die gern zitierte Studie nennt 112 Grad an der Schulter und 77 an der Huefte,
+  Bike-Fit-Anleitungen dagegen 80-95 und 85-110. Das passt nicht zusammen, weil
+  die Studie den Gelenkpunkt anders setzt als ein Posenmodell. Eine Farbe waere
+  dort eine Behauptung, keine Messung.
+
+--------------------------------------------------------------------------
+Wie die Millimeter zustande kommen
+--------------------------------------------------------------------------
+  Massstab aus dem Knoechelhub: 276 px entsprechen 345 mm (zwei Kurbellaengen)
+    -> 1.252 mm je Pixel
+  Oberschenkel  344 px = 431 mm
+  Unterschenkel 352 px = 441 mm
+  Kosinussatz nach dem Kniewinkel abgeleitet, bei DEINEN Massen und 144.8 Grad Kniewinkel:
+    -> 2.30 mm Sattelhoehe je Grad Kniebeugung
+
+--------------------------------------------------------------------------
+Verlaesslichkeit
+--------------------------------------------------------------------------
+  13 Kurbelumdrehungen ausgewertet, Streuung zwischen den Totpunkten 0.07 Grad
+  Messkette am kuenstlichen Zyklus geprueft: mittlerer Fehler unter 0,5 Grad
+  Aufloesung eines Handyvideos: rund 2-3 Grad. Deshalb 2.5 Grad Toleranz.
+  Der Massstab kommt aus dem Knoechelhub und traegt rund 5 % Unsicherheit,
+  weil der Fuss im Sprunggelenk mitarbeitet. Auf die Millimeter wirkt das direkt.
+
+--------------------------------------------------------------------------
+Wo diese Messung aufhoert
+--------------------------------------------------------------------------
+  Ein Video von der Seite kann die Sattelhoehe und die Oberkoerperhaltung
+  einordnen. Es kann NICHT sehen, ob deine Knie beim Treten nach innen oder
+  aussen wandern, und es kann nichts ueber die Stellung deiner Schuhplatten
+  sagen. Dafuer braeuchte es eine Aufnahme von vorn.
+  Wenn dir beim Fahren etwas weh tut, ersetzt das hier keinen Menschen, der
+  dich anschaut.
+
+  Aendere immer nur EINE Sache und filme danach neu. Wer Sattelhoehe und
+  Sitzposition gleichzeitig verstellt, weiss hinterher nicht, was gewirkt hat.
+
+(0.3 Minuten Rechenzeit)
