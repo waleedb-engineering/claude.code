@@ -1,0 +1,9 @@
+.venv/
+*.pt
+*.mp4
+*.mov
+*.MOV
+*.png
+*.jpg
+out/
+__pycache__/

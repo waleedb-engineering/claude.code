@@ -1,0 +1,5 @@
+ultralytics==8.4.124
+opencv-python-headless==5.0.0.93
+pillow==12.3.0
+numpy==2.4.6
+torch==2.13.0
