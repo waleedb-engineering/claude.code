@@ -1,0 +1,117 @@
+/* ============================================================
+   KLAUSURA — MOTION-SYSTEM
+   Einzige Quelle für Dauern, Kurven, Stagger und z-Ebenen.
+   Regel: Keine Animation im Produkt trägt hartkodierte ms-Werte
+   oder hartkodierte cubic-bezier-Werte. Alles referenziert hier.
+   ============================================================ */
+
+:root {
+
+  /* ---- 1. DAUERN --------------------------------------------------
+     Fünf Stufen. Alles darüber ist eine Ausnahme und muss begründet
+     an dieser Stelle stehen — nicht an der Verwendungsstelle.        */
+
+  --dur-instant:   80ms;   /* Press-Feedback, Fokusring-Ansatz        */
+  --dur-quick:    150ms;   /* Hover, Segment-Wechsel, Chip-Zustand    */
+  --dur-base:     250ms;   /* Standard: Eintritt, Toast, Modal        */
+  --dur-slow:     400ms;   /* Layout-Verschiebung, Nachrücken         */
+  --dur-dramatic: 800ms;   /* Scanline, Shredder-Flug, Graph-Zeichnen */
+
+  /* Zwei begründete Ausnahmen: */
+  --dur-tick:    1000ms;   /* NUR Timer-Sekundentakt. Nicht anfassen. */
+  --dur-euphoric: 900ms;   /* NUR Bestanden-Moment. Genau eine Stelle
+                              im gesamten Produkt darf das benutzen.  */
+
+  /* ---- 2. KURVEN --------------------------------------------------
+     Eintritt bremst aus (ease-out), Austritt zieht an (ease-in).
+     Overshoot ist Belohnungsvokabular und außerhalb davon verboten.  */
+
+  --ease-out:    cubic-bezier(.2, .7, .3, 1);      /* Eintritt. Hauskurve
+                                                      aus dem Handoff.   */
+  --ease-in:     cubic-bezier(.5, 0, .85, .3);     /* Austritt           */
+  --ease-inout:  cubic-bezier(.6, 0, .3, 1);       /* Umschalten, Layout */
+  --ease-settle: cubic-bezier(.15, 1.12, .4, 1);   /* Landing-Settle,
+                                                      gedämpft (≤12 %)   */
+  --ease-spring: cubic-bezier(.2, 1.35, .35, 1);   /* NUR Belohnung:
+                                                      Punkte, Bestanden  */
+  --ease-linear: linear;                           /* NUR Timer.
+                                                      Zeit lügt nicht.   */
+
+  /* ---- 3. STAGGER -------------------------------------------------
+     Als Intervall gesetzt, Index kommt per --i aus dem Markup:
+       animation-delay: calc(var(--i) * var(--stagger-base));         */
+
+  --stagger-tight:  40ms;  /* Zeilen in Tabellen, Chips               */
+  --stagger-base:   60ms;  /* Diff-Zeilen, Listen                     */
+  --stagger-cards:  90ms;  /* Kartenraster im Atlas                   */
+  --stagger-cut:   240ms;  /* Import-Schnitt. Aus dem Handoff.        */
+  --stagger-max:   12;     /* Kappungsgrenze: ab Element 12 kein
+                              weiterer Zuwachs, sonst wartet der
+                              Nutzer bei 30 Karten 7 Sekunden.        */
+
+  /* ---- 4. Z-EBENEN ------------------------------------------------
+     Lückenhaft nummeriert, damit man dazwischen einschieben kann.    */
+
+  --z-base:       0;
+  --z-raise:     10;   /* gehoverte Karte                             */
+  --z-sticky:   100;   /* Kopfleiste, Aufgabenleiste                  */
+  --z-scanline: 200;   /* Import-Scanlinie über der Seitenvorschau    */
+  --z-flyer:    300;   /* fliegende Objekte: Shredder-Karten,
+                          Punkte-Transfer, Fehler-Partikel            */
+  --z-overlay:  400;   /* Fokus-Dunkel-Abdunklung                     */
+  --z-modal:    500;   /* Abgabe erzwingen                            */
+  --z-toast:    600;
+  --z-euphoria: 700;   /* Bestanden-Moment über allem                 */
+
+  /* ---- 5. ABGELEITETE KOMBI-TOKENS --------------------------------
+     Damit die Verwendungsstelle eine Zeile schreibt, keine drei.     */
+
+  --t-hover:  var(--dur-quick)   var(--ease-out);
+  --t-press:  var(--dur-instant) var(--ease-out);
+  --t-enter:  var(--dur-base)    var(--ease-out);
+  --t-exit:   var(--dur-quick)   var(--ease-in);
+  --t-switch: var(--dur-base)    var(--ease-inout);
+  --t-layout: var(--dur-slow)    var(--ease-inout);
+  --t-reward: var(--dur-base)    var(--ease-spring);
+  --t-tick:   var(--dur-tick)    var(--ease-linear);
+}
+
+
+/* ============================================================
+   REDUCED MOTION
+   Kein pauschales "alle Dauern auf 1ms". Bewegung wird durch
+   sofortigen Zustandswechsel ersetzt; Dauer bleibt dort erhalten,
+   wo sie Information trägt (Timer) oder wo reine Farb-/Opacity-
+   Übergänge keine Vestibularreizung erzeugen.
+   ============================================================ */
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --dur-instant:   1ms;
+    --dur-quick:     1ms;
+    --dur-base:      1ms;
+    --dur-slow:      1ms;
+    --dur-dramatic:  1ms;
+    --dur-euphoric:  1ms;
+
+    /* Der Timer bleibt funktional. Er misst Zeit, er dekoriert nicht.
+       Der Ring läuft weiter — nur der Sekundenpuls entfällt.         */
+    --dur-tick:   1000ms;
+
+    --stagger-tight: 0ms;
+    --stagger-base:  0ms;
+    --stagger-cards: 0ms;
+    --stagger-cut:   0ms;
+
+    /* Overshoot ist bei reduzierter Bewegung immer falsch.           */
+    --ease-settle: var(--ease-out);
+    --ease-spring: var(--ease-out);
+  }
+
+  /* Sicherheitsnetz gegen vergessene Stellen: alles, was trotzdem
+     transformiert oder wiederholt, wird abgeschaltet. Der Timer-Ring
+     ist namentlich ausgenommen.                                      */
+  *:not(.timer-ring__value):not(.timer-ring__value *) {
+    animation-iteration-count: 1 !important;
+  }
+}
