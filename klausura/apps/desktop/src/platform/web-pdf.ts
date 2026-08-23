@@ -59,7 +59,7 @@ class WebPdfDocument implements PdfDocumentHandle {
     canvas.height = Math.round(viewport.height);
     const ctx = canvas.getContext('2d');
     if (ctx === null) throw new Error('Kein 2D-Kontext verfuegbar.');
-    await p.render({ canvas, canvasContext: ctx, viewport }).promise;
+    await p.render({ canvasContext: ctx, viewport }).promise;
     return canvas;
   }
 

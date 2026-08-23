@@ -5,3 +5,5 @@ dist/
 test-results/
 playwright-report/
 apps/desktop/public/sql-wasm/
+apps/desktop/dist/
+apps/desktop/src-tauri/target/

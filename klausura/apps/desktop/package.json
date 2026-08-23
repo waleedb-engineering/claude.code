@@ -10,7 +10,10 @@
     "build": "vite build",
     "preview": "vite preview",
     "pretest:e2e": "node scripts/copy-sql-wasm.mjs",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "tauri": "tauri",
+    "dev:tauri": "tauri dev",
+    "build:tauri": "tauri build"
   },
   "dependencies": {
     "@klausura/core": "workspace:*",
@@ -18,13 +21,14 @@
     "@klausura/ports": "workspace:*",
     "@klausura/storage-sqlite": "workspace:*",
     "@klausura/ui-tokens": "workspace:*",
-    "pdfjs-dist": "^5.4.149",
+    "pdfjs-dist": "^4.10.38",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "sql.js": "^1.14.2"
   },
   "devDependencies": {
     "@playwright/test": "^1.62.1",
+    "@tauri-apps/cli": "^2.11.4",
     "@types/react": "^19.2.0",
     "@types/react-dom": "^19.2.0",
     "@vitejs/plugin-react": "^5.0.0",

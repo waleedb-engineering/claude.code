@@ -34,6 +34,23 @@ test.describe('M1 · Import bis Versuch', () => {
 
     await expect(page.getByTestId('page-indicator')).toContainText('SEITE 1 VON 2');
 
+    // Die Seite muss WIRKLICH gerendert sein. Ohne diese Pruefung ging der
+    // Test durch, obwohl pdf.js gar nichts gezeichnet hatte — es wurden
+    // Rahmen auf eine leere Flaeche gezogen.
+    const painted = await page.waitForFunction(() => {
+      const c = document.querySelector<HTMLCanvasElement>('canvas.page-canvas');
+      if (c === null || c.width === 0) return null;
+      const ctx = c.getContext('2d');
+      if (ctx === null) return null;
+      const data = ctx.getImageData(0, 0, c.width, Math.min(300, c.height)).data;
+      let ink = 0;
+      for (let i = 0; i < data.length; i += 4) {
+        if ((data[i] ?? 255) < 240) ink++;
+      }
+      return ink > 200 ? { width: c.width, ink } : null;
+    }, undefined, { timeout: 20_000 });
+    expect(await painted.jsonValue()).toMatchObject({ width: expect.any(Number) });
+
     // --- Drei Aufgaben markieren ------------------------------------------
     const marks = [
       { ordinal: 'A1', points: '8,5', topic: 'Netzwerke' },
