@@ -4,6 +4,12 @@
  * (Speicher) läuft.
  */
 export interface PersistenceSink {
+  /**
+   * Kann diese Ablage einen Snapshot aufbewahren? Wo das nicht geht (etwa bei
+   * einer vom System verwalteten Datei), verweigert der Migrator jede
+   * destruktive Migration, statt ohne Rückweg zu arbeiten.
+   */
+  readonly canBackup: boolean;
   load(): Promise<Uint8Array | undefined>;
   save(data: Uint8Array): Promise<void>;
   /** Snapshot vor einer Migration. Es gibt keine Cloud-Kopie. */
@@ -14,6 +20,7 @@ export interface PersistenceSink {
 
 /** Für Tests und für den Neustart-Nachweis: derselbe Sink, neue Datenbank. */
 export class MemorySink implements PersistenceSink {
+  readonly canBackup = true;
   #data: Uint8Array | undefined;
   readonly #backups = new Map<number, Uint8Array>();
 

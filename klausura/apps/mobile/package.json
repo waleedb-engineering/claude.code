@@ -1,0 +1,27 @@
+{
+  "name": "@klausura/mobile",
+  "version": "0.0.0",
+  "private": true,
+  "main": "index.ts",
+  "scripts": {
+    "dev": "expo start",
+    "ios": "expo run:ios",
+    "android": "expo run:android"
+  },
+  "dependencies": {
+    "@klausura/core": "workspace:*",
+    "@klausura/model": "workspace:*",
+    "@klausura/ports": "workspace:*",
+    "@klausura/storage-sqlite": "workspace:*",
+    "@klausura/ui-tokens": "workspace:*",
+    "expo": "~54.0.0",
+    "expo-sqlite": "~16.0.0",
+    "expo-status-bar": "~3.0.0",
+    "react": "19.2.0",
+    "react-native": "0.82.0"
+  },
+  "devDependencies": {
+    "@types/react": "^19.2.0",
+    "typescript": "^5.9.0"
+  }
+}

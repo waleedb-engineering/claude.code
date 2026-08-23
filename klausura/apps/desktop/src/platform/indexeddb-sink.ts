@@ -33,6 +33,8 @@ function tx<T>(mode: IDBTransactionMode, fn: (store: IDBObjectStore) => IDBReque
  * eine Datei im App-Verzeichnis — der Vertrag bleibt derselbe.
  */
 export class IndexedDbSink implements PersistenceSink {
+  readonly canBackup = true;
+
   async load(): Promise<Uint8Array | undefined> {
     const v = await tx<ArrayBuffer | undefined>('readonly', (s) => s.get(MAIN_KEY));
     return v === undefined ? undefined : new Uint8Array(v);

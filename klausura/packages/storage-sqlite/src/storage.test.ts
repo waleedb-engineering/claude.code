@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { MemorySink } from './persistence.js';
 import { openSqlJsStorage } from './adapter-sqljs.js';
 import { LATEST_VERSION } from './migrations.js';
-import { readSchemaVersion } from './migrator.js';
+import { migrate, readSchemaVersion } from './migrator.js';
 
 describe('Migrator', () => {
   it('bringt eine leere Datenbank auf die aktuelle Version', async () => {
@@ -41,6 +41,43 @@ describe('Migrator', () => {
     await db.close();
 
     await expect(openSqlJsStorage(sink)).rejects.toThrow(/neuer/i);
+  });
+});
+
+describe('Migrator · Backup-Pflicht', () => {
+  class NoBackupSink extends MemorySink {
+    override readonly canBackup = false;
+  }
+
+  it('laesst eine rein additive Migration auch ohne Backup-Pfad zu', async () => {
+    const db = await openSqlJsStorage(new NoBackupSink());
+    expect(await readSchemaVersion(db)).toBe(LATEST_VERSION);
+    await db.close();
+  });
+
+  it('verweigert eine destruktive Migration ohne Backup-Pfad', async () => {
+    // Die Regel "nie destruktiv ohne Backup-Pfad" muss erzwungen sein, nicht
+    // dokumentiert. Geprueft an einer kuenstlich als destruktiv markierten
+    // Migration, damit der Schutz steht, BEVOR es eine echte gibt.
+    const sink = new NoBackupSink();
+    await expect(
+      migrate(
+        await openSqlJsStorage(sink),
+        sink,
+        () => new Uint8Array(),
+        [{ version: LATEST_VERSION + 1, name: 'destruktiv', destructive: true, statements: ['DROP TABLE subject'] }],
+      ),
+    ).rejects.toThrow(/Snapshot|verweigert/i);
+  });
+
+  it('laesst dieselbe Migration mit Backup-Pfad zu', async () => {
+    const sink = new MemorySink();
+    const db = await openSqlJsStorage(sink);
+    await migrate(db, sink, () => new Uint8Array(), [
+      { version: LATEST_VERSION + 1, name: 'destruktiv', destructive: true, statements: ['DROP TABLE subject'] },
+    ]);
+    expect(await readSchemaVersion(db)).toBe(LATEST_VERSION + 1);
+    await db.close();
   });
 });
 

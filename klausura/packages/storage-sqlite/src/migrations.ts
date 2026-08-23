@@ -15,12 +15,22 @@ export interface Migration {
   readonly version: number;
   readonly name: string;
   readonly statements: readonly string[];
+  /**
+   * Verändert oder verwirft diese Migration bestehende Daten?
+   *
+   * Rein additive Migrationen (CREATE TABLE, CREATE INDEX, ADD COLUMN) können
+   * ohne Snapshot laufen. Alles andere braucht einen Backup-Pfad — und der
+   * Migrator VERWEIGERT sie, wenn die Ablage keinen anbietet. Damit ist die
+   * Regel "nie destruktiv ohne Backup-Pfad" erzwungen statt dokumentiert.
+   */
+  readonly destructive: boolean;
 }
 
 export const MIGRATIONS: readonly Migration[] = [
   {
     version: 1,
     name: 'initial',
+    destructive: false,
     statements: [
       `CREATE TABLE subject (
          id TEXT PRIMARY KEY,
