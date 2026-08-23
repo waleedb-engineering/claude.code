@@ -80,12 +80,13 @@ describe('Korrekturen', () => {
     const db = await seed(new MemorySink());
     await insertOverride(db, {
       id: asSegmentOverrideId('o1'), pageArtifactId: pageId, action: 'create',
-      ordinal: 'A1', points: 850, rect, createdAt: 5,
+      ordinal: 'A1', points: 850, topic: 'Netzwerke', rect, createdAt: 5,
     });
     const out = await listOverrides(db, [pageId]);
     expect(out).toHaveLength(1);
     expect(out[0]?.points).toBe(850);
     expect(out[0]?.rect).toEqual(rect);
+    expect(out[0]?.topic).toBe('Netzwerke');
   });
 
   it('gibt eine leere Liste ohne Seiten zurueck', async () => {

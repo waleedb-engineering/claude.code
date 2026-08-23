@@ -8,7 +8,7 @@ const rect = (x: number): NormRect => ({ x, y: 0.1, width: 0.5, height: 0.2 });
 const page = asPageArtifactId('p1');
 
 const candidate = (ordinal: string, points: number, x = 0.1): SegmentCandidate => ({
-  pageArtifactId: page, ordinal, points, rect: rect(x), confidence: 0.9,
+  pageArtifactId: page, ordinal, points, topic: null, rect: rect(x), confidence: 0.9,
 });
 
 const override = (
@@ -16,7 +16,7 @@ const override = (
   action: SegmentOverride['action'] = 'create', x = 0.2, createdAt = 1,
 ): SegmentOverride => ({
   id: asSegmentOverrideId(`o-${ordinal}-${createdAt}`),
-  pageArtifactId: page, action, ordinal, points, rect: rect(x), createdAt,
+  pageArtifactId: page, action, ordinal, points, topic: 'Netzwerke', rect: rect(x), createdAt,
 });
 
 describe('mergeSegmentation · Invariante I12', () => {
@@ -58,6 +58,11 @@ describe('mergeSegmentation · Invariante I12', () => {
     const out = mergeSegmentation([], [override('A1', 100, 'create', 0.2, 1), override('A1', 300, 'adjust', 0.2, 5)]);
     expect(out).toHaveLength(1);
     expect(out[0]?.points).toBe(300);
+  });
+
+  it('traegt das Thema aus der Korrektur weiter', () => {
+    const out = mergeSegmentation([], [override('A1', 120)]);
+    expect(out[0]?.topic).toBe('Netzwerke');
   });
 
   it('sortiert nach Aufgabennummer', () => {

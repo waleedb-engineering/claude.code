@@ -4,3 +4,4 @@ dist/
 *.tsbuildinfo
 test-results/
 playwright-report/
+apps/desktop/public/sql-wasm/

@@ -92,6 +92,7 @@ export interface SegmentOverride {
   readonly action: SegmentAction;
   readonly ordinal: string;
   readonly points: PointsTenths;
+  readonly topic: string | null;
   readonly rect: NormRect;
   readonly createdAt: EpochMs;
 }

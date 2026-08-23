@@ -77,6 +77,7 @@ export const MIGRATIONS: readonly Migration[] = [
          action TEXT NOT NULL,
          ordinal TEXT NOT NULL,
          points INTEGER NOT NULL,
+         topic TEXT,
          rect_x REAL NOT NULL, rect_y REAL NOT NULL,
          rect_w REAL NOT NULL, rect_h REAL NOT NULL,
          created_at INTEGER NOT NULL

@@ -1,0 +1,33 @@
+{
+  "name": "@klausura/desktop",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "predev": "node scripts/copy-sql-wasm.mjs",
+    "dev": "vite",
+    "prebuild": "node scripts/copy-sql-wasm.mjs",
+    "build": "vite build",
+    "preview": "vite preview",
+    "pretest:e2e": "node scripts/copy-sql-wasm.mjs",
+    "test:e2e": "playwright test"
+  },
+  "dependencies": {
+    "@klausura/core": "workspace:*",
+    "@klausura/model": "workspace:*",
+    "@klausura/ports": "workspace:*",
+    "@klausura/storage-sqlite": "workspace:*",
+    "@klausura/ui-tokens": "workspace:*",
+    "pdfjs-dist": "^5.4.149",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "sql.js": "^1.14.2"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.62.1",
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0",
+    "@vitejs/plugin-react": "^5.0.0",
+    "vite": "^7.0.0"
+  }
+}

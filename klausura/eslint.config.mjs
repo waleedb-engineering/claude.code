@@ -38,6 +38,11 @@ export default tseslint.config(
     },
   },
   {
+    // Build- und Hilfsskripte laufen in Node.
+    files: ['**/scripts/**/*.mjs', '**/*.config.{ts,mjs}'],
+    languageOptions: { globals: { console: 'readonly', process: 'readonly' } },
+  },
+  {
     files: ['packages/core/**/*.ts', 'packages/model/**/*.ts'],
     rules: {
       'no-restricted-syntax': ['error', ...coreForbidden],

@@ -9,6 +9,7 @@ export interface SegmentCandidate {
   readonly pageArtifactId: PageArtifactId;
   readonly ordinal: string;
   readonly points: PointsTenths;
+  readonly topic: string | null;
   readonly rect: NormRect;
   /** 0…1. Unter 0.7 markiert die Review-UI den Kandidaten. */
   readonly confidence: number;
@@ -18,6 +19,7 @@ export interface MergedSegment {
   readonly pageArtifactId: PageArtifactId;
   readonly ordinal: string;
   readonly points: PointsTenths;
+  readonly topic: string | null;
   readonly rect: NormRect;
   readonly origin: 'automatic' | 'manual';
   readonly confidence: number;
@@ -62,6 +64,7 @@ export function mergeSegmentation(
       pageArtifactId: o.pageArtifactId,
       ordinal: o.ordinal,
       points: o.points,
+      topic: o.topic,
       rect: o.rect,
       origin: 'manual',
       confidence: 1,
@@ -76,6 +79,7 @@ export function mergeSegmentation(
       pageArtifactId: o.pageArtifactId,
       ordinal: o.ordinal,
       points: o.points,
+      topic: o.topic,
       rect: o.rect,
       origin: 'manual',
       confidence: 1,

@@ -192,9 +192,10 @@ export async function getTask(db: StoragePort, id: string): Promise<Task | undef
 
 export async function insertOverride(db: StoragePort, o: SegmentOverride): Promise<void> {
   await db.run(
-    `INSERT INTO segment_override (id,page_artifact_id,action,ordinal,points,rect_x,rect_y,rect_w,rect_h,created_at)
-     VALUES (?,?,?,?,?,?,?,?,?,?)`,
-    [o.id, o.pageArtifactId, o.action, o.ordinal, o.points, o.rect.x, o.rect.y, o.rect.width, o.rect.height, o.createdAt],
+    `INSERT INTO segment_override (id,page_artifact_id,action,ordinal,points,topic,rect_x,rect_y,rect_w,rect_h,created_at)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
+    [o.id, o.pageArtifactId, o.action, o.ordinal, o.points, o.topic,
+     o.rect.x, o.rect.y, o.rect.width, o.rect.height, o.createdAt],
   );
 }
 
@@ -211,6 +212,7 @@ export async function listOverrides(db: StoragePort, pageIds: readonly PageArtif
     action: str(r, 'action') as SegmentOverride['action'],
     ordinal: str(r, 'ordinal'),
     points: num(r, 'points'),
+    topic: strOrNull(r, 'topic'),
     rect: rectOf(r),
     createdAt: num(r, 'created_at'),
   }));
