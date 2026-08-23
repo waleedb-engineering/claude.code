@@ -172,6 +172,36 @@ relativen Toleranz übereinstimmen.
 Der `CasPort` kapselt das. Wer später doch ein echtes CAS als WASM einbindet,
 tauscht den Adapter, nicht die Domäne.
 
+## Nachtrag 1 · Web als Verifikations-Target (M0/M1)
+
+**Beobachtung.** Ein Tauri-Frontend ist eine gewöhnliche Vite-React-Anwendung;
+Tauri ist die Hülle, nicht das Programmiermodell. Solange jeder
+Plattformzugriff über einen Port läuft, ist dieselbe UI im Browser lauffähig.
+
+**Entscheidung.** `apps/desktop` wird so gebaut, dass es **in beiden Umgebungen**
+startet. Der `StoragePort` bekommt zwei Adapter statt einem:
+
+| Adapter | Umgebung | Zweck |
+|---|---|---|
+| `adapter-sqljs` | Browser, Node | Entwicklung, Tests, headless E2E |
+| `adapter-tauri` | macOS | Auslieferung |
+
+Beide fahren **dieselben** Migrationsdateien und werden gegen **denselben**
+Vertragstest geprüft.
+
+**Begründung.** Ohne einen browser-lauffähigen Pfad lässt sich kein UI-Fluss
+automatisiert abnehmen — weder in CI noch in einer Umgebung ohne macOS. Der
+E2E-Pfad aus `08-architecture.md` wäre dann reine Handarbeit auf einem Gerät.
+
+**Konsequenzen.**
+- Ein zusätzlicher Adapter ist zu pflegen.
+- Der `StoragePort` wird von Anfang an gegen zwei echte Implementierungen
+  gehärtet statt gegen eine — das deckt Vertragslücken früh auf.
+- Die UI darf keine Tauri-API direkt aufrufen. Verstöße fängt die
+  ESLint-Grenzregel.
+- Der sql.js-Pfad ist **kein Auslieferungsziel**. Es gibt keine Web-Version
+  des Produkts; die Datenhaltung im Browser dient Entwicklung und Test.
+
 ## Revision
 
 Dieser ADR ist zu überarbeiten, wenn eines eintritt:

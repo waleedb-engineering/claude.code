@@ -155,3 +155,23 @@ dürfen nie stillschweigend wirkungslos sein.
   und jede `provenance` gleich `surveyed`.
 - **Regelkonflikt:** greifen Regel 14 und 15 gleichzeitig, ist genau eine aktiv
   und die andere als `ÜBERSTIMMT` gekennzeichnet.
+
+---
+
+## Offener Punkt · Anhang B weicht ab
+
+Ein später gelieferter Anhang B nennt ebenfalls 12 Onboarding-Fragen, die
+**nicht** die 12 Fragen des Design-Handoffs sind. Er fragt Vorwissen,
+Feedback-Ton, Lernpräferenz und Arbeitsrhythmus ausdrücklich ab — genau die
+vier Achsen, die oben bewusst als *rein gemessen* entworfen sind. Im Gegenzug
+entfallen dort Handoff-Fragen (Anzahl Klausuren, Formelsammlung-Routine,
+gewünschter Ausgang), und Frage 5 ist mehrfach wählbar, was die additive
+Beitragsmatrix nicht vorsieht.
+
+**Status: ungelöst. Zu entscheiden vor M7**, nicht früher — bis dahin berührt
+der Konflikt keinen Code.
+
+**Konsequenz, falls Anhang B gewinnt:** die Beitragsmatrix des Handoffs
+verfällt teilweise, Screen 14 und 15 sind neu zu entwerfen, und der
+Reproduktionstest `82 / 54 / 28 / 60 / 71 / 34` ist nicht mehr haltbar. Diese
+Kosten sind vor der Entscheidung zu benennen, nicht danach.

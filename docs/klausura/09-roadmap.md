@@ -29,7 +29,7 @@ reduzieren, Ausbau nach M2.
 
 ---
 
-## M1 · Import und manuelle Segmentierung — ohne KI
+## M1 · Import, manuelle Segmentierung, Solve-View-Grundform — ohne KI
 
 **Der wichtigste Milestone.** Er muss allein Wert liefern, auch wenn M3 nie kommt.
 
@@ -38,10 +38,22 @@ allen sechs Operationen (Übernehmen, Anpassen, Teilen, Verbinden, Verwerfen,
 Anlegen). Override-Persistenz. Punkte-Regex-Kaskade. Kreuzprobe der
 Punktesumme. Atlas mit den entstandenen Karten.
 
-**DoD** Eine echte Altklausur wird in unter 10 Minuten vollständig manuell
-zerlegt. Punktesumme stimmt gegen die Klausursumme. Neustart verliert nichts.
+Dazu die **Solve-View in Grundform** (aus M2 vorgezogen, s. u.): Aufgabe
+anzeigen, Zeitbudget aus Punkten ableiten, Timer laufen lassen, Antwort als
+Wert + Einheit erfassen, Versuch speichern.
 
-**Demo** PDF hineinziehen, zerlegen, Atlas mit 6 Karten zeigen.
+**Umfang je Plattform.** Die Segmentierung — Rahmen ziehen — ist
+**Desktop-only**. Rahmen pixelgenau auf 390 px zu ziehen ist schlechte
+Bedienung und bräuchte ein eigenes Touch-Interaktionsmodell (Lupe,
+Griffpunkte, Zoom); das ist ein eigener Milestone, kein Nebenprodukt.
+Mobile bekommt in M1 Atlas und Solve-View.
+
+**DoD** Eine echte Altklausur wird in unter 10 Minuten vollständig manuell
+zerlegt. Punktesumme stimmt gegen die Klausursumme. Drei markierte Aufgaben
+lassen sich unter Zeitdruck bearbeiten und der Versuch überlebt den Neustart.
+
+**Demo** PDF hineinziehen, drei Aufgaben markieren, eine unter laufendem Timer
+lösen, App neu starten, Versuch wiederfinden.
 
 **Risiko** Die Review-UI wird mühsam zu bedienen und der Nutzer bricht ab.
 **Ausweich** Tastaturbedienung priorisieren; Zerlegung an eigenen Klausuren
@@ -49,11 +61,17 @@ mit der Stoppuhr messen, bis 10 Minuten stehen.
 
 ---
 
-## M2 · Solve-View, Timer, numerische Bewertung
+## M2 · Solve-View vollständig, numerische Bewertung
 
-**Inhalt** Screen 04 mit allen fünf Zuständen. Timer als echter
-`requestAnimationFrame`-Lauf über `ClockPort`. Einheiten-Input mit getrennten
-Präfixen. Bewertung numerisch mit Toleranz und dimensionaler Einheitenprüfung.
+**Vorgezogen nach M1:** Aufgabenanzeige, Zeitbudget aus Punkten, laufender
+Timer, Wert-und-Einheit-Erfassung, Versuch speichern. Begründung: ohne diese
+Grundform ist die M1-DoD („unter Zeitdruck bearbeiten") nicht erfüllbar, und
+ein Import ohne Lösen liefert keinen Nutzen, an dem sich die Zerlegung messen
+lässt. Was hier bleibt, ist alles Weitere.
+
+**Inhalt** Screen 04 mit allen fünf Zuständen. Einheiten-Input mit getrennten
+Präfixen und Tab-Wechsel. Bewertung numerisch mit Toleranz und dimensionaler
+Einheitenprüfung.
 Erste Fehlercodes (`E-UNIT`, `E-POT`, `E-SIGN`, `E-BLANK`, `E-TIME`).
 Aufgabenleiste, Abgabe, Modal „Abgabe erzwingen".
 
