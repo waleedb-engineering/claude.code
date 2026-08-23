@@ -1,0 +1,23 @@
+{
+  "name": "klausura",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@10.33.0",
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "dev:desktop": "pnpm --filter @klausura/desktop dev",
+    "build:desktop": "pnpm --filter @klausura/desktop build",
+    "test:e2e": "pnpm --filter @klausura/desktop test:e2e"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@types/node": "^24.13.3",
+    "eslint": "^10.9.0",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.67.0",
+    "vitest": "^4.1.11"
+  }
+}
