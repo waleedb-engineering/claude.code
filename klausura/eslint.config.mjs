@@ -54,8 +54,10 @@ export default tseslint.config(
     },
   },
   {
-    // Tests duerfen die verbotenen Konstrukte nennen, um sie zu pruefen.
+    // Tests duerfen die verbotenen Konstrukte nennen, um sie zu pruefen, und
+    // duerfen die Attrappen importieren — der Produktionscode von core darf
+    // beides nicht. Genau darum steht adapters-fake dort als devDependency.
     files: ['**/*.test.ts'],
-    rules: { 'no-restricted-syntax': 'off' },
+    rules: { 'no-restricted-syntax': 'off', 'no-restricted-imports': 'off' },
   },
 );

@@ -44,6 +44,10 @@ importers:
       '@klausura/ports':
         specifier: workspace:*
         version: link:../ports
+    devDependencies:
+      '@klausura/adapters-fake':
+        specifier: workspace:*
+        version: link:../adapters-fake
 
   packages/model: {}
 
