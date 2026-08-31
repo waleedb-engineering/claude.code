@@ -203,3 +203,23 @@ eine laufende Nummer, Spalte R loest daraus die Quellzeile auf, die Anzeige
 zieht mit INDEX. Es werden bewusst keine Ueberlaufformeln (FILTER, SORTIEREN)
 verwendet - die setzen Excel 365 voraus und lassen sich nicht zuverlaessig
 schreiben. Angezeigt werden die ersten 300 Treffer.
+
+## Nachtrag: Umfang und Status getrennt
+
+`tools/select_topic.py` hatte beides in ein Feld geschrieben: "gehoert nicht zu
+unserem Paket" stand als Status "trifft nicht zu" neben "ist gar keine
+Anforderung". Das verfaelscht den Erfuellungsgrad, weil er gegen die anwendbaren
+Anforderungen rechnet.
+
+`tools/add_scope_column.py` trennt die beiden Fragen:
+
+* neue Spalte N **"Umfang"** mit "im Umfang" / "außerhalb"
+* die 1161 allein wegen der Themenauswahl gesetzten Zeilen stehen wieder auf
+  "erfasst", ihre automatische Notiz ist entfernt
+* die sachlich geprueften "trifft nicht zu" bleiben unangetastet
+* Cockpit-Kennzahl "Anforderungen im betrachteten Umfang"
+* "Umfang" ist das erste Feld im Reiter "Filter"
+
+Damit bildet der Status weiterhin nur den Erfuellungsprozess ab, und die
+Eingrenzung auf das eigene Paket laesst sich jederzeit aufheben, ohne dass
+Bewertungen verloren gehen. select_topic.py ist abgeloest.

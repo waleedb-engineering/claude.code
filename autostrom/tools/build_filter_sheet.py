@@ -33,9 +33,10 @@ ANZEIGE = [('B', 'ID', 11), ('C', 'Dokument', 18), ('D', 'Fundstelle', 15),
            ('I', 'Partner', 18), ('J', 'Komponente(n)', 30), ('K', 'Status', 15),
            ('L', 'Erfüllt am', 12), ('M', 'Nachweis / Notiz', 40)]
 # Filterfelder: (Zelle, Beschriftung, Spalte im Register, Vergleichsart, Listenspalte)
-FELDER = [('B5', 'Status', 'K', 'exakt', 'V'), ('E5', 'Dokument', 'C', 'exakt', 'W'),
-          ('H5', 'Themenfeld', 'E', 'exakt', 'X'), ('B7', 'Komponente', 'J', 'teil', 'Y'),
-          ('E7', 'Partner', 'I', 'teil', 'Z'), ('H7', 'Suchbegriff', '', 'text', None)]
+FELDER = [('B5', 'Umfang', 'N', 'exakt', 'U'), ('E5', 'Status', 'K', 'exakt', 'V'),
+          ('H5', 'Dokument', 'C', 'exakt', 'W'), ('B7', 'Themenfeld', 'E', 'exakt', 'X'),
+          ('E7', 'Komponente', 'J', 'teil', 'Y'), ('H7', 'Partner', 'I', 'teil', 'Z'),
+          ('B9', 'Suchbegriff', '', 'text', None)]
 
 
 def werte(ws, spalte, zusatz=()):
@@ -80,11 +81,12 @@ def main():
     grundkomponenten = [str(komp.cell(r, 4).value) for r in range(6, 30)
                         if komp.cell(r, 4).value and komp.cell(r, 3).value == 'Komponente']
     grundpartner = [str(komp.cell(r, 14).value) for r in range(6, 30) if komp.cell(r, 14).value]
-    listen = {'V': werte(quelle, 'K'), 'W': werte(quelle, 'C'), 'X': werte(quelle, 'E'),
+    listen = {'U': werte(quelle, 'N'), 'V': werte(quelle, 'K'), 'W': werte(quelle, 'C'),
+              'X': werte(quelle, 'E'),
               'Y': [ALLE] + sorted(set(grundkomponenten) | {'Zuordnung prüfen', '–'}),
               'Z': [ALLE] + sorted(set(grundpartner) | {'offen', 'Zuordnung prüfen'})}
-    ws['V1'] = 'Auswahllisten (Grundlage der Dropdowns)'
-    ws['V1'].font = Font(name='Arial', size=9, bold=True, color='FF808080')
+    ws['U1'] = 'Auswahllisten (Grundlage der Dropdowns)'
+    ws['U1'].font = Font(name='Arial', size=9, bold=True, color='FF808080')
     for spalte, eintraege in listen.items():
         ws.column_dimensions[spalte].width = 30
         for i, wert in enumerate(eintraege):
@@ -111,25 +113,28 @@ def main():
             pruefung.promptTitle, pruefung.prompt = titel, f'{titel} auswählen oder „{ALLE}“'
             ws.add_data_validation(pruefung)
             pruefung.add(zelle)
-    ws['H8'] = 'Suchbegriff wirkt auf Kernaussage und Originaltext'
-    ws['H8'].font = Font(name='Arial', size=8, italic=True, color='FF808080')
+    ws['E9'] = 'Der Suchbegriff wirkt auf Kernaussage und Originaltext.'
+    ws['E9'].font = Font(name='Arial', size=8, italic=True, color='FF808080')
+    ws['E10'] = ('„Umfang“ trennt das eigene Paket vom Rest; der Status bildet weiterhin nur '
+                 'den Erfüllungsprozess ab.')
+    ws['E10'].font = Font(name='Arial', size=8, italic=True, color='FF808080')
 
     # --- Trefferzahl und Statusverteilung der Auswahl ------------------------------
-    ws['A10'] = 'Treffer'
-    ws['A10'].font = Font(name='Arial', size=9, bold=True, color=C_KOPF)
-    ws['B10'] = f'=COUNT($T${ERSTE}:$T${LETZTE})'
-    ws['B10'].font = Font(name='Arial', size=14, bold=True, color=C_TITEL)
+    ws['A12'] = 'Treffer'
+    ws['A12'].font = Font(name='Arial', size=9, bold=True, color=C_KOPF)
+    ws['B12'] = f'=COUNT($T${ERSTE}:$T${LETZTE})'
+    ws['B12'].font = Font(name='Arial', size=14, bold=True, color=C_TITEL)
     for i, (status, _f, _c, _b) in enumerate(STATUSFARBEN):
-        ws.cell(10, 4 + i * 2).value = status
-        ws.cell(10, 4 + i * 2).font = Font(name='Arial', size=9, color='FF808080')
-        ws.cell(10, 5 + i * 2).value = (
+        ws.cell(12, 4 + i * 2).value = status
+        ws.cell(12, 4 + i * 2).font = Font(name='Arial', size=9, color='FF808080')
+        ws.cell(12, 5 + i * 2).value = (
             f'=SUMPRODUCT((ISNUMBER($T${ERSTE}:$T${LETZTE}))*'
             f'({QUELLE}!$K${ERSTE}:$K${LETZTE}="{status}"))')
-        ws.cell(10, 5 + i * 2).font = Font(name='Arial', size=10, bold=True)
-    ws['A11'] = (f'Angezeigt werden die ersten {TREFFER} Treffer. Bei mehr Treffern die Auswahl '
+        ws.cell(12, 5 + i * 2).font = Font(name='Arial', size=10, bold=True)
+    ws['A13'] = (f'Angezeigt werden die ersten {TREFFER} Treffer. Bei mehr Treffern die Auswahl '
                  f'weiter eingrenzen.')
-    ws['A11'].font = Font(name='Arial', size=8, italic=True, color='FF808080')
-    ws.merge_cells('A11:K11')
+    ws['A13'].font = Font(name='Arial', size=8, italic=True, color='FF808080')
+    ws.merge_cells('A13:K13')
 
     # --- Hilfsspalte T: laufende Nummer je passender Registerzeile ----------------
     bedingungen = []
@@ -151,7 +156,7 @@ def main():
                        f'COUNT($T${ERSTE - 1}:$T{z - 1})+1,""))')
 
     # --- Ergebnisliste ------------------------------------------------------------
-    kopf = 13
+    kopf = 15
     for i, (_q, titel, breite) in enumerate(ANZEIGE):
         zelle = ws.cell(kopf, i + 1)
         zelle.value = titel
