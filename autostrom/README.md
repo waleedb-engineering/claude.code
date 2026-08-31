@@ -96,3 +96,23 @@ python3 inject_shapes.py <mappe.xlsx>
 Die Gruppierung erfolgt logisch nach Vergabeeinheit → Partner → Art, also auch
 dann korrekt, wenn gleiche Vergabeeinheiten in der Tabelle nicht untereinander
 stehen.
+
+## Nachtrag: Vertragsdokumente einpflegen
+
+`tools/parse_docs.py` zerlegt Betreibervertrag sowie Vertragsanlagen 6, 10 und 13
+in einzelne Anforderungen, `tools/add_docs.py` haengt sie an die gepflegte Mappe an.
+
+```bash
+python3 parse_docs.py                # PDFs -> vertragstexte.json
+python3 add_docs.py <mappe.xlsx>     # anhaengen, Bereiche mitziehen
+python3 regen_orga.py <mappe.xlsx>   # Organigramm nachfuehren
+#   Mappe neu berechnen lassen
+python3 inject_shapes.py <mappe.xlsx>
+```
+
+Erkannt werden zwei Dokumenttypen: Paragraphen (§ N -> Absatz -> Buchstabe) und
+nummerierte Abschnitte (N.N -> Spiegelstrich). Querverweise im Fliesstext werden
+ueber die laengste aufsteigende Nummernfolge von echten Ueberschriften getrennt.
+Die Dublettenpruefung vergleicht den Anfang des Originaltextes, nicht die
+Fundstelle - so werden bereits erfasste Anforderungen auch dann erkannt, wenn sie
+unter einer aelteren Paragraphennummer im Register stehen.
