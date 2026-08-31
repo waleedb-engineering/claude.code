@@ -45,6 +45,10 @@ def main():
 
         rels = quelle.read('xl/_rels/workbook.xml.rels').decode()
         ct = quelle.read('[Content_Types].xml').decode()
+        mappe = quelle.read('xl/workbook.xml').decode()
+        if '<workbookProtection/>' in mappe:
+            mappe = mappe.replace('<workbookProtection/>', '')
+            print('leeres <workbookProtection/> entfernt')
         neue_teile = {}
         if custom and 'customXml/item1.xml' not in namen:
             zusatz = ''
@@ -61,6 +65,7 @@ def main():
 
         ersetzt = {blatt_name: blatt.encode('utf-8'),
                    'xl/_rels/workbook.xml.rels': rels.encode('utf-8'),
+                   'xl/workbook.xml': mappe.encode('utf-8'),
                    '[Content_Types].xml': ct.encode('utf-8')}
         with zipfile.ZipFile(tmp, 'w', zipfile.ZIP_DEFLATED) as ziel:
             for eintrag in quelle.infolist():
