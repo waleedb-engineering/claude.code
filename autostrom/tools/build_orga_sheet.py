@@ -28,6 +28,7 @@ STATUSFARBEN = [('erfasst', 'FFE7E6E6', 'FF404040', None),
                 ('bewertet', 'FFD9EAF7', 'FF1F3864', None),
                 ('erfüllt', 'FFE2F0D9', 'FF006100', True),
                 ('trifft nicht zu', 'FFD9D9D9', 'FF666666', None),
+                ('außerhalb Umfang', 'FFEDEDED', 'FF9C6500', None),
                 ('keine Anforderungen', 'FFF2F2F2', 'FF777777', None)]
 RAHMEN = Border(*[Side(style='thin', color='FFBFBFBF')] * 4)
 
@@ -147,9 +148,9 @@ def main():
             quelle(f'=IF(Komponenten!$D{r}="","",Komponenten!$D{r}&CHAR(10)&Komponenten!$E{r}&'
                    f'IF(Komponenten!$E{r}=1," Anforderung"," Anforderungen")&" · "&'
                    f'Komponenten!$H{r}&"/"&Komponenten!$E{r}&" erfüllt"&CHAR(10)&"Status: "&'
-                   f'Komponenten!$J{r})',
+                   f'Komponenten!$K{r})',
                    'komponente', spalte_von=spalte_von[s], spalte_bis=spalte_von[s],
-                   platz=platz, status_zelle=f'Komponenten!$J${r}')
+                   platz=platz, status_zelle=f'Komponenten!$K${r}')
 
     # --- Statusansicht in Zellen --------------------------------------------------
     s0 = start + zeilen + 1
@@ -170,7 +171,7 @@ def main():
         ws.cell(o, 4).value = (f'=IF(Komponenten!$D{t}="","","└ "&Komponenten!$D{t}&CHAR(10)&'
                                f'Komponenten!$E{t}&" Anforderungen · "&Komponenten!$H{t}&"/"&'
                                f'Komponenten!$E{t}&" erfüllt"&CHAR(10)&"Status: "&'
-                               f'Komponenten!$J{t})')
+                               f'Komponenten!$K{t})')
         for c in range(1, 6):
             zelle = ws.cell(o, c)
             zelle.border = RAHMEN
@@ -188,7 +189,7 @@ def main():
     for wert, farbe, schrift, fett in STATUSFARBEN:
         ws.conditional_formatting.add(
             f'D{s0 + 1}:E{s_ende}',
-            regel(f'Komponenten!$J${K_START}="{wert}"', farbe, schrift, fett))
+            regel(f'Komponenten!$K${K_START}="{wert}"', farbe, schrift, fett))
 
     l0 = s_ende + 2
     ws.cell(l0, 1).value = 'Legende Statusfarben'

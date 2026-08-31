@@ -223,3 +223,32 @@ Anforderungen rechnet.
 Damit bildet der Status weiterhin nur den Erfuellungsprozess ab, und die
 Eingrenzung auf das eigene Paket laesst sich jederzeit aufheben, ohne dass
 Bewertungen verloren gehen. select_topic.py ist abgeloest.
+
+## Variante: Loesung ueber den Status statt ueber eine Spalte
+
+`tools/status_variant.py` baut die Alternative zu `add_scope_column.py`: statt
+einer eigenen Spalte bekommt der Statusprozess einen fuenften Wert
+**"außerhalb Umfang"**. Er zaehlt wie "trifft nicht zu" nicht in den
+Erfuellungsgrad, bleibt davon aber unterscheidbar.
+
+Angepasst werden dabei alle abhaengigen Stellen:
+
+| Stelle | Aenderung |
+|---|---|
+| Register | Dropdown auf fuenf Werte, eigene Faerbung, Spalte "Umfang" entfaellt |
+| Cockpit | Kennzahlen "Außerhalb Umfang" und "Anwendbar", Erfuellungsgrad im Nenner korrigiert |
+| Auswertung | neue Spalte "Außerhalb Umfang" in allen vier Bloecken, Erfuellungsgrad rueckt nach H |
+| Komponenten | neue Zaehlspalte J, Status wandert nach K, Bemerkung nach L |
+| Organigramm | Statusbezug auf Spalte K nachgezogen, fuenfte Statusfarbe |
+| Filter | fuenfter Statuswert in der Auswahlliste und in der Verteilung |
+
+### Zwei Fallen, die dabei aufgetreten sind
+
+**Rechenreihenfolge.** `=COUNTA(...)-COUNTIF(A)+COUNTIF(B)` addiert den zweiten
+Zaehler, statt ihn abzuziehen. Ohne Klammer ergab "anwendbar" 2385 statt 63.
+
+**LibreOffice kuerzt Hilfsspalten.** Die Rangspalte des Filters lag zunaechst auf
+dem Filterblatt in Zeilen ohne sonstigen Inhalt. Beim Neuberechnen entfernte
+LibreOffice alles ab Zeile 1315 - die letzten 73 Anforderungen waren im Filter
+nicht mehr erreichbar. Die Spalte liegt jetzt als ausgeblendete Spalte O im
+Register, wo die Zeilen ohnehin Inhalt tragen und erhalten bleiben.
