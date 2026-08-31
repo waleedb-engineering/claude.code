@@ -116,3 +116,27 @@ ueber die laengste aufsteigende Nummernfolge von echten Ueberschriften getrennt.
 Die Dublettenpruefung vergleicht den Anfang des Originaltextes, nicht die
 Fundstelle - so werden bereits erfasste Anforderungen auch dann erkannt, wenn sie
 unter einer aelteren Paragraphennummer im Register stehen.
+
+## Nachtrag: Selektion und wiederhergestellte Bestandteile
+
+`tools/select_tnz.py` setzt den Status "trifft nicht zu" nur dort, wo sich das
+objektiv am Text nachweisen laesst, und traegt die Begruendung in
+"Nachweis / Notiz" ein. Drei Gruppen:
+
+| Gruppe | Nachweis am Text |
+|---|---|
+| Verweis | Antwort des AG verweist ausschliesslich auf eine andere Bieterfrage |
+| Begriffsbestimmung | § 4 Betreibervertrag, Definitionsteil |
+| nur Auftraggeber | Satzsubjekt ist der Auftraggeber, der Auftragnehmer kommt im Text nicht vor |
+
+Bestehende Eintraege werden nie ueberschrieben: geaendert wird nur, was auf
+"erfasst" steht und noch keinen Nachweis traegt.
+
+`tools/restore_parts.py` stellt zwei Dinge wieder her, die openpyxl beim
+Speichern verliert: das Partner-Dropdown in Spalte I (Excel legt Listen mit
+Bereichsbezug als x14-Datenpruefung ab) und die customXml-Teile mit den
+SharePoint-Eigenschaften. Der Aufruf gehoert ans Ende jeder Bearbeitung:
+
+```bash
+python3 restore_parts.py <mappe.xlsx> <vorlage.xlsx> <letzte_zeile>
+```
