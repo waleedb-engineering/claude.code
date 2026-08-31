@@ -162,3 +162,26 @@ entfernt, weil sie der Pruefung nicht standhielten:
 Die Gruppe **Unterlagenanpassung** wurde eingeschraenkt: sie greift nur, wenn die
 Antwort hoechstens 200 Zeichen umfasst und keine eigene Aussage enthaelt.
 `tools/revert_tnz.py` nimmt bereits gesetzte Faelle entsprechend zurueck.
+
+## Nachtrag: eigener Reiter fuer das Organigramm
+
+Das Organigramm schwebte bisher unterhalb der Tabelle im Reiter "Komponenten"
+und war dort leicht zu uebersehen - Excel oeffnet das Blatt an der zuletzt
+gespeicherten Bildlaufposition. `tools/build_orga_sheet.py` legt es jetzt auf
+einem eigenen Reiter "Organigramm" ab:
+
+* Zeichenflaeche mit den Boxen (Beschriftung ueber textlink verknuepft)
+* Textquellen der Boxen in Spalte Z
+* darunter dieselbe Struktur in Zellen, die sich automatisch einfaerbt
+
+Der Reiter "Komponenten" enthaelt nur noch die Tabelle und einen Verweis.
+`tools/regen_orga.py` ist damit abgeloest.
+
+## Nachtrag: Eingrenzung auf den eigenen Leistungsumfang
+
+`tools/select_topic.py` setzt alles auf "trifft nicht zu", was nicht Schranken,
+Kennzeichenerfassung oder die dynamische Anzeige betrifft. Behalten wird eine
+Zeile, wenn ihre Komponente dazu passt **oder** ihr Text ein einschlaegiges
+Stichwort traegt (Schranke, Poller, Zufahrtsbeschraenkung, Kennzeichen, Kamera,
+ANPR, dynamische Anzeige, LED, Anzeigetafel, Display). Das Stichwortnetz faengt
+Zeilen ab, deren Komponentenzuordnung noch offen ist.

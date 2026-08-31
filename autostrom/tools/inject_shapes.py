@@ -90,8 +90,16 @@ lIns="27432" tIns="9144" rIns="27432" bIns="9144" anchor="ctr"/><a:lstStyle/>
                 '2006/main">' + ''.join(self.teile) + '</xdr:wsDr>')
 
 
+def bezug(blatt, zelle):
+    """Zellbezug in der Form 'Organigramm!$Z$4' fuer die Textverknuepfung."""
+    spalte = ''.join(c for c in zelle if c.isalpha())
+    zeile = ''.join(c for c in zelle if c.isdigit())
+    return f"{blatt}!${spalte}${zeile}"
+
+
 def baue_zeichnung(plan, texte, statuswerte):
     z = Zeichnung()
+    blatt = plan['blatt']
     raster, box_b = plan['raster'], plan['box_breite']
     y0 = plan['y_versatz_pt'] * PT / PX + 6            # Zeichenflaeche beginnt hier
     x0 = 6
@@ -113,7 +121,7 @@ def baue_zeichnung(plan, texte, statuswerte):
         for k in nach_ebene.get(ebene, []):
             b = breite[ebene]
             z.box(mitte(k) - b / 2, y0 + y, b, h, texte[k['zelle']],
-                  f"Komponenten!${k['zelle'][0]}${k['zelle'][1:]}", f, s, g, fett)
+                  bezug(blatt, k['zelle']), f, s, g, fett)
 
     # Komponentenboxen haengend unter der jeweiligen Art
     y_k, h_k, raster_k = eb['komponente']
@@ -126,7 +134,7 @@ def baue_zeichnung(plan, texte, statuswerte):
         name = texte[k['zelle']].split('\n')[0]
         groesse = 700 if len(name) > 42 else 800
         z.box(x, y, komp_b, h_k, texte[k['zelle']],
-              f"Komponenten!${k['zelle'][0]}${k['zelle'][1:]}", f, s, groesse, False)
+              bezug(blatt, k['zelle']), f, s, groesse, False)
 
     # ---- Verbinder -------------------------------------------------------
     def bus(oben, unten_liste, y_oben_unterkante, y_unten_oberkante):
@@ -254,8 +262,13 @@ def main():
     if fehlend:
         raise SystemExit(f'Textquellen ohne berechneten Wert: {fehlend} – '
                          'bitte die Mappe zuerst neu berechnen lassen.')
-    statuswerte = {k['status_zelle']: ws[k['status_zelle']].value
-                   for k in plan['knoten'] if 'status_zelle' in k}
+    statuswerte = {}
+    for k in plan['knoten']:
+        if 'status_zelle' not in k:
+            continue
+        ziel = k['status_zelle'].replace('$', '')
+        blatt_name, _, adresse = ziel.rpartition('!')
+        statuswerte[k['status_zelle']] = wb[blatt_name or plan['blatt']][adresse].value
     zeichnung = baue_zeichnung(plan, texte, statuswerte)
     blattdatei = blattdatei_finden(pfad, plan['blatt'])
     teil = einfuegen(pfad, zeichnung.xml(), blattdatei)
