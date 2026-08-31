@@ -128,6 +128,9 @@ objektiv am Text nachweisen laesst, und traegt die Begruendung in
 | Verweis | Antwort des AG verweist ausschliesslich auf eine andere Bieterfrage |
 | Begriffsbestimmung | § 4 Betreibervertrag, Definitionsteil |
 | nur Auftraggeber | Satzsubjekt ist der Auftraggeber, der Auftragnehmer kommt im Text nicht vor |
+| nicht Gegenstand | Der AG stellt fest, dass der Sachverhalt nicht Gegenstand der Ausschreibung ist |
+| Unterlagenanpassung | Die Antwort kuendigt nur eine Anpassung der Vergabeunterlagen an |
+| Vergabeverfahren | Themenfeld "Vergabeverfahren & Angebot" ohne Komponentenzuordnung |
 
 Bestehende Eintraege werden nie ueberschrieben: geaendert wird nur, was auf
 "erfasst" steht und noch keinen Nachweis traegt.
@@ -140,3 +143,8 @@ SharePoint-Eigenschaften. Der Aufruf gehoert ans Ende jeder Bearbeitung:
 ```bash
 python3 restore_parts.py <mappe.xlsx> <vorlage.xlsx> <letzte_zeile>
 ```
+
+Beide Skripte sind wiederholbar: `select_tnz.py` fasst nur Zeilen mit Status
+"erfasst" ohne eigene Notiz an, `inject_shapes.py` ueberschreibt ein bereits
+vorhandenes Zeichnungsteil, statt ein zweites anzulegen, und entfernt verwaiste
+Teile frueherer Laeufe.

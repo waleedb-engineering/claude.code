@@ -168,10 +168,6 @@ def einfuegen(pfad, drawing_xml, blattdatei):
     tmp = pfad + '.tmp'
     with zipfile.ZipFile(pfad) as quelle:
         namen = quelle.namelist()
-        nummer = 1
-        while f'xl/drawings/drawing{nummer}.xml' in namen:
-            nummer += 1
-        teil = f'xl/drawings/drawing{nummer}.xml'
         rels_name = f'xl/worksheets/_rels/{blattdatei}.rels'
         blatt = quelle.read(f'xl/worksheets/{blattdatei}').decode('utf-8')
         rels = (quelle.read(rels_name).decode('utf-8') if rels_name in namen else
@@ -180,26 +176,53 @@ def einfuegen(pfad, drawing_xml, blattdatei):
                 '</Relationships>')
         ct = quelle.read('[Content_Types].xml').decode('utf-8')
 
-        rid = 'rIdOrga'
-        rels = rels.replace('</Relationships>', (
-            f'<Relationship Id="{rid}" Type="http://schemas.openxmlformats.org/officeDocument/'
-            f'2006/relationships/drawing" Target="../drawings/drawing{nummer}.xml"/>'
-            '</Relationships>'))
-        if '<drawing ' not in blatt:
-            # Reihenfolge laut Schema: drawing steht vor tableParts und extLst
+        # Bereits vorhandenes Zeichnungsteil wiederverwenden, statt ein zweites anzulegen
+        vorhanden = re.search(r'<drawing r:id="([^"]+)"\s*/>', blatt)
+        teil = None
+        if vorhanden:
+            rid = vorhanden.group(1)
+            ziel = re.search(rf'Id="{re.escape(rid)}"[^>]*Target="([^"]+)"', rels)
+            if ziel:
+                teil = 'xl/' + ziel.group(1).replace('../', '')
+        if teil is None:
+            nummer = 1
+            while f'xl/drawings/drawing{nummer}.xml' in namen:
+                nummer += 1
+            teil = f'xl/drawings/drawing{nummer}.xml'
+            rid = 'rIdOrga'
+            rels = rels.replace('</Relationships>', (
+                f'<Relationship Id="{rid}" Type="http://schemas.openxmlformats.org/'
+                f'officeDocument/2006/relationships/drawing" '
+                f'Target="../drawings/{teil.split("/")[-1]}"/></Relationships>'))
             marke = blatt.rfind('<extLst>')
             if marke == -1:
                 marke = blatt.rfind('</worksheet>')
             blatt = blatt[:marke] + f'<drawing r:id="{rid}"/>' + blatt[marke:]
-        if f'/xl/drawings/drawing{nummer}.xml' not in ct:
+        if f'/{teil}' not in ct:
             ct = ct.replace('</Types>', (
                 f'<Override PartName="/{teil}" ContentType="application/vnd.openxmlformats-'
                 f'officedocument.drawing+xml"/></Types>'))
+
+        # verwaiste Zeichnungsteile aus frueheren Laeufen entfernen
+        referenziert = {teil}
+        for sheet_rels in [n for n in namen if re.match(r'xl/worksheets/_rels/.*\.rels$', n)]:
+            for t in re.findall(r'Target="\.\./(drawings/drawing\d+\.xml)"',
+                                quelle.read(sheet_rels).decode('utf-8')):
+                referenziert.add('xl/' + t)
+        verwaist = {n for n in namen
+                    if re.match(r'xl/drawings/drawing\d+\.xml$', n) and n not in referenziert}
+        for n in verwaist:
+            ct = ct.replace(f'<Override PartName="/{n}" ContentType="application/vnd.'
+                            f'openxmlformats-officedocument.drawing+xml"/>', '')
+        if verwaist:
+            print('verwaiste Zeichnungsteile entfernt:', sorted(verwaist))
 
         ersetzt = {f'xl/worksheets/{blattdatei}': blatt, rels_name: rels,
                    '[Content_Types].xml': ct}
         with zipfile.ZipFile(tmp, 'w', zipfile.ZIP_DEFLATED) as ziel:
             for eintrag in quelle.infolist():
+                if eintrag.filename in verwaist or eintrag.filename == teil:
+                    continue
                 daten = ersetzt.get(eintrag.filename)
                 ziel.writestr(eintrag, daten.encode('utf-8') if daten is not None
                               else quelle.read(eintrag.filename))

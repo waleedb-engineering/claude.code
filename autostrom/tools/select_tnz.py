@@ -14,12 +14,18 @@ Aufruf:  python3 select_tnz.py <mappe.xlsx>
 import re, sys
 import openpyxl
 
-SP = dict(id=2, dokument=3, fundstelle=4, kernaussage=6, text=7, status=11, datum=12, nachweis=13)
+SP = dict(id=2, dokument=3, fundstelle=4, themenfeld=5, kernaussage=6, text=7,
+          komponente=10, status=11, datum=12, nachweis=13)
 VERMERK = 'Automatisch ausgewertet: '
 
 
-def gruppe(dokument, fundstelle, kernaussage, text):
+def gruppe(dokument, fundstelle, themenfeld, kernaussage, text, komponente):
     """Liefert (Kurzname, Begruendung) oder None."""
+    if re.search(r'nicht (Gegenstand|Teil) (dieser |der |des )?'
+                 r'(Ausschreibung|Vergabe|Vergabeverfahrens|Vertrags)', kernaussage):
+        return ('nicht Gegenstand',
+                f'{VERMERK}Der Auftraggeber stellt klar, dass der Sachverhalt nicht Gegenstand '
+                f'der Ausschreibung bzw. des Vertrags ist.')
     treffer = re.match(r'Verweis des Auftraggebers auf die Antwort zu Bieterfrage ([\d,\s.und-]+)',
                        kernaussage)
     if treffer:
@@ -36,6 +42,14 @@ def gruppe(dokument, fundstelle, kernaussage, text):
         return ('nur Auftraggeber',
                 f'{VERMERK}Die Regelung richtet sich ausschließlich an den Auftraggeber; der '
                 f'Auftragnehmer wird im Text nicht verpflichtet.')
+    if kernaussage.startswith('Anpassung der Unterlagen:'):
+        return ('Unterlagenanpassung',
+                f'{VERMERK}Die Antwort kündigt lediglich eine Anpassung der Vergabeunterlagen an. '
+                f'Die Anforderung selbst steht im geänderten Dokument und ist dort nachzuhalten.')
+    if themenfeld == 'Vergabeverfahren & Angebot' and komponente == '–':
+        return ('Vergabeverfahren',
+                f'{VERMERK}Betrifft das Vergabeverfahren (Angebot, Wertung, Unterlagen), nicht die '
+                f'zu erbringende Leistung. Keiner Komponente zugeordnet.')
     return None
 
 
@@ -53,7 +67,8 @@ def main():
             uebergangen += 1
             continue
         werte = [str(ws.cell(r, SP[k]).value or '')
-                 for k in ('dokument', 'fundstelle', 'kernaussage', 'text')]
+                 for k in ('dokument', 'fundstelle', 'themenfeld', 'kernaussage', 'text',
+                           'komponente')]
         ergebnis = gruppe(*werte)
         if not ergebnis:
             continue
