@@ -127,9 +127,7 @@ objektiv am Text nachweisen laesst, und traegt die Begruendung in
 |---|---|
 | Verweis | Antwort des AG verweist ausschliesslich auf eine andere Bieterfrage |
 | Begriffsbestimmung | § 4 Betreibervertrag, Definitionsteil |
-| nur Auftraggeber | Satzsubjekt ist der Auftraggeber, der Auftragnehmer kommt im Text nicht vor |
-| nicht Gegenstand | Der AG stellt fest, dass der Sachverhalt nicht Gegenstand der Ausschreibung ist |
-| Unterlagenanpassung | Die Antwort kuendigt nur eine Anpassung der Vergabeunterlagen an |
+| Unterlagenanpassung | Die Antwort kuendigt nur eine Anpassung der Vergabeunterlagen an, und die Antwort ist kurz und ohne eigene Aussage |
 | Vergabeverfahren | Themenfeld "Vergabeverfahren & Angebot" ohne Komponentenzuordnung |
 
 Bestehende Eintraege werden nie ueberschrieben: geaendert wird nur, was auf
@@ -148,3 +146,19 @@ Beide Skripte sind wiederholbar: `select_tnz.py` fasst nur Zeilen mit Status
 "erfasst" ohne eigene Notiz an, `inject_shapes.py` ueberschreibt ein bereits
 vorhandenes Zeichnungsteil, statt ein zweites anzulegen, und entfernt verwaiste
 Teile frueherer Laeufe.
+
+### Nachpruefung der Selektion
+
+Zwei Regeln wurden nach einer Kontrolle gegen die Originalantworten wieder
+entfernt, weil sie der Pruefung nicht standhielten:
+
+* **nur Auftraggeber** - ein Recht des Auftraggebers begruendet regelmaessig eine
+  Umsetzungspflicht des Auftragnehmers. § 25 Abs. 3 (Anpassung der
+  Mindestvoraussetzungen mit zwei Monaten Vorlauf) waere faelschlich
+  ausgeschieden worden.
+* **nicht Gegenstand** - die Kernaussage stand im Widerspruch zur Antwort des
+  Auftraggebers, die eine Anbindungspflicht ueber OCPI festschreibt.
+
+Die Gruppe **Unterlagenanpassung** wurde eingeschraenkt: sie greift nur, wenn die
+Antwort hoechstens 200 Zeichen umfasst und keine eigene Aussage enthaelt.
+`tools/revert_tnz.py` nimmt bereits gesetzte Faelle entsprechend zurueck.

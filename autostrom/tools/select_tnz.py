@@ -11,7 +11,7 @@ Bestehende Eintraege werden nie ueberschrieben: geaendert wird nur, was auf
 
 Aufruf:  python3 select_tnz.py <mappe.xlsx>
 """
-import re, sys
+import json, re, sys
 import openpyxl
 
 SP = dict(id=2, dokument=3, fundstelle=4, themenfeld=5, kernaussage=6, text=7,
@@ -19,13 +19,23 @@ SP = dict(id=2, dokument=3, fundstelle=4, themenfeld=5, kernaussage=6, text=7,
 VERMERK = 'Automatisch ausgewertet: '
 
 
+KATALOG = {x['nr']: x for x in json.load(open('bieterfragen.json', encoding='utf-8'))} \
+    if __import__('os').path.exists('bieterfragen.json') else {}
+ZUSATZ = re.compile(r'(^|\s)(Ja,|Nein,|Verständnis|vgl\.|Zu i|Zu 1|Zu 2|Danach)')
+
+
+def reine_ankuendigung(fundstelle):
+    """Wahr, wenn die Antwort nur eine Unterlagenanpassung ankuendigt.
+
+    Enthaelt sie darueber hinaus eine eigene Aussage, bleibt die Zeile offen.
+    """
+    treffer = re.match(r'Nr\. (\d+) /', fundstelle) or re.match(r'§ (\d+)$', fundstelle)
+    antwort = KATALOG.get(treffer.group(1), {}).get('antwort', '') if treffer else ''
+    return bool(antwort) and len(antwort) <= 200 and not ZUSATZ.search(antwort)
+
+
 def gruppe(dokument, fundstelle, themenfeld, kernaussage, text, komponente):
     """Liefert (Kurzname, Begruendung) oder None."""
-    if re.search(r'nicht (Gegenstand|Teil) (dieser |der |des )?'
-                 r'(Ausschreibung|Vergabe|Vergabeverfahrens|Vertrags)', kernaussage):
-        return ('nicht Gegenstand',
-                f'{VERMERK}Der Auftraggeber stellt klar, dass der Sachverhalt nicht Gegenstand '
-                f'der Ausschreibung bzw. des Vertrags ist.')
     treffer = re.match(r'Verweis des Auftraggebers auf die Antwort zu Bieterfrage ([\d,\s.und-]+)',
                        kernaussage)
     if treffer:
@@ -37,12 +47,7 @@ def gruppe(dokument, fundstelle, themenfeld, kernaussage, text, komponente):
         return ('Begriffsbestimmung',
                 f'{VERMERK}Begriffsbestimmung aus § 4 des Betreibervertrags. Definition ohne '
                 f'eigene Leistungspflicht des Auftragnehmers.')
-    if re.match(r'^(Der Auftraggeber|Die Auftraggeber|Auftraggeber [12])\b', text) \
-            and 'uftragnehmer' not in text:
-        return ('nur Auftraggeber',
-                f'{VERMERK}Die Regelung richtet sich ausschließlich an den Auftraggeber; der '
-                f'Auftragnehmer wird im Text nicht verpflichtet.')
-    if kernaussage.startswith('Anpassung der Unterlagen:'):
+    if kernaussage.startswith('Anpassung der Unterlagen:') and reine_ankuendigung(fundstelle):
         return ('Unterlagenanpassung',
                 f'{VERMERK}Die Antwort kündigt lediglich eine Anpassung der Vergabeunterlagen an. '
                 f'Die Anforderung selbst steht im geänderten Dokument und ist dort nachzuhalten.')
