@@ -185,3 +185,21 @@ Zeile, wenn ihre Komponente dazu passt **oder** ihr Text ein einschlaegiges
 Stichwort traegt (Schranke, Poller, Zufahrtsbeschraenkung, Kennzeichen, Kamera,
 ANPR, dynamische Anzeige, LED, Anzeigetafel, Display). Das Stichwortnetz faengt
 Zeilen ab, deren Komponentenzuordnung noch offen ist.
+
+## Nachtrag: Reiter "Filter"
+
+`tools/build_filter_sheet.py` legt einen Reiter an, auf dem sich das Register
+gezielt anzeigen laesst - ohne Makro und ohne Datenschnitt, damit er in jeder
+Excel-Fassung laeuft.
+
+Sechs Felder: Status, Dokument, Themenfeld, Komponente, Partner, Freitext.
+Status, Dokument und Themenfeld vergleichen exakt; Komponente und Partner
+suchen als Teiltext und finden damit auch Mehrfachzuordnungen wie
+"Schrankenanlage / Schrankensteuerung". Der Freitext durchsucht Kernaussage
+und Originaltext. "(alle)" laesst ein Feld unberuecksichtigt.
+
+Technisch: eine ausgeblendete Hilfsspalte T vergibt je passender Registerzeile
+eine laufende Nummer, Spalte R loest daraus die Quellzeile auf, die Anzeige
+zieht mit INDEX. Es werden bewusst keine Ueberlaufformeln (FILTER, SORTIEREN)
+verwendet - die setzen Excel 365 voraus und lassen sich nicht zuverlaessig
+schreiben. Angezeigt werden die ersten 300 Treffer.
