@@ -35,9 +35,18 @@ ANZEIGE = [('B', 'ID', 11), ('C', 'Dokument', 18), ('D', 'Fundstelle', 15),
            ('I', 'Partner', 18), ('J', 'Komponente(n)', 30), ('K', 'Status', 15),
            ('L', 'Erfüllt am', 12), ('M', 'Nachweis / Notiz', 40)]
 # Filterfelder: (Zelle, Beschriftung, Spalte im Register, Vergleichsart, Listenspalte)
-FELDER = [('B5', 'Status', 'K', 'exakt', 'V'), ('E5', 'Dokument', 'C', 'exakt', 'W'),
-          ('H5', 'Themenfeld', 'E', 'exakt', 'X'), ('B7', 'Komponente', 'J', 'teil', 'Y'),
-          ('E7', 'Partner', 'I', 'teil', 'Z'), ('H7', 'Suchbegriff', '', 'text', None)]
+GRUNDFELDER = [('Status', 'K', 'exakt', 'V'), ('Dokument', 'C', 'exakt', 'W'),
+               ('Themenfeld', 'E', 'exakt', 'X'), ('Komponente', 'J', 'teil', 'Y'),
+               ('Partner', 'I', 'teil', 'Z'), ('Suchbegriff', '', 'text', None)]
+ZELLEN = ['B5', 'E5', 'H5', 'B7', 'E7', 'H7', 'B9']
+
+
+def feldliste(quelle):
+    """Mappen mit eigener Umfang-Spalte bekommen ein zusaetzliches Feld."""
+    felder = list(GRUNDFELDER)
+    if str(quelle['N6'].value or '') == 'Umfang':
+        felder.insert(0, ('Umfang', 'N', 'exakt', 'U'))
+    return [(ZELLEN[i], *f) for i, f in enumerate(felder)]
 
 
 def werte(ws, spalte, zusatz=()):
@@ -82,9 +91,12 @@ def main():
     grundkomponenten = [str(komp.cell(r, 4).value) for r in range(6, 30)
                         if komp.cell(r, 4).value and komp.cell(r, 3).value == 'Komponente']
     grundpartner = [str(komp.cell(r, 14).value) for r in range(6, 30) if komp.cell(r, 14).value]
+    FELDER = feldliste(quelle)
     listen = {'V': werte(quelle, 'K'), 'W': werte(quelle, 'C'), 'X': werte(quelle, 'E'),
               'Y': [ALLE] + sorted(set(grundkomponenten) | {'Zuordnung prüfen', '–'}),
               'Z': [ALLE] + sorted(set(grundpartner) | {'offen', 'Zuordnung prüfen'})}
+    if any(f[1] == 'Umfang' for f in FELDER):
+        listen['U'] = werte(quelle, 'N')
     ws['V1'] = 'Auswahllisten (Grundlage der Dropdowns)'
     ws['V1'].font = Font(name='Arial', size=9, bold=True, color='FF808080')
     for spalte, eintraege in listen.items():
@@ -113,16 +125,18 @@ def main():
             pruefung.promptTitle, pruefung.prompt = titel, f'{titel} auswählen oder „{ALLE}“'
             ws.add_data_validation(pruefung)
             pruefung.add(zelle)
-    ws['B9'] = ('Der Suchbegriff wirkt auf Kernaussage und Originaltext. Status '
-                '„außerhalb Umfang“ = gilt für das Projekt, aber nicht für unser Paket.')
-    ws['B9'].font = Font(name='Arial', size=8, italic=True, color='FF808080')
+    ws['A10'] = ('Der Suchbegriff wirkt auf Kernaussage und Originaltext. „(alle)“ lässt ein '
+                 'Feld unberücksichtigt; Komponente und Partner suchen als Teiltext.')
+    ws['A10'].font = Font(name='Arial', size=8, italic=True, color='FF808080')
+    ws.merge_cells('A10:K10')
 
     # --- Trefferzahl und Statusverteilung der Auswahl ------------------------------
     ws['A12'] = 'Treffer'
     ws['A12'].font = Font(name='Arial', size=9, bold=True, color=C_KOPF)
     ws['B12'] = f'=COUNTIF({QUELLE}!${RANG}${ERSTE}:${RANG}${LETZTE},">0")'
     ws['B12'].font = Font(name='Arial', size=14, bold=True, color=C_TITEL)
-    for i, (status, _f, _c, _b) in enumerate(STATUSFARBEN):
+    vorhanden = [s for s, *_ in STATUSFARBEN if s in listen['V']]
+    for i, status in enumerate(vorhanden):
         ws.cell(12, 4 + i * 2).value = status
         ws.cell(12, 4 + i * 2).font = Font(name='Arial', size=9, color='FF808080')
         ws.cell(12, 5 + i * 2).value = (
