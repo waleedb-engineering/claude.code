@@ -80,3 +80,19 @@ python3 verify.py <datei>          # Kontrolle
 
 Der Zwischenschritt „neu berechnen" ist nötig, weil die Boxen den berechneten
 Zellwert als Anzeigetext mitbekommen, bis Excel die Verknüpfung selbst auffrischt.
+
+## Nachtrag: Organigramm neu erzeugen ohne Datenverlust
+
+`tools/regen_orga.py` richtet Textquellen und Boxenanordnung an der **aktuellen**
+gepflegten Komponententabelle aus, statt die Mappe neu aufzubauen. Damit bleiben
+alle Eintraege erhalten (Status, Erfuellungsdaten, Vergabeeinheiten).
+
+```bash
+python3 regen_orga.py <mappe.xlsx>   # Spalte M und Bauplan neu ausrichten
+#   Mappe neu berechnen lassen
+python3 inject_shapes.py <mappe.xlsx>
+```
+
+Die Gruppierung erfolgt logisch nach Vergabeeinheit → Partner → Art, also auch
+dann korrekt, wenn gleiche Vergabeeinheiten in der Tabelle nicht untereinander
+stehen.
