@@ -12,6 +12,11 @@
 \usepackage[T1]{fontenc}
 \usepackage[utf8]{inputenc}
 \usepackage[ngerman]{babel}
+% ngerman macht " zu einem aktiven Zeichen (Kurzform fuer "a -> ae usw.).
+% Das kollidiert mit ASCII-Anfuehrungszeichen im Text und wirft
+% "Argument of \language@active@arg has an extra }". Wir schreiben Umlaute
+% und Anfuehrungszeichen direkt als Unicode, also Kurzform abschalten.
+\AtBeginDocument{\shorthandoff{"}}
 \usepackage{lmodern}
 
 % ---------- Mathematik ----------
@@ -77,7 +82,8 @@
 \newcommand{\ekm}[1]{\ifmmode{\color{FSgruen}#1}\else\textcolor{FSgruen}{#1}\fi}
 
 % ---------- Schriftgroesse global ----------
-% Sehr dichte Seite: 7pt Grundschrift, 8.2pt Zeilenabstand.
+% Sehr dichte Seite: 6.7pt Grundschrift, 7.8pt Zeilenabstand.
+% Gemessen: bei 7pt lief Seite 2 um 22% ueber, bei 6.7pt passt alles.
 \renewcommand{\baselinestretch}{1.0}
 
 % Schmale Spalten bei 7pt erzeugen sonst staendig Over-/Underfull-Boxen.
@@ -87,6 +93,15 @@
 \hbadness=10000
 \hfuzz=2pt
 
+% Abgesetzte Formeln: LaTeX-Standardabstaende sind fuer ein so dichtes
+% Blatt zu grosszuegig und kosten pro Seite mehrere Zeilen.
+\setlength{\abovedisplayskip}{1.1mm}
+\setlength{\belowdisplayskip}{1.1mm}
+\setlength{\abovedisplayshortskip}{0.5mm}
+\setlength{\belowdisplayshortskip}{0.5mm}
+\setlength{\jot}{1.6pt}          % Zeilenabstand innerhalb von align
+\setlength{\parskip}{0pt}
+
 % ---------- Zaehler / Ueberschriften ohne Nummerierung ----------
 \setcounter{secnumdepth}{-1}
 \pagestyle{empty}
@@ -94,7 +109,9 @@
 % =====================================================================
 %  RANDNOTATION — Kernregel des Blattes
 %  Jede algebraische Umformung bekommt einen Trennstrich + Notation.
-%  Benutzung:  a = b \notat{\times R_E}
+%  ACHTUNG: das Argument ist TEXTmodus. Mathe darin in $...$ setzen:
+%     richtig:  \notat{$\times R_E$}      falsch: \notat{\times R_E}
+%  Benutzung:  a = b \notat{$\times R_E$}
 % =====================================================================
 \newcommand{\notat}[1]{%
   \;\bigm|\;\text{\footnotesize\itshape #1}%
@@ -136,7 +153,7 @@
     before skip  = 1.2mm,
     after skip   = 1.2mm,
     fonttitle    = \bfseries\footnotesize,
-    fontupper    = \fontsize{7}{8.2}\selectfont,
+    fontupper    = \fontsize{6.7}{7.8}\selectfont,
     colback      = white,
     colframe     = black,
     coltitle     = white,
@@ -218,6 +235,17 @@
 
 % Kleine Trennlinie innerhalb einer Box
 \newcommand{\FSline}{\par\vspace{0.6mm}\noindent\textcolor{FSgrau}{\rule{\linewidth}{0.15mm}}\par\vspace{0.6mm}}
+
+% =====================================================================
+%  QUELLENKUERZEL
+%  Steht rechts im Titelbalken jedes Kastens. Format:
+%  Kurzkuerzel der Fundstellen + Haeufigkeit, z.B.
+%  \Quelle{Ü6 · Kl10 · Kl12 · PK13 · PK-I (5x)}
+%  Kuerzel: Ü = Uebung, Kl = Altklausur, PK = Probeklausur,
+%           BA = Beispielaufgaben, EL23 = EL23-Sammlung
+% =====================================================================
+\newcommand{\Quelle}[1]{%
+  {\normalfont\itshape\fontsize{5.6}{6.4}\selectfont #1}}
 
 % Seitenkopf
 \newcommand{\FSseite}[2]{%

@@ -29,6 +29,11 @@ Referenzwerte des Bauplans: 0,45 eV (§8 2.1) und 575 mV (§8 2.4).
 Der Shortcut „0,025 eV einsetzen" liefert 0,433 eV und reproduziert die angegebenen
 0,45 eV **nicht**.
 
+**Bestätigt durch die handschriftlichen Notizen (Foto 1/2, Schritt 3):** dort steht
+`1,38·10⁻²³ · 300 K = 4,14·10⁻²¹ J`, also k_B·T = **25,875 meV**. Damit ist belegt, dass
+die Musterlösung mit dem vollen k_B·T rechnet, nicht mit dem gerundeten 25 meV.
+Auf dem Blatt steht deshalb `k_B·T = 4,14·10⁻²¹ J` als expliziter Zwischenwert.
+
 **Umsetzung auf dem Blatt (nicht still korrigiert, sondern beides notiert):**
 Der Shortcut bleibt drin, bekommt aber eine rote Warnung mit beiden Zahlen daneben.
 Regel auf dem Blatt: *den in der Aufgabe vorgegebenen U_T-Wert verwenden* — die Klausur gibt
@@ -74,11 +79,11 @@ Skript: `verify/s1_konstanten.py`
 
 | # | Fehler in den Notizen | Korrigierter Wert aufs Blatt | Seite | erledigt |
 |---|---|---|---|---|
-| 1 | J → eV mit `1,6·10⁻¹⁵` | **÷ 1,6·10⁻¹⁹** | S2 (Rezept Schritt 4) | offen |
+| 1 | J → eV mit `1,6·10⁻¹⁵` | **÷ 1,6·10⁻¹⁹** | S2 §2.1 Schritt 4 | **erledigt** |
 | 2 | „p-Dotierung → Silizium" | **p-Dotanden: B, Al, In** (dreiwertig); Si = Grundmaterial | S1 §1.5 | **erledigt** |
-| 3 | p₀ fehlt | n₀ ≈ 5·10¹⁷ cm⁻³, **p₀ = 4,5·10² cm⁻³** | S2 | offen |
+| 3 | p₀ fehlt | n₀ ≈ 5·10¹⁷ cm⁻³, **p₀ = 4,5·10² cm⁻³** | S2 §2.1 Schritt 2 | **erledigt** |
 | 4 | „σ nimmt mit fallender T zu" | Klausurwortlaut: **nimmt mit fallender T ab** | S1 §1.5 | **erledigt** |
-| 5 | σ dotiert fehlte | **σ = 1,08·10⁴ S/m**, Faktor ~2,5·10⁷ | S2 | offen |
+| 5 | σ dotiert fehlte | **σ = 1,08·10⁴ S/m**, Faktor ~2,5·10⁷ | S2 §2.2 | **erledigt** |
 
 ---
 
@@ -91,3 +96,59 @@ Skript: `verify/s1_konstanten.py`
 - Der Widerspruch aus B-01 steht als roter Warnkasten in §1.1 — nicht still korrigiert.
 - **Freier Platz:** unten rechts ca. 28 %, unten links ca. 13 % einer Spalte.
   Nichts gestrichen. Reserve für Ergänzungen nach dem Feedback.
+
+---
+
+## Seite 2 — Halbleiter dotiert · Fermi · pn-Übergang
+
+Skript: `verify/s2_halbleiter.py`. Referenz sind die Zahlen aus Bauplan §8.2/§6 **und**
+die handschriftliche Rechnung auf Foto 1/2 — beide stimmen mit Python überein.
+
+| Größe | Referenz | Quelle | Python | Status |
+|---|---|---|---|---|
+| Typ bei N_D=5·10¹⁷, N_A=5·10¹⁵ | n-Halbleiter | Foto Schritt 1 | n | OK |
+| n₀ (genähert) | 5·10¹⁷ cm⁻³ | Foto Schritt 2 | 4,95·10¹⁷ → 5·10¹⁷ | OK |
+| p₀ = n_i²/n₀ | 4,5·10² cm⁻³ | Bauplan §6 | 450 cm⁻³ | OK |
+| k_B·T bei 300 K | 4,14·10⁻²¹ J | Foto Schritt 3 | 4,140·10⁻²¹ J | OK |
+| ln(n₀/n_i) | 17,322 | Foto Schritt 3 | 17,3221 | OK |
+| W_F − W_i [J] | 7,17·10⁻²⁰ J | Foto Schritt 3 | 7,1713·10⁻²⁰ J | OK |
+| W_F − W_i [eV] | 0,45 eV | Foto Schritt 4 + Bauplan §8 2.1 | 0,4482 eV | OK |
+| σ dotiert | 1,08·10⁴ S/m | Bauplan §6 | 1,08·10⁴ S/m | OK |
+| σ undotiert | 4,39·10⁻⁴ S/m | Bauplan §6 | 4,392·10⁻⁴ S/m | OK |
+| σ-Verhältnis | ~2,5·10⁷ | Bauplan §6 | 2,46·10⁷ | OK |
+| U_D (N_A=N_D=10¹⁵) | 575 mV | Bauplan §8 2.4 | 574,8 mV (mit 25,9 mV) | OK |
+| λ_max(Si) = h·c/W_g | 1,13 µm | Bauplan §8 2.7 | 1,125 µm | OK |
+
+**Ungeprüft (kein Referenzwert im Bauplan):** Potentialtopf §2.5 — nur Formel, kein
+Zahlenbeispiel (Prio B). de-Broglie §2.6 — nur Formel. Beide ohne Zahlenwert aufs Blatt,
+damit nichts Unbelegtes als geprüft erscheint.
+
+---
+
+## Platzkonflikt: „alles vollständig" gegen „exakt 6 Seiten"
+
+Gemessen, nicht geschätzt:
+
+| Schriftgröße | Ergebnis für S1+S2 |
+|---|---|
+| 7,0 pt | 3 Seiten — S2 lief um 22 % über |
+| **6,7 pt** | **2 Seiten, S2 zu 98 % gefüllt** ← gewählt |
+| 6,4 pt | 2 Seiten, 97 % |
+| 6,1 pt | 2 Seiten, 94 % |
+
+Zusätzlich global gespart, ohne Inhalt zu streichen:
+`abovedisplayskip`/`belowdisplayskip` auf 1,1 mm, `jot` auf 1,6 pt, beide TikZ-Bilder
+auf 82 % bzw. 86 % skaliert.
+
+**Bis hierher wurde nichts gestrichen.** Ob 6,7 pt für die restlichen vier Seiten reicht,
+steht erst fest, wenn S3–S6 gebaut sind.
+
+---
+
+## Vollständigkeitsgrenze
+
+Ohne `BAUELEMENTE_KI_MASTER.zip` (71 MB, Upload-Limit) sind „alle Vorkommen" die,
+die der Bauplan namentlich aufzählt (§2 Aufgabenlisten, §3 Häufigkeitstabellen,
+§8 Inhaltsliste). Aufgaben, die in den PDFs stehen, aber im Bauplan nicht erwähnt sind,
+können hier nicht erfasst sein. Die Häufigkeitsangaben in den Quellenkürzeln
+(z. B. „6×") sind aus den Bauplan-Tabellen gezählt.
