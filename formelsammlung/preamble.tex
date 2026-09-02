@@ -1,0 +1,256 @@
+% =====================================================================
+%  preamble.tex — wiederverwendbare Praeambel fuer Formelsammlungen
+%  Kurs: Elektronik / Bauelemente (etit 105, CAU Kiel)
+%  Zweck: Abschreibvorlage. Alles muss von Hand reproduzierbar sein.
+%  Farbcode (bewusst nur 3 Farben, mehr ist handschriftlich unrealistisch):
+%     schwarz = Formel / Text
+%     rot     = Ergebnis und Warnung
+%     gruen   = Erkennungsmerkmal
+% =====================================================================
+
+% ---------- Sprache & Zeichensatz ----------
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage[ngerman]{babel}
+\usepackage{lmodern}
+
+% ---------- Mathematik ----------
+\usepackage{amsmath,amssymb}
+\usepackage{siunitx}
+\sisetup{
+  locale            = DE,
+  per-mode          = symbol,
+  range-units       = single,
+  exponent-product  = \cdot,
+  detect-weight     = true,
+  detect-family     = true
+}
+
+% ---------- Layout ----------
+\usepackage[
+  a4paper,
+  top=8mm, bottom=8mm, left=8mm, right=8mm,
+  footskip=4mm, headsep=0mm
+]{geometry}
+\usepackage{multicol}
+\setlength{\columnsep}{5mm}
+\setlength{\columnseprule}{0.2pt}
+\usepackage{microtype}
+\usepackage{enumitem}
+\setlist{nosep, leftmargin=3.6mm, labelsep=1.1mm, topsep=0.4mm}
+\setlist[enumerate]{label=\textbf{\arabic*.}}
+\setlist[itemize]{label=\raisebox{0.15ex}{\tiny$\blacksquare$}}
+\usepackage{array}
+\usepackage{booktabs}
+\usepackage{tabularx}
+\usepackage{ragged2e}
+
+% ---------- Grafik ----------
+\usepackage{tikz}
+\usepackage[siunitx, RPvoltages]{circuitikz}
+\usetikzlibrary{arrows.meta, calc, patterns, decorations.pathmorphing, positioning}
+\ctikzset{
+  bipoles/length      = 6mm,
+  american,
+  font                = \scriptsize,
+  label/align        = straight
+}
+\usepackage{pgfplots}
+\pgfplotsset{compat=1.18}
+
+% ---------- Boxen ----------
+\usepackage[most]{tcolorbox}
+\tcbuselibrary{skins, breakable}
+
+% ---------- Farben ----------
+\usepackage{xcolor}
+\definecolor{FSrot}{RGB}{200,25,25}      % Ergebnis / Warnung
+\definecolor{FSgruen}{RGB}{0,120,55}     % Erkennungsmerkmal
+\definecolor{FSgrau}{RGB}{120,120,120}   % Hilfslinien, Rahmen
+\definecolor{FShell}{RGB}{247,247,247}   % dezenter Boxhintergrund
+
+% Semantische Kurzbefehle.
+% Alle drei funktionieren in Text- UND Mathemodus (\ifmmode-Weiche),
+% damit man sie nicht danach unterscheiden muss, wo man gerade steht.
+\newcommand{\erg}[1]{\ifmmode{\color{FSrot}#1}\else\textcolor{FSrot}{\textbf{#1}}\fi}
+\newcommand{\warn}[1]{\ifmmode{\color{FSrot}#1}\else\textcolor{FSrot}{#1}\fi}
+\newcommand{\ekm}[1]{\ifmmode{\color{FSgruen}#1}\else\textcolor{FSgruen}{#1}\fi}
+
+% ---------- Schriftgroesse global ----------
+% Sehr dichte Seite: 7pt Grundschrift, 8.2pt Zeilenabstand.
+\renewcommand{\baselinestretch}{1.0}
+
+% Schmale Spalten bei 7pt erzeugen sonst staendig Over-/Underfull-Boxen.
+% \sloppy + emergencystretch loest das, ohne dass man Text kuerzen muss.
+\sloppy
+\setlength{\emergencystretch}{3em}
+\hbadness=10000
+\hfuzz=2pt
+
+% ---------- Zaehler / Ueberschriften ohne Nummerierung ----------
+\setcounter{secnumdepth}{-1}
+\pagestyle{empty}
+
+% =====================================================================
+%  RANDNOTATION — Kernregel des Blattes
+%  Jede algebraische Umformung bekommt einen Trennstrich + Notation.
+%  Benutzung:  a = b \notat{\times R_E}
+% =====================================================================
+\newcommand{\notat}[1]{%
+  \;\bigm|\;\text{\footnotesize\itshape #1}%
+}
+% Variante fuer abgesetzte Zeilen in align/aligned
+\newcommand{\notatr}[1]{%
+  &&\bigm|\;\text{\footnotesize\itshape #1}%
+}
+
+% =====================================================================
+%  TASCHENRECHNER-HINWEIS
+%  Erscheint als kleiner eingerueckter Block mit Rechnersymbol.
+% =====================================================================
+\newcommand{\tr}[1]{%
+  \par\vspace{0.5mm}%
+  \noindent\hspace*{1mm}%
+  \begin{minipage}{\dimexpr\linewidth-2mm\relax}
+    \footnotesize\itshape
+    \textcolor{FSgrau}{\rule[-0.3mm]{0.25mm}{2.6mm}}\;%
+    \textbf{TR:}\ #1
+  \end{minipage}%
+  \par\vspace{0.5mm}%
+}
+
+% =====================================================================
+%  TCOLORBOX-STILE
+% =====================================================================
+
+% --- Basisstil, von allen anderen geerbt -----------------------------
+\tcbset{
+  FSbase/.style={
+    boxrule      = 0.35mm,
+    arc          = 0.6mm,
+    left         = 1.1mm,
+    right        = 1.1mm,
+    top          = 0.9mm,
+    bottom       = 0.9mm,
+    boxsep       = 0mm,
+    before skip  = 1.2mm,
+    after skip   = 1.2mm,
+    fonttitle    = \bfseries\footnotesize,
+    fontupper    = \fontsize{7}{8.2}\selectfont,
+    colback      = white,
+    colframe     = black,
+    coltitle     = white,
+    enhanced,
+    breakable    = false,
+    % parbox=true ist noetig: tabularx misst innerhalb von multicols sonst
+    % falsch und erzeugt eine Overfull-Box von 15pt (verifiziert).
+    parbox       = true
+  }
+}
+
+% --- Prio A: vollstaendiges Rezept -----------------------------------
+% Kraeftiger Rahmen, Titelbalken schwarz. Handschriftlich = Doppelrahmen.
+\newtcolorbox{RezeptA}[2][]{
+  FSbase,
+  colframe   = black,
+  colbacktitle = black,
+  boxrule    = 0.5mm,
+  title      = {#2},
+  #1
+}
+
+% --- Prio B: Formel + Erkennungsmerkmal, kein Zahlenbeispiel ---------
+% Dezenter: duenner Rahmen, Titel schwarz auf hellgrau.
+\newtcolorbox{RezeptB}[2][]{
+  FSbase,
+  colframe     = FSgrau,
+  colbacktitle = FShell,
+  coltitle     = black,
+  boxrule      = 0.25mm,
+  title        = {#2},
+  #1
+}
+
+% --- Prio C: Einzeiler, nur Linie oben ------------------------------
+\newtcolorbox{RezeptC}[2][]{
+  FSbase,
+  colframe     = FSgrau,
+  colbacktitle = white,
+  coltitle     = black,
+  boxrule      = 0mm,
+  frame hidden,
+  borderline north = {0.25mm}{0mm}{FSgrau},
+  title        = {#2},
+  #1
+}
+
+% --- Neutraler Block ohne Prioritaetsanmutung (Konstanten, Tabellen) --
+\newtcolorbox{FSblock}[2][]{
+  FSbase,
+  colframe     = black,
+  colbacktitle = black,
+  boxrule      = 0.35mm,
+  title        = {#2},
+  #1
+}
+
+% =====================================================================
+%  STRUKTURBEFEHLE INNERHALB EINES REZEPTS
+%  Reihenfolge laut Vorgabe:
+%  1 Gesucht  2 Erkennungsmerkmal  3 Schrittkette  4 Zahlenbeispiel
+%  5 TR-Hinweis  6 Variante
+% =====================================================================
+\newcommand{\Gesucht}[1]{%
+  \par\noindent\textbf{Gesucht:}\ #1\par\vspace{0.3mm}}
+
+\newcommand{\Erkennung}[1]{%
+  \par\noindent\ekm{\textbf{Erkennungsmerkmal:}\ #1}\par\vspace{0.3mm}}
+
+\newcommand{\Kette}{%
+  \par\vspace{0.3mm}\noindent\textbf{Schrittkette}\par\vspace{0.2mm}}
+
+\newcommand{\Beispiel}[1][]{%
+  \par\vspace{0.6mm}\noindent\textbf{Zahlenbeispiel}%
+  \ifx\relax#1\relax\else\ \textnormal{(#1)}\fi\par\vspace{0.2mm}}
+
+\newcommand{\Variante}[1]{%
+  \par\vspace{0.6mm}\noindent\textbf{Variante:}\ #1\par}
+
+% Kleine Trennlinie innerhalb einer Box
+\newcommand{\FSline}{\par\vspace{0.6mm}\noindent\textcolor{FSgrau}{\rule{\linewidth}{0.15mm}}\par\vspace{0.6mm}}
+
+% Seitenkopf
+\newcommand{\FSseite}[2]{%
+  \noindent
+  \begin{tcolorbox}[FSbase, colback=black, colframe=black,
+                    left=1.5mm, right=1.5mm, top=0.5mm, bottom=0.5mm,
+                    before skip=0mm, after skip=1.5mm]
+    \color{white}\bfseries\small #1 \hfill \normalfont\footnotesize\itshape #2
+  \end{tcolorbox}%
+}
+
+% =====================================================================
+%  MATHE-ABKUERZUNGEN (Notation des Skripts)
+% =====================================================================
+\newcommand{\UT}{U_{T}}
+\newcommand{\Uth}{U_{\mathrm{th}}}
+\newcommand{\Cox}{C'_{\mathrm{ox}}}
+\newcommand{\eps}{\varepsilon}
+\newcommand{\dd}{\mathrm{d}}
+\newcommand{\ee}{\mathrm{e}}
+\renewcommand{\vec}[1]{\mathbf{#1}}
+
+% Kompakte Einheitendarstellung im Fliesstext
+\newcommand{\uu}[1]{\,\mathrm{#1}}
+
+% =====================================================================
+%  CIRCUITIKZ-SNIPPETS
+%  Wiederverwendbare Schaltbilder. Alle mit Zaehlpfeilen fuer
+%  Stroeme und Spannungen. Aufruf z.B. \snipEmitterverstaerker
+%  Erweiterbar: neue Snippets hier unten anhaengen.
+% =====================================================================
+
+% --- Spannungspfeil-Helfer (offener Pfeil, handschriftlich machbar) ---
+\newcommand{\Upfeil}[3]{% #1 von, #2 nach, #3 Label
+  \draw[-{Latex[length=1.1mm]}, FSgrau] (#1) -- (#2) node[midway, right=0.4mm, black, font=\tiny] {#3};
+}
