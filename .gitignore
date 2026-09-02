@@ -47,3 +47,9 @@ api/.venv/
 
 # Beta-Package-Build-Ausgabe (build_beta_package.sh)
 dist/
+
+# Build-Artefakte LaTeX
+formelsammlung/*.aux
+formelsammlung/*.log
+formelsammlung/*.out
+formelsammlung/*.toc
