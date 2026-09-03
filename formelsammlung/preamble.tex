@@ -42,6 +42,7 @@
 \setlength{\columnseprule}{0.2pt}
 \usepackage{microtype}
 \usepackage{enumitem}
+\usepackage{needspace}
 \setlist{nosep, leftmargin=3.6mm, labelsep=1.1mm, topsep=0.4mm}
 \setlist[enumerate]{label=\textbf{\arabic*.}}
 \setlist[itemize]{label=\raisebox{0.15ex}{\tiny$\blacksquare$}}
@@ -233,6 +234,20 @@
 \newcommand{\Variante}[1]{%
   \par\vspace{0.6mm}\noindent\textbf{Variante:}\ #1\par}
 
+% =====================================================================
+%  FRAGE-ANTWORT-PAAR fuer den Sammelblock der Verstaendnisfragen
+%  Frage gruen (= Erkennungsmerkmal, so steht sie in der Aufgabe),
+%  Antwort schwarz und ausformuliert zum direkten Abschreiben.
+%  Benutzung: \FA{Was versteht man unter Eigenleitung?}{Antwortsatz.}
+% =====================================================================
+\newcommand{\FA}[2]{%
+  \par\vspace{0.35mm}\noindent
+  \ekm{\textbf{#1}}\ #2\par}
+
+% Kurzform fuer reine Zahlenwert-Fragen (Groessenordnungen)
+\newcommand{\FZ}[2]{%
+  \par\noindent\ekm{#1}~--~\erg{#2}\par}
+
 % Kleine Trennlinie innerhalb einer Box
 \newcommand{\FSline}{\par\vspace{0.6mm}\noindent\textcolor{FSgrau}{\rule{\linewidth}{0.15mm}}\par\vspace{0.6mm}}
 
@@ -247,7 +262,26 @@
 \newcommand{\Quelle}[1]{%
   {\normalfont\itshape\fontsize{5.6}{6.4}\selectfont #1}}
 
-% Seitenkopf
+% =====================================================================
+%  ABSCHNITTSBANNER
+%  Steht IM Spaltenfluss (nicht als Seitenkopf), damit der Inhalt ueber
+%  Seitengrenzen durchlaeuft und keine halbleeren Seiten entstehen.
+%  Ein Thema bleibt trotzdem zusammen, weil die Rezeptkaesten selbst
+%  nicht umbrechen (breakable=false).
+% =====================================================================
+\newcommand{\FSabschnitt}[2]{%
+  % verhindert, dass ein Banner allein am Spaltenfuss stehenbleibt
+  \Needspace*{6\baselineskip}%
+  \noindent
+  \begin{tcolorbox}[FSbase, colback=black, colframe=black,
+                    left=1.5mm, right=1.5mm, top=0.6mm, bottom=0.6mm,
+                    before skip=2mm, after skip=1.5mm]
+    \color{white}\bfseries\footnotesize #1
+    \hfill \normalfont\itshape\fontsize{6}{7}\selectfont #2
+  \end{tcolorbox}%
+}
+
+% Seitenkopf (nur noch fuer einzeln gebaute Testseiten)
 \newcommand{\FSseite}[2]{%
   \noindent
   \begin{tcolorbox}[FSbase, colback=black, colframe=black,

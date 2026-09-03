@@ -1,7 +1,11 @@
 \documentclass[7pt,a4paper]{extarticle}
 \input{preamble}
 \begin{document}
+% Ein einziger Spaltenfluss ueber alle Seiten: das packt am dichtesten.
+% Themen bleiben zusammen, weil die Rezeptkaesten nicht umbrechen.
+\begin{multicols}{2}
 \input{seite1}
-\clearpage
 \input{seite2}
+\input{seite3}
+\end{multicols}
 \end{document}

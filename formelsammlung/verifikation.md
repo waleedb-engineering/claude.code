@@ -152,3 +152,41 @@ die der Bauplan namentlich aufzählt (§2 Aufgabenlisten, §3 Häufigkeitstabell
 §8 Inhaltsliste). Aufgaben, die in den PDFs stehen, aber im Bauplan nicht erwähnt sind,
 können hier nicht erfasst sein. Die Häufigkeitsangaben in den Quellenkürzeln
 (z. B. „6×") sind aus den Bauplan-Tabellen gezählt.
+
+---
+
+## Umbau auf Themen-Gruppierung (Vorgabe: alle Alternativen an einem Platz)
+
+Gruppierungseinheit ist jetzt der **Aufgabentyp**, nicht das Bauelement. Alle Vorkommen
+eines Typs aus allen Übungen und Klausuren stehen in einem Kasten nebeneinander.
+
+Konkret zusammengezogen:
+
+| Sammelblock | vorher verstreut auf | Quellen im Kasten |
+|---|---|---|
+| §1.5 Größenordnungsfragen | S1 Faktenblock (Teil) | Ü1 A3 · PK13 A2 · BA A1–A5 · Kl09 · Kl10 |
+| §1.6 Licht & Wellenlängen | S1 Faktenblock (Teil) | PK-I A1 · PK13 A1 · Kl10 A24/25 |
+| §2.3 Halbleiter/Dotierung/Leitung | S1 Faktenblock + S1 Definitionen | Ü1 A2 · Ü4 A3 · PK13 A1 · Kl09/10/11 |
+| §2.4 Bauelemente in einem Satz | S1 Faktenblock | PK-I A1 · PK13 A1 · BA · Kl11 · Kl12 |
+| §2.5 Gegenkopplung | war für S5 geplant | alle 6 Altklausuren · Ü8 A4 · BA B8 |
+
+Antworten sind laut Entscheidung **ausformuliert** (ganze Sätze zum direkten Abschreiben),
+nicht als Stichpunkte.
+
+### Layout-Umbau: durchlaufender Spaltenfluss
+
+Erzwungene Seitenumbrüche zwischen Themen erzeugten halbleere Seiten. Gemessen:
+
+| Aufbau | Füllgrad je Seite |
+|---|---|
+| je Thema eine Seite (`\clearpage`) | 85 % · 54 % · 95 % = 3 Seiten |
+| **ein Spaltenfluss, Abschnittsbanner** | **97 % · 97 % · 56 % = 2,5 Seiten** |
+
+Gleicher Inhalt, **eine halbe Seite gespart**. Themen bleiben trotzdem zusammen, weil die
+Rezeptkästen selbst nicht umbrechen (`breakable=false`); `\Needspace` verhindert, dass ein
+Abschnittsbanner allein am Spaltenfuß stehenbleibt.
+
+**Stand des Seitenbudgets:** Teil A + Halbleiter belegen 2,5 der 6 Seiten. Für Diode,
+Diodenschaltungen, MOSFET/CMOS/OPV und Bipolartransistor bleiben 3,5 Seiten.
+Der Bauplan hatte dafür 4 Seiten vorgesehen — es wird also knapp, aber noch nicht
+entschieden. Gestrichen ist bis hier nichts.

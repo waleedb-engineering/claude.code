@@ -1,274 +1,130 @@
-\FSseite{2 \quad Halbleiter dotiert $\cdot$ Fermi $\cdot$ pn-Übergang}{Klausurteil A2 / B1}
+\FSabschnitt{Teil A \quad Alle Erklärfragen — an einem Platz}{Klausurteil A1 / A2}
 
-\begin{multicols}{2}
+
 
 % =====================================================================
-\begin{RezeptA}{2.1\ \ REZEPT: dotierter Halbleiter \hfill
-  \Quelle{Ü2 A1 · Kl09 · Kl10 · Kl11-1 · Kl11-2 · PK13 A2 (6×)}}
-\Gesucht{Typ (n/p), $n_0$ und $p_0$, Fermi-Abstand $W_F-W_i$,
-Banddiagramm, ggf.\ $\sigma$.}
-
-\Erkennung{„Ein Siliziumkristall ist mit $N_D=\dots$ und $N_A=\dots$
-dotiert.“ $\cdot$ „Berechnen Sie die Lage des Fermi-Niveaus.“
-$\cdot$ „Zeichnen Sie das Bänderdiagramm.“}
-
-\Kette
-\begin{enumerate}
-\item \textbf{Typ:} $N_D>N_A\Rightarrow$ n\quad\ $N_A>N_D\Rightarrow$ p
-\item \textbf{Majoritäten:} $n_0\approx N_D-N_A$ \ (n-HL),
-      $p_0\approx N_A-N_D$ \ (p-HL)\\
-      \textbf{Minoritäten} über $n_0\cdot p_0=n_i^2$
-\item \textbf{Fermi-Abstand.} Ansatz:
-      \[ n_0=n_i\,\ee^{(W_F-W_i)/k_BT}
-         \notat{$\ln(\ )$, dann $\times k_BT$} \]
-      \vspace{-2.2mm}
-      \begin{align*}
-      \text{n-HL:}\quad W_F-W_i &= k_B T\,\ln\frac{n_0}{n_i}\quad[\mathrm{J}]\\[-0.3mm]
-      \text{p-HL:}\quad W_i-W_F &= k_B T\,\ln\frac{p_0}{n_i}\quad[\mathrm{J}]
-      \end{align*}
-      \vspace{-2.2mm}
-\item \textbf{J $\to$ eV:} $\ \erg{\div\ 1{,}6\cdot10^{-19}}$
-\item \textbf{Banddiagramm} zeichnen (Anleitung unten)
-\end{enumerate}
-
+\begin{RezeptA}{2.3\ \ Halbleiter, Dotierung, Leitung \hfill
+  \Quelle{Ü1 A2 · Ü4 A3 · PK13 A1 · Kl09 · Kl10 · Kl11 (6×)}}
+\Erkennung{„Was versteht man unter …“ $\cdot$ „Erklären Sie …“
+$\cdot$ Ankreuzfragen zu Halbleitereigenschaften.}
 \FSline
-\Beispiel[$N_D=5\cdot10^{17}$, $N_A=5\cdot10^{15}\,\mathrm{cm^{-3}}$]
-\textbf{1)} $5\cdot10^{17}>5\cdot10^{15}\ \Rightarrow\ \erg{\text{n-Halbleiter}}$
-\vspace{0.3mm}
+\FA{Was ist ein Halbleiter?}{Ein Festkörper, dessen Leitfähigkeit
+\erg{zwischen der eines Metalls und der eines Isolators} liegt. Seine
+Bandlücke ist klein genug, dass thermische Energie Elektron-Loch-Paare
+erzeugt.}
 
-\textbf{2)} $n_0\approx N_D-N_A=5\cdot10^{17}-5\cdot10^{15}
- \approx\erg{5\cdot10^{17}\,\mathrm{cm^{-3}}}$\\
-$p_0=\dfrac{n_i^2}{n_0}=\dfrac{(1{,}5\cdot10^{10})^2}{5\cdot10^{17}}
- =\erg{4{,}5\cdot10^{2}\,\mathrm{cm^{-3}}}$
-\vspace{0.3mm}
+\FA{Wie ändert sich $\sigma$ mit der Temperatur?}{Beim Halbleiter
+\erg{nimmt $\sigma$ mit fallender Temperatur ab}, weil weniger Paare
+thermisch erzeugt werden. Beim Metall ist es umgekehrt: dort steigt
+$\sigma$ bei Abkühlung, weil die Gitterschwingungen abnehmen.}
 
-\textbf{3)}
-\vspace{-1mm}
-\[\begin{aligned}
-W_F-W_i &= k_B T\,\ln\frac{n_0}{n_i}\\
- &= 1{,}38\!\cdot\!10^{-23}\tfrac{\mathrm{J}}{\mathrm{K}}\cdot300\,\mathrm{K}
-    \cdot\ln\frac{5\cdot10^{17}}{1{,}5\cdot10^{10}}\\
- &= 4{,}14\cdot10^{-21}\,\mathrm{J}\cdot\ln\left(3{,}33\cdot10^{7}\right)
-    \notat{$k_BT$ ausrechnen}\\
- &= 4{,}14\cdot10^{-21}\,\mathrm{J}\cdot17{,}322
-    \notat{$\ln(\ )$ anwenden}\\
- &= 7{,}17\cdot10^{-20}\,\mathrm{J}
-    \notat{$\div\,1{,}6\cdot10^{-19}$}\\
- &= \erg{0{,}45\ \mathrm{eV}}
-\end{aligned}\]
+\FA{Was ist Eigenleitung?}{Die Leitung im \emph{un}dotierten Halbleiter,
+die allein von thermisch erzeugten Elektron-Loch-Paaren getragen wird.
+Dabei gilt $n=p=n_i$.}
 
-\tr{$k_BT$ \emph{zuerst} ausrechnen ($=4{,}14\cdot10^{-21}$\,J), dann erst
-den $\ln$. Zehnerpotenzen mit \textsf{EXP}. Der $\ln$ ist einheitenlos —
-die Einheit steckt komplett in $k_BT$.}
+\FA{Was ist Paarbildung?}{Thermische oder optische Energie hebt ein
+Elektron aus dem Valenzband ins Leitungsband. Dabei entsteht
+\erg{gleichzeitig} ein freies Elektron und ein Loch — immer paarweise.}
 
+\FA{Was ist Rekombination?}{Ein freies Elektron fällt zurück in ein Loch,
+das Paar verschwindet. Die frei werdende Energie wird als Wärme oder als
+Photon abgegeben.}
+
+\FA{Was heißt thermodynamisches Gleichgewicht?}{Paarbildung und
+Rekombination laufen gleich schnell ab, die Trägerdichten sind zeitlich
+konstant. Dann gilt \erg{$n\cdot p=n_i^{2}$}.}
+
+\FA{Was bewirkt Dotieren?}{Das gezielte Einbringen von Fremdatomen,
+um \emph{eine} Ladungsträgersorte um Größenordnungen zu erhöhen und
+damit die Leitfähigkeit einzustellen.}
+
+\FA{Wodurch entsteht n-Leitung?}{Durch fünfwertige Dotanden
+(\erg{Phosphor, Arsen}). Vier Elektronen gehen Bindungen ein, das fünfte
+ist nur schwach gebunden und wird schon bei Raumtemperatur frei.
+Es gilt $N_D>N_A$, Elektronen sind Majoritäten.}
+
+\FA{Wodurch entsteht p-Leitung?}{Durch dreiwertige Dotanden
+(\erg{Bor, Aluminium, Indium}). Ihnen fehlt ein Bindungselektron, die
+Lücke wirkt als Loch. Es gilt $N_A>N_D$, Löcher sind Majoritäten.
+\warn{Silizium selbst ist vierwertig und Grundmaterial, kein Dotand.}}
+
+\FA{Majoritäts- und Minoritätsträger?}{Majoritäten sind die häufigere
+Sorte (im n-HL die Elektronen, $n_0\approx N_D$). Minoritäten sind die
+seltenere Sorte, ihre Dichte folgt aus \erg{$p_0=n_i^{2}/n_0$}.}
+
+\FA{Warum ist ein n-Halbleiter nach außen neutral?}{Weil zu jedem
+abgegebenen freien Elektron ein \erg{ortsfester, positiv geladener
+Donatorrumpf} im Gitter zurückbleibt. Beide Ladungen sind gleich groß
+und heben sich in der Summe auf.}
+
+\FA{Was ist Störstellenerschöpfung?}{Der Temperaturbereich, in dem
+\emph{alle} Dotanden ionisiert sind, die Eigenleitung aber noch
+vernachlässigbar ist. Dort ist $n_0\approx N_D$ konstant — das ist der
+\erg{Arbeitsbereich} des Bauelements.}
+
+\FA{Drift oder Diffusion?}{\textbf{Drift} ist Bewegung \emph{im
+elektrischen Feld}: $j=\sigma E$. \textbf{Diffusion} ist Bewegung
+\emph{entlang eines Konzentrationsgefälles}: $j=-e\,D\,\dd n/\dd x$.}
+
+\FA{Was sagt die Kontinuitätsgleichung?}{Sie bilanziert die
+Trägerdichte: zeitliche Änderung $=$ Zufluss $-$ Abfluss $+$ Generation
+$-$ Rekombination.}
+\end{RezeptA}
+
+% =====================================================================
+\begin{RezeptA}{2.4\ \ Bauelemente in einem Satz \hfill
+  \Quelle{PK-I A1 · PK13 A1 · BA A1–A5 · Kl11 · Kl12 (5×)}}
+\Erkennung{„Was ist eine …?“ $\cdot$ „Wofür steht die Abkürzung …?“
+$\cdot$ „Nennen Sie das Funktionsprinzip.“}
 \FSline
-\textbf{5) Banddiagramm}
-\begin{center}
-\begin{tikzpicture}[font=\tiny, scale=0.82]
-  % Baender als Bloecke
-  \fill[black!12] (0,1.60) rectangle (3.30,2.00);
-  \fill[black!12] (0,-0.40) rectangle (3.30,0.00);
-  \draw[thick] (0,1.60) -- (3.30,1.60);   % W_C
-  \draw[thick] (0,0.00) -- (3.30,0.00);   % W_V
-  \draw (0,2.00) -- (3.30,2.00);
-  \draw (0,-0.40) -- (3.30,-0.40);
-  \draw (0,-0.40) -- (0,2.00);
-  \draw (3.30,-0.40) -- (3.30,2.00);
-  % W_i und W_F
-  \draw[dashed] (0,0.80) -- (2.55,0.80);
-  \draw[dashed, FSrot, thick] (0,1.45) -- (2.55,1.45);
-  % Beschriftung links
-  \node[left=-0.3mm] at (0,1.68) {$W_C$};
-  \node[left=-0.3mm] at (0,1.43) {\textcolor{FSrot}{$W_F$}};
-  \node[left] at (0,0.80) {$W_i$};
-  \node[left] at (0,0.00) {$W_V$};
-  \node at (1.65,1.80) {Leitungsband};
-  \node at (1.65,-0.20) {Valenzband};
-  % Masspfeile
-  \draw[<->, FSrot] (2.15,0.80) -- (2.15,1.45)
-      node[midway, right=0.3mm] {$0{,}45$\,eV};
-  \draw[<->] (3.00,0.00) -- (3.00,1.60)
-      node[midway, right=0.3mm] {$W_g$};
-\end{tikzpicture}
-\end{center}
-\vspace{-1mm}
+\FA{Was ist eine Schottky-Diode?}{Ein \erg{Metall-Halbleiter-Übergang}
+statt eines pn-Übergangs. Sie hat eine kleinere Flussspannung und
+schaltet schneller, weil keine Diffusionsladung gespeichert wird.}
 
-\textbf{Wie man es zeichnet}
-\begin{enumerate}
-\item $W_V$ unten, $W_C$ oben — Abstand $=W_g=1{,}1$\,eV (Si)
-\item $W_i$ \emph{mittig} zwischen $W_V$ und $W_C$
-\item n-HL: \erg{$W_F$ über $W_i$} \quad p-HL: \erg{$W_F$ unter $W_i$}
-\item berechneten Abstand $W_F-W_i$ als Maßpfeil eintragen
-\end{enumerate}
+\FA{Wofür steht CMOS?}{\erg{Complementary Metal Oxide Semiconductor} —
+je ein selbstsperrender n- und p-Kanal-MOSFET, die komplementär
+schalten. Im statischen Zustand fließt fast kein Querstrom.}
 
-\Variante{p-Halbleiter ($N_A>N_D$): $p_0\approx N_A-N_D$, Formel
-$W_i-W_F=k_BT\ln(p_0/n_i)$, $W_F$ liegt \emph{unter} $W_i$.
-Rest der Kette identisch.}
+\FA{Wie funktioniert eine Solarzelle?}{Über den \erg{inneren
+Fotoeffekt am pn-Übergang}: Photonen mit $W>W_g$ erzeugen Paare in der
+Raumladungszone, das eingebaute Feld trennt sie und treibt einen Strom.}
+
+\FA{Was heißt Gleichrichten?}{Strom nur in \emph{eine} Richtung
+durchlassen und so eine Wechselgröße in eine Gleichgröße umwandeln —
+die Aufgabe der Diode.}
+
+\FA{Warum steuert ein FET leistungslos, ein BJT nicht?}{Der FET steuert
+über das \erg{elektrische Feld} am isolierten Gate; im stationären
+Betrieb fließt kein Gatestrom, also wird keine Steuerleistung gebraucht.
+Der Bipolartransistor wird über den \erg{Basisstrom} gesteuert, und
+dieser Strom kostet Leistung.}
+
+\FA{Sind die Energien im unendlich hohen Potentialtopf gequantelt oder
+kontinuierlich?}{\erg{Gequantelt} — es sind nur diskrete Eigenwerte
+$E_n\propto n^{2}/L^{2}$ erlaubt. Je größer $L$, desto kleiner der
+Abstand $\Delta E$, bis er im Festkörper quasi-kontinuierlich wird.}
 \end{RezeptA}
 
 % =====================================================================
-\begin{RezeptA}{2.2\ \ Leitfähigkeit $\sigma$ \hfill \Quelle{Ü2 A1 · Kl09 · Kl11 · PK13 A2 (4×)}}
-\Gesucht{$\sigma$ bzw.\ Vergleich dotiert / undotiert.}
-\Erkennung{„Wie groß ist die Leitfähigkeit?“ $\cdot$ „Um welchen Faktor
-ändert sich $\sigma$ durch die Dotierung?“}
+\begin{RezeptA}{2.5\ \ Prinzip der Gegenkopplung \hfill
+  \Quelle{alle 6 Altklausuren · Ü8 A4 · BA B8 \ \erg{(6/6 — sicher dran)}}}
+\Erkennung{„Erläutern Sie das Prinzip der Gegenkopplung.“ $\cdot$
+„Welche Vor- und Nachteile hat sie?“ $\cdot$ LED mit
+Konstantstromquelle im Schaltbild.}
+\FSline
+\FA{a) Welche Vorteile hat die Gegenkopplung?}{Der Arbeitspunkt wird
+gegen Temperaturgang und Exemplarstreuung \erg{stabilisiert}. Zusätzlich
+sinken die Verzerrungen, die Bandbreite steigt, und Ein- und
+Ausgangswiderstand werden definiert einstellbar.}
 
-\textbf{Allgemein} \ $\sigma=e\,(\mu_n n+\mu_p p)$ \quad
-$[\sigma]=\mathrm{S/m}$
-\vspace{0.4mm}
+\FA{b) Welchen Nachteil hat sie?}{\erg{Die Verstärkung sinkt.} Man
+tauscht Verstärkung gegen Stabilität.}
 
-\warn{Erst $\mathrm{cm^{-3}}\to\mathrm{m^{-3}}$ umrechnen ($\times10^{6}$),
-sonst stimmt die Größenordnung nicht.}
-
-\Beispiel[Si, $n_0=5\cdot10^{17}\,\mathrm{cm^{-3}}=5\cdot10^{23}\,\mathrm{m^{-3}}$]
-\textbf{dotiert} — Minoritäten vernachlässigbar:
-\begin{align*}
-\sigma &\approx e\,\mu_n n_0\\
- &= 1{,}6\!\cdot\!10^{-19}\mathrm{As}\cdot0{,}135\tfrac{\mathrm{m^2}}{\mathrm{Vs}}
-    \cdot5\!\cdot\!10^{23}\tfrac{1}{\mathrm{m^3}}\\
- &= \erg{1{,}08\cdot10^{4}\ \mathrm{S/m}}
-\end{align*}
-\textbf{undotiert} — $n=p=n_i=1{,}5\cdot10^{16}\,\mathrm{m^{-3}}$:
-\begin{align*}
-\sigma &= e\,(\mu_n+\mu_p)\,n_i\\
- &= 1{,}6\!\cdot\!10^{-19}\cdot0{,}183\cdot1{,}5\!\cdot\!10^{16}\\
- &= \erg{4{,}39\cdot10^{-4}\ \mathrm{S/m}}
-\end{align*}
-Verhältnis: $\dfrac{1{,}08\cdot10^{4}}{4{,}39\cdot10^{-4}}
- \approx\erg{2{,}5\cdot10^{7}}$
-\tr{$\mu_n=0{,}135$ und $\mu_n+\mu_p=0{,}183\ \mathrm{m^2/Vs}$ sind
-Merkwerte — stehen auf S1.}
+\FA{c) Wie wirkt sie in der LED-Schaltung?}{Als Regelkreis, Schritt für
+Schritt: $I_{LED}$ steigt $\to$ Spannung über $R_2$ steigt $\to$ $U_{BE}$
+von T2 steigt $\to$ T2 leitet stärker $\to$ T2 zieht Basisstrom von T1 ab
+$\to$ T1 sperrt mehr $\to$ \erg{$I_{LED}$ sinkt wieder}. Die Störung
+wird also ihrer eigenen Ursache entgegengesetzt.}
 \end{RezeptA}
 
 
-% =====================================================================
-\begin{RezeptA}{2.3\ \ pn-Übergang: $\rho(x)$, $E(x)$, $U(x)$ \hfill
-  \Quelle{Ü2 A2 · Ü3 A1.1 · Kl09 · Kl10 · Kl12 · PK-I B1 (6×)}}
-\Gesucht{Qualitativer Verlauf von Raumladung, Feldstärke und Potential
-über die Raumladungszone.}
-\Erkennung{„Skizzieren Sie den Verlauf von $E(x)$ und $U(x)$.“
-$\cdot$ „Ankreuzen: welcher Verlauf gehört zu …“}
-
-\textbf{Merkkette} \ $\rho(x)\ \xrightarrow{\ \int\ }\ E(x)
- \ \xrightarrow{\ \int\ }\ U(x)$ \ — jedes Integrieren macht den
-Verlauf \erg{eine Stufe glatter}: Rechteck $\to$ Dreieck $\to$ S-Kurve.
-
-\begin{center}
-\begin{tikzpicture}[font=\tiny, x=0.86cm, y=0.86cm]
-  % ---------- rho(x) ----------
-  \begin{scope}[yshift=0cm]
-    \draw[->] (-1.5,0) -- (1.7,0) node[right] {$x$};
-    \draw[->] (0,-0.45) -- (0,0.55) node[above] {$\rho$};
-    \fill[black!25] (-1.0,0) rectangle (0,-0.35);
-    \fill[black!25] (0,0) rectangle (0.7,0.42);
-    \draw[thick] (-1.5,0) -- (-1.0,0) -- (-1.0,-0.35) -- (0,-0.35)
-                 -- (0,0.42) -- (0.7,0.42) -- (0.7,0) -- (1.5,0);
-    \node at (-1.25,0.28) {p};
-    \node at (1.15,0.28) {n};
-    \node[below] at (-1.0,-0.38) {$-x_p$};
-    \node[below right=-0.5mm] at (0.7,0) {$x_n$};
-  \end{scope}
-  % ---------- E(x) ----------
-  \begin{scope}[yshift=-1.5cm]
-    \draw[->] (-1.5,0) -- (1.7,0) node[right] {$x$};
-    \draw[->] (0,-0.65) -- (0,0.35) node[above] {$E$};
-    \draw[thick, FSrot] (-1.5,0) -- (-1.0,0) -- (0,-0.55) -- (0.7,0) -- (1.5,0);
-    \node[FSrot, right=0.5mm] at (0.05,-0.5) {$E_{max}$};
-    \node[below] at (-1.0,0) {$-x_p$};
-  \end{scope}
-  % ---------- U(x) ----------
-  \begin{scope}[yshift=-3.0cm]
-    \draw[->] (-1.5,0) -- (1.7,0) node[right] {$x$};
-    \draw[->] (0,-0.15) -- (0,0.75) node[above] {$U$};
-    \draw[thick] (-1.5,0) -- (-1.0,0)
-      .. controls (-0.5,0.02) and (-0.35,0.28) .. (0,0.30)
-      .. controls (0.35,0.32) and (0.55,0.55) .. (0.7,0.57) -- (1.5,0.57);
-    \draw[<->, FSrot] (1.25,0) -- (1.25,0.57)
-        node[midway, right=0.3mm] {$U_D$};
-  \end{scope}
-\end{tikzpicture}
-\end{center}
-\vspace{-1.5mm}
-
-\textbf{Merksätze}
-\begin{itemize}
-\item $\rho$: p-Seite \erg{negativ} (ortsfeste Akzeptor-Rümpfe),
-      n-Seite \erg{positiv} (Donator-Rümpfe)
-\item $E(x)$ dreieckig, \erg{Betragsmaximum bei $x=0$}, null an den
-      RLZ-Rändern
-\item $U(x)$ s-förmig, Gesamthöhe $=U_D$
-\item Ladungsneutralität: $\ N_A\,x_p=N_D\,x_n$ \ $\Rightarrow$
-      schwächer dotierte Seite hat die \erg{breitere} RLZ
-\item \textbf{Diffusion} treibt Träger ins Gegengebiet,
-      \textbf{Drift} im E-Feld treibt sie zurück — im Gleichgewicht
-      heben sie sich auf
-\end{itemize}
-\end{RezeptA}
-
-% =====================================================================
-\begin{RezeptA}{2.4\ \ Diffusionsspannung $U_D$ \hfill \Quelle{Ü3 A1 · Kl10 · Kl12 (3×)}}
-\Gesucht{Eingebaute Spannung des unbelasteten pn-Übergangs.}
-\Erkennung{„Berechnen Sie die Diffusionsspannung.“ $\cdot$ gegeben sind
-$N_A$, $N_D$ und $n_i$.}
-\[ U_D=\frac{k_B T}{e}\,\ln\frac{N_A\,N_D}{n_i^{2}}
-   = \UT\,\ln\frac{N_A N_D}{n_i^{2}} \]
-
-\Beispiel[$N_A=N_D=10^{15}\,\mathrm{cm^{-3}}$]
-\begin{align*}
-U_D &= 25{,}9\,\mathrm{mV}\cdot\ln
-       \frac{10^{15}\cdot10^{15}}{(1{,}5\cdot10^{10})^{2}}\\
- &= 25{,}9\,\mathrm{mV}\cdot\ln\left(4{,}44\cdot10^{9}\right)
-    \notat{Bruch zuerst}\\
- &= 25{,}9\,\mathrm{mV}\cdot22{,}21
-    \notat{$\ln(\ )$ anwenden}\\
- &= \erg{575\ \mathrm{mV}}
-\end{align*}
-\warn{Mit $\UT=25$\,mV kämen 555\,mV heraus.} Den in der Aufgabe
-vorgegebenen Wert nehmen — s.\ S1.
-\tr{$n_i^2$ nicht vergessen zu quadrieren: $(1{,}5\cdot10^{10})^2
-=2{,}25\cdot10^{20}$.}
-\end{RezeptA}
-
-% =====================================================================
-\begin{RezeptB}{2.5\ \ Potentialtopf \hfill \Quelle{Ü1 A1 · Kl09 · Kl10 · PK-I A1 (4×)}}
-\Erkennung{„unendlich hoher Potentialtopf“ $\cdot$ „Breite $L$“
-$\cdot$ „Sind die Energieeigenwerte gequantelt oder kontinuierlich?“}
-\[ E_n=\frac{n^{2}\pi^{2}\hbar^{2}}{2\,m\,L^{2}}\qquad
-   \Delta E=E_2-E_1=\frac{3\pi^{2}\hbar^{2}}{2mL^{2}} \]
-$\hbar=h/2\pi$ $\cdot$ Ergebnis in J, dann
-\erg{$\div\,1{,}6\cdot10^{-19}$} für eV\\
-\warn{$m=10^{-30}$\,kg} ist Klausurvorgabe (Ü01: $9{,}1\cdot10^{-31}$\,kg)
-\vspace{0.4mm}
-
-\textbf{Antwort auf die Ankreuzfrage:} Energieeigenwerte sind
-\erg{gequantelt}. $L$ größer $\Rightarrow$ $\Delta E$ kleiner
-$\Rightarrow$ quasi-kontinuierlich (Übergang zum Festkörper).
-\end{RezeptB}
-
-% =====================================================================
-\begin{RezeptB}{2.6\ \ Photon \& Materiewelle \hfill \Quelle{Kl10 A24/25 · PK13 A1 (2×)}}
-\Erkennung{„Welche Wellenlänge …“ $\cdot$ „innerer Fotoeffekt“
-$\cdot$ „de-Broglie-Wellenlänge“}
-Photonenenergie: $W=h\,f=\dfrac{h\,c}{\lambda}$\\
-innerer Fotoeffekt: $\lambda_{max}=\dfrac{h\,c}{W_g}$\qquad
-de Broglie: $\lambda=\dfrac{h}{m\,v}$
-\vspace{0.3mm}
-
-Si: $\lambda_{max}=\dfrac{6{,}6\cdot10^{-34}\cdot3\cdot10^{8}}
-{1{,}1\cdot1{,}6\cdot10^{-19}}=\erg{1{,}13\ \mu\mathrm{m}}$ (IR)
-\vspace{0.3mm}
-
-\textbf{Merksatz:} nur $\lambda<\lambda_{max}$ erzeugt Paare —
-größere Wellenlänge $=$ zu wenig Energie.
-\tr{$W_g$ in eV $\to$ J: $\times\,1{,}6\cdot10^{-19}$ \emph{vor} dem Teilen.}
-\end{RezeptB}
-
-% =====================================================================
-\begin{RezeptC}{2.7\ \ Poisson / Raumladung \hfill \Quelle{Ü2 A2 · Kl09/10/12 qualitativ}}
-$\dfrac{\dd^{2}\varphi}{\dd x^{2}}=-\dfrac{\rho}{\eps}$ \quad
-$E(x)=\displaystyle\int\frac{\rho}{\eps}\,\dd x$ \quad
-$U=-\displaystyle\int E\,\dd x$\\
-Ladungsneutralität: $N_A x_p=N_D x_n$;\ \ RLZ-Weite
-$w=x_p+x_n$
-\end{RezeptC}
-
-\end{multicols}
