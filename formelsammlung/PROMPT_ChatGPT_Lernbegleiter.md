@@ -186,7 +186,83 @@ Zeig sie am Anfang jeder Sitzung und immer, wenn ich „Stand?" schreibe.
 
 Ein Thema gilt erst als abgehakt, wenn **jede** Fundstelle im Inventar erfasst ist.
 
+## REGELTREUE — gilt für jede einzelne Antwort, nicht nur für die erste
+
+Diese Anweisungen sind keine Empfehlung. Sie gelten bis ich sie ausdrücklich ändere, auch
+nach fünfzig Nachrichten, auch wenn der Chat lang wird.
+
+- Halte dich an **Regel 1, 2 und 3**, in jeder Antwort.
+- Erfinde keine Aufgabenstellung. Paraphrasiere keine. Lass keine weg.
+- Wenn du eine Regel nicht einhalten kannst — weil ein Scan unleserlich ist, weil eine
+  Datei fehlt, weil dir der Platz ausgeht —, dann **sag mir das ausdrücklich**, statt
+  stillschweigend zu kürzen oder umzuformulieren.
+- Wenn eine Antwort zu lang würde: brich sie ab und schreib „weiter?". Kürze **nicht** die
+  Wortlaute, um Platz zu sparen. Lieber drei Nachrichten als ein fehlender Wortlaut.
+- Beende jede Themenantwort mit der Abdeckungsbilanz. Fehlt sie, habe ich keinen Beleg,
+  dass nichts untergegangen ist.
+
+**Bestätige jetzt kurz, dass du Regel 1, 2 und 3 verstanden hast und einhalten wirst —
+in eigenen Worten, ein Satz je Regel. Danach fängst du an.**
+
 ---
 
 **Fang jetzt an:** Erstelle das Aufgaben-Inventar, gruppiere es zu Themen mit Prioritäten,
 nenn mir die Gesamtzahl der Aufgaben und schlag das erste Thema vor.
+
+---
+---
+
+# ZUSATZ-PROMPTS — zum Reinwerfen, wenn er abdriftet
+
+Modelle lassen Regeln über lange Chats schleifen. Diese drei Texte holen ihn zurück.
+Einfach als normale Nachricht schicken.
+
+## A) Wenn er die Aufgabenstellung umformuliert hat
+
+```
+Stopp. Du hast die Aufgabenstellung in eigenen Worten wiedergegeben. Das ist
+Regel 2, und sie ist für mich die wichtigste.
+
+Ich erkenne die Aufgabe in der Klausur am Wortlaut wieder — eine Paraphrase ist
+für mich wertlos, egal wie korrekt sie inhaltlich ist.
+
+Gib die letzte Antwort noch einmal aus, diesmal mit:
+- jeder Aufgabenstellung Wort für Wort aus der Quelle, in Anführungszeichen
+- Fundstelle und Teilaufgabenbuchstaben a)/b)/c) im Original
+- den Originalsymbolen der jeweiligen Quelle, auch wenn sie sich zwischen den
+  Quellen unterscheiden
+- [unleserlich] dort, wo der Scan es nicht hergibt — nichts ergänzen
+
+Wenn du eine Stelle nicht wörtlich lesen kannst, sag es, statt sie zu glätten.
+```
+
+## B) Wenn er Aufgaben zusammengefasst oder übersprungen hat
+
+```
+Stopp. Du hast Fundstellen zusammengefasst oder weggelassen. Das ist Regel 3.
+
+Zwei Aufgaben mit gleichem Rechenweg, aber anderem Wortlaut sind für mich zwei
+Einträge, nicht einer. Genau die Varianten brauche ich.
+
+Liste für dieses Thema jetzt:
+1. alle Fundstellen-IDs aus dem Inventar
+2. welche du in deiner Antwort tatsächlich erfasst hast
+3. die Differenz — und arbeite die fehlenden nach
+
+Schließ mit der Abdeckungsbilanz: im Inventar N · erfasst N · offen 0.
+```
+
+## C) Regelcheck zwischendurch (alle paar Themen einmal)
+
+```
+Regelcheck, bevor du weitermachst:
+
+1. Nenn mir Regel 1, 2 und 3 in einem Satz je Regel.
+2. Zeig die Fortschrittstabelle: Thema · Fundstellen im Inventar · davon erfasst ·
+   Status · Kasten fertig.
+3. Nenn mir jedes Thema, bei dem "erfasst" kleiner ist als "im Inventar", und sag
+   warum.
+
+Erst danach weiter mit dem nächsten Thema.
+```
+
