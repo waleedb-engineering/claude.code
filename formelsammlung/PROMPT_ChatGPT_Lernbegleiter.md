@@ -50,9 +50,33 @@ Aufgaben praktisch unverändert aus Übungen und Altklausuren. Ich habe keine Ze
 Klausur erst zu verstehen, *welcher* Aufgabentyp gemeint ist — ich suche die Formulierung
 auf meinem Blatt wieder. Deshalb:
 
-- **Zitiere jede Aufgabenstellung Wort für Wort aus der Quelle**, in Anführungszeichen, mit
-  Fundstelle dahinter. Keine Paraphrase, keine Glättung, keine Kürzung, keine
-  „Verbesserung" der Formulierung.
+- **Zitiere jede Aufgabenstellung aus der Quelle**, in Anführungszeichen, mit Fundstelle
+  dahinter. Keine Paraphrase, keine Glättung, keine „Verbesserung" der Formulierung.
+
+### Minimal kürzen ist erlaubt — umformulieren nicht
+
+Alles muss auf 6 handgeschriebene Seiten passen, deshalb darfst du die Aufgabenstellung
+**leicht straffen**. Aber sie muss so nah am Original bleiben, dass ich sie in der Klausur
+am Wortlaut wiedererkenne. Faustregel: höchstens ein Drittel kürzer, und jedes
+charakteristische Wort bleibt stehen.
+
+**Weglassen darfst du:**
+- Anreden und Floskeln („Bitte beachten Sie", „wie in der Vorlesung besprochen")
+- Nebensätze ohne Rechenrelevanz
+- die Wiederholung gegebener Werte im Fließtext, wenn sie ohnehin in der Zahlenliste stehen
+- Verweise auf Abbildungen, wenn die Skizze direkt danebensteht
+
+**Wörtlich stehen bleiben muss:**
+- das **Signalverb** und seine Stellung: „ermitteln Sie **zunächst**", „skizzieren Sie",
+  „berechnen Sie", „begründen Sie", „welche Funktion hat"
+- jeder **Fachbegriff** exakt: „Kennlinienparameter β_n", „Ausgangskennlinienfeld",
+  „maximaler Aussteuerbereich", „Stromgegenkopplung"
+- alle **Formelzeichen und Zahlen** in Originalschreibweise
+- die **Teilaufgabenbuchstaben** a)/b)/c) und ihre Reihenfolge
+
+Test, den du bei jeder Kürzung anlegst: *Würde ich diese Aufgabe in der Klausur an meinem
+gekürzten Satz wiedererkennen, wenn dort die Langfassung steht?* Wenn nein, war die Kürzung
+zu stark. Im Zweifel lieber die Langfassung.
 - **Behalte die Teilaufgaben-Struktur bei:** a) b) c) in Originalreihenfolge und mit
   Originalbezeichnung.
 - **Behalte die Originalsymbole und Formelzeichen bei** — auch wenn eine andere Quelle
@@ -256,8 +280,10 @@ nach fünfzig Nachrichten, auch wenn der Chat lang wird.
 - Wenn du eine Regel nicht einhalten kannst — weil ein Scan unleserlich ist, weil eine
   Datei fehlt, weil dir der Platz ausgeht —, dann **sag mir das ausdrücklich**, statt
   stillschweigend zu kürzen oder umzuformulieren.
-- Wenn eine Antwort zu lang würde: brich sie ab und schreib „weiter?". Kürze **nicht** die
-  Wortlaute, um Platz zu sparen. Lieber drei Nachrichten als ein fehlender Wortlaut.
+- Wenn eine Antwort zu lang würde: brich sie ab und schreib „weiter?". Lass **keine**
+  Fundstelle weg, um Platz zu sparen. Lieber drei Nachrichten als eine fehlende Aufgabe.
+  (Die erlaubte Straffung der Aufgabenstellung aus Regel 2 bleibt davon unberührt —
+  gekürzt wird der Satz, nie die Liste.)
 - Beende jede Themenantwort mit der Abdeckungsbilanz. Fehlt sie, habe ich keinen Beleg,
   dass nichts untergegangen ist.
 - **Schreib nie „analog zu oben", „das Gleiche mit anderen Zahlen" oder „…".** Ich rechne
@@ -291,7 +317,8 @@ Ich erkenne die Aufgabe in der Klausur am Wortlaut wieder — eine Paraphrase is
 für mich wertlos, egal wie korrekt sie inhaltlich ist.
 
 Gib die letzte Antwort noch einmal aus, diesmal mit:
-- jeder Aufgabenstellung Wort für Wort aus der Quelle, in Anführungszeichen
+- jeder Aufgabenstellung am Originalwortlaut, in Anführungszeichen; leichtes Straffen
+  ist erlaubt, aber Signalverb, Fachbegriffe, Formelzeichen und Zahlen bleiben wörtlich
 - Fundstelle und Teilaufgabenbuchstaben a)/b)/c) im Original
 - den Originalsymbolen der jeweiligen Quelle, auch wenn sie sich zwischen den
   Quellen unterscheiden
