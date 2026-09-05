@@ -190,3 +190,35 @@ Abschnittsbanner allein am Spaltenfuß stehenbleibt.
 Diodenschaltungen, MOSFET/CMOS/OPV und Bipolartransistor bleiben 3,5 Seiten.
 Der Bauplan hatte dafür 4 Seiten vorgesehen — es wird also knapp, aber noch nicht
 entschieden. Gestrichen ist bis hier nichts.
+
+---
+
+## Dichte-Kalibrierung an der vorhandenen Handschrift
+
+Referenzwert vom Nutzer: auf dem bisherigen handschriftlichen Blatt passen
+**5 Übungen auf eine Seite**. Damit sind 13 Übungen ≈ 2,6 Seiten; die Klausuren
+überlappen inhaltlich stark (Beispielaufgaben 1/2 *sind* Klausur 2011 SS 1/2).
+Das 6-Seiten-Ziel ist also erreichbar — der frühere Vorschlag, auf zwei Dokumente
+auszuweichen, ist damit hinfällig und zurückgenommen.
+
+### Messreihe: was bringt kleinere Schrift wirklich?
+
+Gleicher Inhalt (Teil A + Halbleiter), nur Schrift und Innenabstände variiert:
+
+| Schrift | Rand | Abstand | Umfang |
+|---|---|---|---|
+| 6,7 pt | 1,1 mm | 1,2 mm | 2,56 Seiten |
+| 6,4 pt | 0,9 mm | 0,9 mm | 2,55 Seiten |
+| 6,1 pt | 0,8 mm | 0,7 mm | 2,53 Seiten |
+| 5,8 pt | 0,7 mm | 0,6 mm | 2,14 Seiten |
+
+**Befund:** Zwischen 6,7 und 6,1 pt ändert sich praktisch nichts. Der Platz geht
+nicht an die Schriftgröße verloren, sondern an **große unteilbare Rezeptkästen**,
+die am Spaltenende nicht mehr passen und darunter eine Lücke lassen. Der Sprung bei
+5,8 pt entsteht nur, weil dort zufällig ein großer Kasten noch in die Spalte rutscht.
+
+**Konsequenz für den Bau der Seiten 4–6:** Kästen klein schneiden statt Schrift
+verkleinern. Ein Thema darf auf mehrere kleine Kästen aufgeteilt werden, solange
+sie direkt aufeinander folgen — dann packt der Spaltenumbruch dicht.
+
+Gesetzt: **6,2 pt**, Innenabstand 0,8 mm, Kastenabstand 0,8 mm.

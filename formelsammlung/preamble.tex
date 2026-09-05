@@ -83,8 +83,11 @@
 \newcommand{\ekm}[1]{\ifmmode{\color{FSgruen}#1}\else\textcolor{FSgruen}{#1}\fi}
 
 % ---------- Schriftgroesse global ----------
-% Sehr dichte Seite: 6.7pt Grundschrift, 7.8pt Zeilenabstand.
-% Gemessen: bei 7pt lief Seite 2 um 22% ueber, bei 6.7pt passt alles.
+% Sehr dichte Seite: 6.2pt Grundschrift, 7.1pt Zeilenabstand.
+% Gemessen: Schriftgroesse allein bringt kaum etwas (6.7 -> 6.1pt aendert den
+% Umfang nur von 2.56 auf 2.53 Seiten). Der Platz geht an grosse unteilbare
+% Kaesten verloren, die am Spaltenende nicht mehr passen. Wirksamer Hebel ist
+% deshalb, Kaesten klein zu schneiden, nicht die Schrift zu verkleinern.
 \renewcommand{\baselinestretch}{1.0}
 
 % Schmale Spalten bei 7pt erzeugen sonst staendig Over-/Underfull-Boxen.
@@ -146,15 +149,15 @@
   FSbase/.style={
     boxrule      = 0.35mm,
     arc          = 0.6mm,
-    left         = 1.1mm,
-    right        = 1.1mm,
-    top          = 0.9mm,
-    bottom       = 0.9mm,
+    left         = 0.8mm,
+    right        = 0.8mm,
+    top          = 0.8mm,
+    bottom       = 0.8mm,
     boxsep       = 0mm,
-    before skip  = 1.2mm,
-    after skip   = 1.2mm,
+    before skip  = 0.8mm,
+    after skip   = 0.8mm,
     fonttitle    = \bfseries\footnotesize,
-    fontupper    = \fontsize{6.7}{7.8}\selectfont,
+    fontupper    = \fontsize{6.2}{7.1}\selectfont,
     colback      = white,
     colframe     = black,
     coltitle     = white,
