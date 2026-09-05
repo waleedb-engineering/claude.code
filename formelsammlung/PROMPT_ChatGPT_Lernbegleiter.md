@@ -373,3 +373,32 @@ Regelcheck, bevor du weitermachst:
 Erst danach weiter mit dem nächsten Thema.
 ```
 
+## E) Override — wenn ein Chat noch die alte, widersprüchliche Fassung enthält
+
+Nur nötig, wenn du in einem laufenden Chat weitermachst, dem du vorher eine frühere
+Fassung dieses Prompts gegeben hast. **Besser ist ein neuer Chat.** Die frühere Fassung
+sagte an zwei Stellen das Gegenteil (der Nutzer rechnet selbst; identische Aufgaben werden
+nicht doppelt ausgeschrieben) — bleiben diese Sätze unwidersprochen im Kontext, fällt das
+Modell nach einigen Runden dorthin zurück.
+
+Diesen Text schicken, **bevor** du die neue Fassung schickst:
+
+```
+Wichtig: Ab hier gelten neue Anweisungen. Sie ERSETZEN alles, was ich dir
+vorher gesagt habe. Wo sie meinen früheren Anweisungen widersprechen, gilt
+ausschließlich die neue Fassung. Vergiss die alten Regeln.
+
+Zwei Punkte habe ich ausdrücklich umgedreht:
+
+1. FRÜHER sagte ich „ich rechne, du prüfst". Das gilt NICHT mehr.
+   Ab jetzt rechnest DU alles vollständig vor. Ich lerne den Stoff nicht und
+   rechne nicht selbst. Frag mich nichts ab, gib mir keine Aufgaben zum
+   Selbstrechnen. Du lieferst fertig gelöste Aufgaben zum Abschreiben.
+
+2. FRÜHER sagte ich, identische Aufgaben rechnen wir nicht doppelt. Das gilt
+   NICHT mehr. Ab jetzt wird JEDE Fundstelle vollständig ausgeschrieben, auch
+   wenn sich der Rechenweg wiederholt. „Analog zu oben" ist verboten.
+
+Bestätige mir in zwei Sätzen, dass diese beiden Punkte ab jetzt umgekehrt
+gelten. Danach schicke ich dir die vollständige neue Anweisung.
+```
