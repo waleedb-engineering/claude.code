@@ -1,0 +1,15 @@
+{
+  "_comment": "ClipForge Feature Flags. ENV CLIPFORGE_FLAG_<NAME>=true|false überschreibt. Keine Secrets hier ablegen.",
+  "flags": {
+    "studio": true,
+    "studio_url_import": true,
+    "studio_external_providers": true,
+    "studio_mock_providers": false,
+    "studio_automation": true,
+    "studio_analytics": true,
+    "studio_ideas": true,
+    "studio_youtube_import": false,
+    "studio_voice_cloning": false,
+    "studio_face_swap": false
+  }
+}

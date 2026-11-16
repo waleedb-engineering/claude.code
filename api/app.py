@@ -1689,3 +1689,19 @@ def list_files(job_id: str) -> dict:
         if os.path.isfile(full):
             files.append({"name": name, "size_bytes": os.path.getsize(full)})
     return {"job_id": job_id, "files": files}
+
+
+# --------------------------------------------------------------------------
+# Creator Studio (Quelle → Skript → Szenen → Render → Publishing-Draft)
+# --------------------------------------------------------------------------
+# Eigene Service-Schicht unter clipforge/studio/, Routen in studio_routes.py.
+# Hintergrund-Worker startet erst beim Server-Start (startup-Event), nicht beim
+# Import — Tests ohne Server bleiben frei von Threads.
+from studio_routes import init_studio  # noqa: E402
+
+studio = init_studio(
+    app,
+    registry,
+    youtube_status=lambda: build_youtube_oauth_service().readiness(),
+    youtube_upload_service=build_youtube_upload_service,
+)

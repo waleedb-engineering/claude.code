@@ -177,6 +177,25 @@ class JobRegistry:
         self._persist(job)
         return job
 
+    def import_completed(self, filename: str, build) -> Job:
+        """Legt einen bereits fertigen Job an (Creator-Studio-Export).
+
+        `build(job_dir)` schreibt clip_*.mp4 + clips.json in den Job-Ordner und
+        liefert das result-dict. Es läuft KEINE Pipeline. Schlägt `build` fehl,
+        wird der halbfertige Ordner wieder entfernt.
+        """
+        job = self.create(filename=filename, top_n=1)
+        try:
+            result = build(job.job_dir)
+        except Exception:
+            with self._lock:
+                self._jobs.pop(job.id, None)
+            shutil.rmtree(job.job_dir, ignore_errors=True)
+            raise
+        job.progress.append("Aus dem Creator Studio übernommen (kein Pipeline-Lauf).")
+        self._update(job, status=STATUS_COMPLETED, result=result)
+        return job
+
     def get(self, job_id: str) -> Job | None:
         with self._lock:
             return self._jobs.get(job_id)

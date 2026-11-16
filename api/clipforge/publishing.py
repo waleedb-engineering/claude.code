@@ -31,7 +31,7 @@ from .rerender import manual_export_path, list_manual_exports
 
 PUBLISHING_DIR_NAME = "publishing"
 
-PLATFORMS = ("youtube_shorts", "tiktok", "instagram_reels")
+PLATFORMS = ("youtube_shorts", "tiktok", "instagram_reels", "x")
 
 STATUSES = (
     "draft", "ready", "scheduled", "publishing", "published", "failed", "canceled",
@@ -70,6 +70,12 @@ PLATFORM_NOTES = {
         "- Offizielle Graph API braucht Professional-Account und ein öffentlich\n"
         "  erreichbares Video-URL-Hosting — passt nicht zu local-first, daher Pack.\n"
         "- Pinned Comment nach dem Posten manuell anheften."
+    ),
+    "x": (
+        "X (manueller Upload):\n"
+        "- Text + Hashtags aus diesem Pack einfügen (Zeichenlimit des Kontos beachten).\n"
+        "- Die X-API für Medien-Uploads ist kostenpflichtig und hier nicht angebunden —\n"
+        "  daher nur Pack. Video beim Verfassen des Posts manuell anhängen."
     ),
 }
 
@@ -337,6 +343,8 @@ _PUBLISHER_FIELDS = frozenset({
     "last_error_category", "last_error_code", "requires_manual_check",
     "requires_reauth", "reconciliation_status", "reconciliation_checked_at",
     "state_transition_history",
+    # Creator Studio — Planung + manuell bestätigte Veröffentlichung.
+    "schedule_state", "schedule_due_at", "publish_source", "external_url",
 })
 
 
