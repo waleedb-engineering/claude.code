@@ -7,6 +7,32 @@ Semver mit Beta-Suffix (`MAJOR.MINOR.PATCH-beta.N`). Aktuelle Version: siehe
 
 ---
 
+# Unveröffentlicht
+
+## Creator Studio (neu)
+- Quellen: Skript, Prompt, Artikel-/Website-/Social-URL (SSRF-geschützt), PDF,
+  Audio, Musik (Beat-Sync), Podcast/Longform (bestehende Pipeline), eigene
+  Medien, bestehender Job, Produkt-Ad
+- Lokaler FFmpeg-Renderer: 9:16, 16:9, 1:1, 4:5 · 720p/1080p/4K · Captions
+  (minimal, bold, karaoke, dynamic, none) · Musik mit Ducking · Split-Screen ·
+  Cinematic-Look
+- Provider-Gateway mit Kostenabschätzung und hartem Budgetlimit; lokale und
+  optionale Cloud-Provider (ElevenLabs, OpenAI) — Cloud-Adapter nicht gegen
+  echte APIs verifiziert
+- Szenen-Editor mit Autosave, Undo/Redo, Versionskonflikt-Schutz, Vorschau-
+  und Final-Render, Einzel-Szenen-Regeneration
+- Persistente Hintergrund-Aufgaben und Automation-Worker (täglich,
+  wöchentlich, monatlich) mit Wiederaufnahme nach Neustart
+- Publishing: Plattform `x`, Readiness je Plattform, Planung markiert
+  fällige Entwürfe, manuell bestätigte Veröffentlichung
+- Analytics mit manuellen/synchronisierten Metriken, Hook-Vergleich, Remix
+- Ideen-Bibliothek, Studio-CLI, `feature_flags.json`
+- Nicht enthalten: KI-Video, Talking Avatar, Face Swap, Voice Cloning,
+  YouTube-Import, Upload zu TikTok/Instagram/X — siehe
+  `docs/REVID_PARITY_STATUS.md`
+
+---
+
 # 0.1.0-beta.1
 
 Erster geschlossener Beta-Stand. Lokales Tool, kein Account, keine Cloud

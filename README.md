@@ -25,6 +25,12 @@ kein Public/Unlisted, kein TikTok/Instagram-Auto-Upload.
 - ⚠️ **Bekannte Grenzen:** [`docs/KNOWN_ISSUES.md`](docs/KNOWN_ISSUES.md)
 - 🔒 **Security & Privacy:** [`docs/SECURITY_PRIVACY_REVIEW.md`](docs/SECURITY_PRIVACY_REVIEW.md)
 
+### Creator Studio
+
+- 🎬 **Bedienung & Einrichtung:** [`docs/STUDIO.md`](docs/STUDIO.md) — Provider, Plattformen, Automationen, CLI.
+- 📊 **Ehrlicher Funktionsstand:** [`docs/REVID_PARITY_STATUS.md`](docs/REVID_PARITY_STATUS.md) — was lokal läuft, was Zugangsdaten braucht, was fehlt.
+- 🔌 **Studio-API:** [`docs/API_STUDIO.md`](docs/API_STUDIO.md)
+
 ### Technische Dokumentation
 
 - 📄 **Produktdefinition:** [`docs/PRODUCT.md`](docs/PRODUCT.md) — Problem, Lösung, MVP-Scope, Architektur, Risiken.
@@ -45,7 +51,9 @@ kein Public/Unlisted, kein TikTok/Instagram-Auto-Upload.
 ./scripts/start_local.sh    # 2) Start: Backend + Frontend, ein Befehl, Strg+C zum Stoppen
 ```
 
-Danach im Browser öffnen: **http://127.0.0.1:3000/upload**
+Danach im Browser öffnen: **http://127.0.0.1:3000/upload** (Longform → Shorts)
+oder **http://127.0.0.1:3000/studio** (Creator Studio: Skript, URL, PDF, Audio,
+Musik → Video).
 
 Umgebung prüfen (Python/Node/ffmpeg/Dependencies/Ports/optionale Features):
 
@@ -58,6 +66,7 @@ Tests laufen lassen:
 ```bash
 cd api && python3 tests/test_pipeline_core.py   # Backend-Regressionstests
 cd web && npm run test:e2e                       # Browser-E2E-Smoke-Suite
+python3 scripts/studio_smoke.py                  # Studio: echtes Testvideo, ohne Netz
 ```
 
 📘 **Ausführliche Anleitung (Voraussetzungen, erster Test, typische Fehler,
@@ -80,6 +89,7 @@ Reset):** [`docs/LOCAL_BETA_GUIDE.md`](docs/LOCAL_BETA_GUIDE.md)
 | **Editor & Export** | Web-Clip-Editor mit Re-Render · manuelle Exporte · `exports.zip` / `all-exports.zip` |
 | **Content** | Titel, Hook-Varianten, Hashtags, Plattform-Beschreibungen pro Clip (regelbasiert, optional KI) |
 | **Publishing** | Lokaler Planner (Drafts, kein Auto-Upload) · globale Übersicht · YouTube **Dry-Run** · echter **privater** YouTube-Upload-Pfad (Flag, default aus) mit Retry/Recovery/Reconciliation/Race-Schutz |
+| **Creator Studio** | Quelle → Skript → Szenen → Render → Publishing-Entwurf für Skript, Prompt, URL, PDF, Audio, Musik (Beat-Sync), eigene Medien · Szenen-Editor mit Autosave, Undo/Redo und Versionen · lokale Automationen · Analytics mit manuellen Metriken · Ideen-Bibliothek. Stand je Funktion: [`docs/REVID_PARITY_STATUS.md`](docs/REVID_PARITY_STATUS.md) |
 | **DX / Release** | One-Command Setup/Start · Environment Doctor · Playwright-Browser-E2E · `release_check.sh` · reproduzierbares Beta-Package |
 
 ## Sichere Defaults
@@ -89,7 +99,11 @@ Reset):** [`docs/LOCAL_BETA_GUIDE.md`](docs/LOCAL_BETA_GUIDE.md)
   (KI-Analyzer via `ANTHROPIC_API_KEY`, echter YouTube-Upload via Flags).
 - **YouTube-Upload standardmäßig AUS** (`CLIPFORGE_ENABLE_YOUTUBE_UPLOAD=false`)
   und **ausschließlich `private`** — kein Public/Unlisted im Code vorhanden.
-- **Kein Auto-Posting, kein Scheduling-Daemon, kein TikTok/Instagram-Upload.**
+- **Kein Auto-Posting, kein TikTok/Instagram/X-Upload.** Der lokale
+  Studio-Worker startet Automationen und markiert geplante Entwürfe als
+  „fällig“ — er veröffentlicht nie etwas.
+- **Kostenpflichtige Provider nur mit Budget:** Das Budgetlimit eines
+  Studio-Projekts steht auf 0; damit wird kein bezahlter Dienst aufgerufen.
 - **Keine Secrets im DOM/Log/Response**; YouTube-Tokens nur im OS-Keychain.
 - **Nicht für Internet-Exposition** gedacht (kein Auth, offene CORS für lokale
   Entwicklung). Details: [`docs/SECURITY_PRIVACY_REVIEW.md`](docs/SECURITY_PRIVACY_REVIEW.md).

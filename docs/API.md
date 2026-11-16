@@ -876,3 +876,12 @@ Next.js (später)  ──HTTP──►  FastAPI (app.py)  ──Funktionsaufruf�
 ```
 
 Kein Code in `api/clipforge/` wurde für die API verändert.
+
+---
+
+## Creator Studio
+
+Die Studio-Endpunkte (`/api/studio/*`) sind in
+[`API_STUDIO.md`](API_STUDIO.md) dokumentiert. An den hier beschriebenen
+Publishing-Endpunkten hat sich nur geändert, dass `platform` zusätzlich `x`
+akzeptiert.

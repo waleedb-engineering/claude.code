@@ -23,3 +23,8 @@ google-auth-oauthlib>=1.0.0
 # "upload_dependency_missing" (kein Crash, kein Upload). Nur für den echten
 # Private-Upload nötig; Tests laufen ohne diese Library (Google wird gemockt).
 google-api-python-client>=2.0.0
+# Creator Studio: PDF-Textextraktion (ohne OCR). OPTIONAL & defensiv importiert:
+# fehlt es, meldet der PDF-Workflow sauber "pdf_dependency_missing".
+pypdf>=4.0.0
+# Creator Studio: Beat-Erkennung für Musikvideos (kommt auch über OpenCV mit).
+numpy>=1.24.0

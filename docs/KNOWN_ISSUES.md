@@ -114,3 +114,23 @@ ist sicherer als ein naives Auto-Resume) — siehe
 Wenn du ein Verhalten findest, das nicht hier steht und nicht erwartet
 wirkt: bitte melden (siehe
 [`docs/BETA_TESTER_GUIDE.md`](BETA_TESTER_GUIDE.md#11-fehler-melden)).
+
+## Creator Studio
+
+Vollständige Matrix: [`REVID_PARITY_STATUS.md`](REVID_PARITY_STATUS.md). Die
+wichtigsten Grenzen:
+
+- **Ohne Sprach-Provider bleibt das Video stumm.** Lokale Sprache gibt es über
+  macOS `say` oder `espeak-ng`; beide wurden in der Entwicklungsumgebung
+  (Linux ohne espeak) nicht real geprüft.
+- **Prompt → Video ohne `ANTHROPIC_API_KEY`** erzeugt nur ein Gerüst mit
+  Platzhaltern, kein fertiges Skript.
+- **Captions bei TTS sind zeitlich geschätzt**, wortgenau nur bei Audio → Video.
+- **Cloud-Adapter (ElevenLabs, OpenAI)** sind nur mit gemocktem HTTP getestet.
+- **Kein Upload zu TikTok, Instagram, X**; nur Export-Pack.
+- **Geplante Entwürfe werden nicht automatisch gepostet**, nur als fällig markiert.
+- **Beat-Erkennung ist heuristisch** und kann das Tempo halbieren/verdoppeln.
+- **Gescannte PDFs** (ohne Textebene) werden abgelehnt, kein OCR.
+- **JavaScript-only-Seiten und Login-Seiten** liefern beim URL-Import keinen Text.
+- **Backend-Fehlermeldungen sind nur auf Deutsch**, auch bei englischer Oberfläche.
+- **Der Automation-Worker läuft nur, solange das Backend läuft.**

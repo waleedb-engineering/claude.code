@@ -120,6 +120,12 @@ fi
 rm -rf "$CLI_OUT"
 
 # ---------------------------------------------------------------------------
+section "6b) Creator-Studio-Smoke (echtes Testvideo, Mock-Provider, ffprobe)"
+# ---------------------------------------------------------------------------
+run_logged "Studio-Smoke (create → render → export → ffprobe → Automation)" \
+  "$LOG_DIR/studio_smoke.log" "$PYTHON_BIN" "$REPO_ROOT/scripts/studio_smoke.py"
+
+# ---------------------------------------------------------------------------
 section "7) Frontend: TypeScript"
 # ---------------------------------------------------------------------------
 cd "$WEB_DIR"
