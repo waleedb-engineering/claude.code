@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 
 const links = [
   { href: "/", label: "Start" },
+  { href: "/studio", label: "Studio" },
   { href: "/upload", label: "Hochladen" },
   { href: "/jobs", label: "Jobs" },
   { href: "/publishing", label: "Publishing" },
@@ -15,7 +16,7 @@ export default function Nav() {
   const pathname = usePathname();
   return (
     <header className="sticky top-0 z-20 border-b border-neutral-800/80 bg-neutral-950/70 backdrop-blur">
-      <div className="mx-auto flex max-w-5xl items-center justify-between px-5 py-3">
+      <div className="mx-auto flex max-w-5xl items-center justify-between gap-3 px-5 py-3">
         <Link href="/" className="flex items-center gap-2">
           <span className="grid h-7 w-7 place-items-center rounded-lg bg-gradient-to-br from-indigo-500 to-fuchsia-500 text-sm font-bold text-white">
             C
@@ -24,7 +25,7 @@ export default function Nav() {
             ClipForge <span className="text-indigo-400">AI</span>
           </span>
         </Link>
-        <nav className="flex items-center gap-1 text-sm">
+        <nav aria-label="Hauptnavigation" className="flex items-center gap-1 overflow-x-auto text-sm">
           {links.map((l) => {
             const active =
               l.href === "/" ? pathname === "/" : pathname.startsWith(l.href);

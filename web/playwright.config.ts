@@ -85,7 +85,12 @@ export default defineConfig({
       url: `${BACKEND_URL}/health`,
       reuseExistingServer: !process.env.CI,
       timeout: 60_000,
-      env: { CLIPFORGE_JOBS_DIR: E2E_JOBS_DIR },
+      env: {
+        CLIPFORGE_JOBS_DIR: E2E_JOBS_DIR,
+        // Creator Studio: isolierte Daten + Mock-Provider (kein Netz, keine Kosten)
+        CLIPFORGE_STUDIO_DIR: join(E2E_JOBS_DIR, "..", ".e2e-studio"),
+        CLIPFORGE_FLAG_STUDIO_MOCK_PROVIDERS: "true",
+      },
     },
     {
       command: `npm run dev`,

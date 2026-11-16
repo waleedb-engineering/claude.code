@@ -50,3 +50,4 @@ dist/
 
 # Creator Studio: lokale Projektdaten, Renders, Caches (nutzerspezifisch)
 api/studio_data/
+web/.e2e-studio/
