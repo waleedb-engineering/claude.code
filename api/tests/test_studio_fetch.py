@@ -135,13 +135,20 @@ def test_real_local_server_is_never_reached():
 
         def log_message(self, *a):
             pass
-    srv = http.server.HTTPServer(("127.0.0.1", 8080), Handler)
+    # Zufälliger Port (parallel laufende Suiten kollidieren sonst auf 8080).
+    # Der Port wird für diesen Test erlaubt, damit wirklich die IP-Prüfung
+    # blockiert und nicht schon die Port-Regel.
+    srv = http.server.HTTPServer(("127.0.0.1", 0), Handler)
+    port = srv.server_address[1]
     threading.Thread(target=srv.serve_forever, daemon=True).start()
+    safe_fetch.ALLOWED_PORTS.add(port)
     try:
-        assert _code(lambda: safe_fetch.fetch("http://127.0.0.1:8080/secret")) == "url_blocked"
-        assert _code(lambda: safe_fetch.fetch("http://localhost:8080/secret")) == "url_blocked"
+        assert _code(lambda: safe_fetch.fetch(f"http://127.0.0.1:{port}/secret")) == "url_blocked"
+        assert _code(lambda: safe_fetch.fetch(f"http://localhost:{port}/secret")) == "url_blocked"
+        assert _code(lambda: safe_fetch.fetch(f"http://[::1]:{port}/secret")) == "url_blocked"
         assert hits == []
     finally:
+        safe_fetch.ALLOWED_PORTS.discard(port)
         srv.shutdown()
         srv.server_close()
 

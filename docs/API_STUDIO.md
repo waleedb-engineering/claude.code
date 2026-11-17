@@ -4,7 +4,11 @@ Lokale REST-API des Studios. Die vollständigen, maschinenlesbaren Modelle
 liefert das laufende Backend unter `http://127.0.0.1:8000/openapi.json`
 (Swagger-UI: `/docs`). Die übrigen Endpunkte stehen in [`API.md`](API.md).
 
-Die API hat **keine Authentifizierung** und ist nur für `127.0.0.1` gedacht.
+**Token-Pflicht:** Alle Requests außer `GET`/`HEAD`/`OPTIONS` brauchen den
+Header `X-ClipForge-Token` (`401 token_missing`, `403 token_invalid`,
+`403 origin_not_allowed`). Das Token liefert `GET /api/session` an lokale
+Aufrufer. Siehe [`LOCAL_API_SECURITY.md`](LOCAL_API_SECURITY.md). Die API ist
+nur für `127.0.0.1` gedacht.
 
 ## Grundregeln
 
@@ -62,6 +66,10 @@ erst `POST /projects`, dann Upload über `/source` bzw. `/media`, dann
 | GET | `/overview` | Flags, Workflows, Zähler, Worker-Status |
 | GET | `/workflows` | Workflows mit Verfügbarkeit und Begründung |
 | GET | `/providers` | Provider- und Plattform-Readiness |
+| GET | `/credentials` | welche Schlüssel hinterlegt sind (nie Werte) |
+| PUT | `/credentials/{provider}` | Schlüssel setzen (`{"api_key": "…"}`), wirkt sofort. `provider`: `elevenlabs`, `openai`, `anthropic` |
+| DELETE | `/credentials/{provider}` | Schlüssel entfernen (`404 credential_not_set`, wenn keiner da war) |
+| POST | `/credentials/{provider}/test` | Schlüssel ausdrücklich gegen den Anbieter prüfen |
 | GET | `/voices?language=&tone=` | Stimmen je Provider + automatische Auswahl |
 | POST | `/voices/preview` | Hörprobe (MP3). Kostenpflichtig nur mit `confirm_cost: true` |
 | GET | `/caption-styles` | Caption-Stile |
@@ -82,7 +90,7 @@ erst `POST /projects`, dann Upload über `/source` bzw. `/media`, dann
 | Methode | Pfad | Zweck |
 |---|---|---|
 | GET | `/projects` | Liste |
-| POST | `/projects` | anlegen (`workflow`, je nach Workflow `prompt`, `script`, `url`, `job_id`, `product`) |
+| POST | `/projects` | anlegen (`workflow`, je nach Workflow `prompt`, `script`, `url`, `job_id`, `product`; optional `options`, siehe `STUDIO.md`) |
 | GET | `/projects/{id}` | Projekt, Aufgaben, Renders, Medien, Artefakte |
 | PATCH | `/projects/{id}` | Editor-Speicherung (`expected_version` + geänderte Felder) |
 | DELETE | `/projects/{id}` | löschen (nicht bei laufender Aufgabe) |
@@ -155,10 +163,11 @@ ist als `estimated` gekennzeichnet. Fehlende Werte sind `null`.
 | Allgemein | `validation_error`, `invalid_id`, `unsafe_path`, `feature_disabled`, `internal_error` |
 | Projekt | `project_not_found`, `project_busy`, `project_empty`, `version_required`, `version_conflict`, `version_not_found`, `scene_invalid`, `scene_not_found`, `workflow_unavailable` |
 | URL | `url_invalid`, `url_blocked`, `url_unreachable`, `url_timeout`, `url_too_large`, `url_too_many_redirects`, `url_http_error`, `url_unsupported_type` |
-| Dateien | `file_empty`, `file_too_large`, `file_type_not_allowed`, `file_unreadable`, `upload_not_expected`, `source_missing`, `media_not_found`, `media_in_use`, `media_unsupported`, `music_not_found`, `artifact_not_found` |
+| Dateien | `file_empty`, `file_too_large`, `file_type_not_allowed`, `file_unreadable`, `upload_not_expected`, `source_missing`, `file_too_long`, `media_not_found`, `media_in_use`, `media_unsupported`, `music_not_found`, `artifact_not_found` |
 | Extraktion | `extraction_empty`, `extraction_failed`, `pdf_invalid`, `pdf_encrypted`, `pdf_no_text`, `pdf_dependency_missing`, `transcription_unavailable`, `transcription_failed`, `transcription_empty`, `script_empty`, `job_not_found`, `job_no_transcript`, `jobs_unavailable` |
 | Render | `quality_blocked`, `budget_exceeded`, `render_missing`, `render_not_final`, `render_not_found`, `render_not_applicable`, `render_timeout`, `ffmpeg_failed`, `ffmpeg_missing`, `beat_detection_failed` |
-| Provider | `provider_unknown`, `provider_not_configured`, `provider_failed`, `confirmation_required` |
+| Provider | `provider_unknown`, `provider_not_configured`, `provider_failed`, `confirmation_required`, `credential_not_set`, `credentials_store_failed` |
+| Sicherheit | `token_missing`, `token_invalid`, `origin_not_allowed`, `host_not_local` |
 | Aufgaben | `task_not_found`, `task_active`, `task_not_retryable`, `task_not_cancelable`, `task_kind_unknown`, `interrupted` |
 | Automation | `automation_not_found`, `automation_busy`, `automation_capacity`, `run_not_found`, `run_not_retryable` |
 | Publishing/Analytics | `draft_not_found`, `draft_not_published`, `metrics_unavailable`, `metrics_sync_failed`, `idea_not_found` |

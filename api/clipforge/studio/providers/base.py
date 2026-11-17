@@ -65,7 +65,8 @@ class VoiceProvider(Provider):
     def estimate_cost(self, chars: int) -> float:
         return 0.0
 
-    def synthesize(self, text: str, language: str, voice_id: str, out_path: str) -> VoiceResult:
+    def synthesize(self, text: str, language: str, voice_id: str, out_path: str,
+                   model: str | None = None) -> VoiceResult:
         raise NotImplementedError
 
 

@@ -40,7 +40,8 @@ def probe(path: str) -> MediaInfo:
         "-show_format", "-show_streams",
         path,
     ]
-    out = subprocess.run(cmd, capture_output=True, text=True, check=True)
+    # Timeout: eine defekte/bösartige Datei darf ffprobe nicht endlos blockieren.
+    out = subprocess.run(cmd, capture_output=True, text=True, check=True, timeout=120)
     data = json.loads(out.stdout)
 
     duration = float(data.get("format", {}).get("duration", 0.0) or 0.0)
@@ -63,7 +64,7 @@ def extract_audio(video_path: str, out_wav_path: str, sample_rate: int = 16000) 
         "-vn", "-ac", "1", "-ar", str(sample_rate),
         "-f", "wav", out_wav_path,
     ]
-    subprocess.run(cmd, capture_output=True, text=True, check=True)
+    subprocess.run(cmd, capture_output=True, text=True, check=True, timeout=3600)
     return out_wav_path
 
 
@@ -94,7 +95,10 @@ def detect_silences(
         "-af", f"silencedetect=noise={noise_db}dB:d={min_seconds}",
         "-f", "null", "-",
     ]
-    proc = subprocess.run(cmd, capture_output=True, text=True)
+    try:
+        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=1800)
+    except subprocess.TimeoutExpired as exc:
+        raise RuntimeError("Stille-Erkennung hat das Zeitlimit überschritten.") from exc
     # silencedetect schreibt nach stderr
     text = proc.stderr
     silences: list[tuple[float, float]] = []

@@ -80,8 +80,22 @@ def _write_ass_tmp(ass: str) -> str:
         return fh.name
 
 
+def _render_timeout() -> int:
+    try:
+        return max(60, int(os.environ.get("CLIPFORGE_RENDER_TIMEOUT", "1800")))
+    except ValueError:
+        return 1800
+
+
 def _run_ffmpeg(cmd: list[str], clip: ScoredClip) -> None:
-    proc = subprocess.run(cmd, capture_output=True, text=True)
+    try:
+        # Timeout: ein hängendes FFmpeg darf den Job-Worker nicht ewig blockieren.
+        proc = subprocess.run(cmd, capture_output=True, text=True,
+                              timeout=_render_timeout())
+    except subprocess.TimeoutExpired as exc:
+        raise RuntimeError(
+            f"ffmpeg-Rendering hat das Zeitlimit überschritten (Clip "
+            f"{clip.start:.1f}-{clip.end:.1f}s).") from exc
     if proc.returncode != 0:
         raise RuntimeError(
             f"ffmpeg-Rendering fehlgeschlagen (Clip {clip.start:.1f}-"

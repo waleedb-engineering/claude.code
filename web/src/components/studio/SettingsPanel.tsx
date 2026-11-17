@@ -324,6 +324,68 @@ export default function SettingsPanel({ project, media, estimate, onChange, onMe
         </select>
       </div>
 
+      <div className="space-y-2">
+        <h3 className="text-xs font-semibold uppercase tracking-wide text-neutral-400">{t("opt.title")}</h3>
+        <label htmlFor="s-platform" className={labelCls}>
+          {t("opt.platform")}
+        </label>
+        <select
+          id="s-platform"
+          className={inputCls}
+          value={project.options.platform}
+          onChange={(e) => onChange({ options: { ...project.options, platform: e.target.value } })}
+        >
+          {["generic", "youtube_shorts", "tiktok", "instagram_reels", "x"].map((p) => (
+            <option key={p}>{p}</option>
+          ))}
+        </select>
+        <label htmlFor="s-forbidden" className={labelCls}>
+          {t("opt.forbidden")}
+        </label>
+        <input
+          id="s-forbidden"
+          className={inputCls}
+          value={project.options.forbidden_topics.join(", ")}
+          onChange={(e) =>
+            onChange({
+              options: {
+                ...project.options,
+                forbidden_topics: e.target.value.split(",").map((x) => x.trim().toLowerCase()).filter(Boolean),
+              },
+            })
+          }
+        />
+        <label htmlFor="s-voice-model" className={labelCls}>
+          {t("opt.voiceModel")}
+        </label>
+        <input
+          id="s-voice-model"
+          className={inputCls}
+          value={project.options.voice_model}
+          onChange={(e) => onChange({ options: { ...project.options, voice_model: e.target.value } })}
+        />
+        <label className="flex items-center gap-2 text-xs text-neutral-300">
+          <input
+            type="checkbox"
+            className="accent-indigo-400"
+            checked={project.options.image_animation}
+            onChange={(e) => onChange({ options: { ...project.options, image_animation: e.target.checked } })}
+          />
+          {t("opt.imageAnimation")}
+        </label>
+        <label className="flex items-center gap-2 text-xs text-neutral-300">
+          <input
+            type="checkbox"
+            className="accent-indigo-400"
+            checked={project.options.music_mode === "none"}
+            onChange={(e) =>
+              onChange({ options: { ...project.options, music_mode: e.target.checked ? "none" : "track" } })
+            }
+          />
+          {t("opt.musicNone")}
+        </label>
+      </div>
+
       <div className="space-y-1">
         <label htmlFor="s-budget" className={labelCls}>
           {t("ed.budget")}

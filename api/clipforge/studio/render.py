@@ -26,6 +26,7 @@ from . import audio as audio_mod
 from .audio import media_duration, run_ffmpeg
 from .costs import CostLedger
 from .errors import BudgetExceeded, ProviderError, StudioError
+from .options import options_of
 from .projects import IMAGE_EXT, VIDEO_EXT, resolve_music
 from .providers import get_image, get_voice, select_voice
 from .providers.local import speech_seconds
@@ -89,9 +90,11 @@ class StudioRenderer:
         self.cache = os.path.join(project_dir, "cache")
         self.ledger = CostLedger(project_dir, project.get("budget_limit_usd") or 0.0)
         self.warnings: list[str] = []
+        self._upscale_checked: set[str] = set()
         self.fallbacks: list[dict] = []
         self.voice_override = voice_override
         self.brand = load_brand_kit()
+        self.opt = options_of(project)
         os.makedirs(os.path.join(self.cache, "voice"), exist_ok=True)
         os.makedirs(os.path.join(self.cache, "image"), exist_ok=True)
 
@@ -139,20 +142,22 @@ class StudioRenderer:
         if not text.strip():
             return self._silence(out, 1.0), 0.0, "none"
         provider = get_voice(voice["provider"])
-        key = _hash(provider.id, voice["voice_id"], self.p["language"], text)
+        key = _hash(provider.id, voice["voice_id"], self.p["language"], text,
+                    self.opt.voice_model)
         cached = os.path.join(self.cache, "voice", key + ".audio")
         if not os.path.isfile(cached):
+            # Reservieren VOR der Anfrage (wirft BudgetExceeded, ohne etwas zu senden)
+            rid = self.ledger.reserve(
+                provider.estimate_cost(len(text)) if provider.paid else 0.0,
+                f"Voice-over ({provider.label})")
             try:
-                if provider.paid:
-                    self.ledger.ensure_can_spend(
-                        provider.estimate_cost(len(text)), f"Voice-over ({provider.label})")
                 tmp = cached + ".tmp"
-                result = provider.synthesize(text, self.p["language"], voice["voice_id"], tmp)
+                result = provider.synthesize(text, self.p["language"], voice["voice_id"], tmp,
+                                             model=self.opt.voice_model or None)
                 os.replace(tmp, cached)
-                self.ledger.charge(result.cost_usd, provider.id, "voice")
-            except BudgetExceeded:
-                raise
+                self.ledger.commit(rid, result.cost_usd, provider.id, "voice")
             except ProviderError as exc:
+                self.ledger.release(rid)  # Ausfall kostet nichts; Fallback ist kostenlos
                 self.fallbacks.append({"scene_id": scene["id"], "kind": "voice",
                                        "provider": provider.id, "fallback": "none",
                                        "reason": str(exc)})
@@ -160,6 +165,9 @@ class StudioRenderer:
                     f"Voice-Provider '{provider.id}' ausgefallen — Szene ohne Stimme gerendert.")
                 seconds = speech_seconds(text)
                 return self._silence(out, seconds), seconds, "estimated"
+            except BaseException:
+                self.ledger.release(rid)
+                raise
         run_ffmpeg(["ffmpeg", "-y", "-i", cached, "-vn", "-ac", "1", "-ar", "44100",
                     "-c:a", "pcm_s16le", out], "Voice-Normalisierung")
         return out, media_duration(out), "estimated"
@@ -190,6 +198,25 @@ class StudioRenderer:
             wf.setframerate(44100)
             wf.writeframes(frames)
 
+    def _note_upscale(self, path: str, w: int, h: int) -> None:
+        """Kontrolliertes Upscaling: kleinere Quellen werden hochskaliert und
+        das wird im finalen Render-Bericht offen vermerkt (keine stille
+        „4K“-Behauptung). Vorschauen sind bewusst klein und warnen nicht."""
+        if self.preview or path in self._upscale_checked:
+            return
+        self._upscale_checked.add(path)
+        try:
+            info = probe(path)
+        except Exception:  # noqa: BLE001 — Messfehler blockiert den Render nicht
+            return
+        if not info.width or not info.height:
+            return
+        factor = max(w / info.width, h / info.height)
+        if factor > 1.0 + 1e-6:
+            self.warnings.append(
+                f"'{os.path.basename(path)}' ({info.width}×{info.height}) ist kleiner als "
+                f"die Zielauflösung und wurde um Faktor {factor:.1f} hochskaliert.")
+
     # ------------------------------------------------------------ Visuals
     def _ai_image(self, scene: dict) -> str | None:
         """KI-Bild (gecacht). None → lokaler Fallback wurde vermerkt."""
@@ -199,27 +226,32 @@ class StudioRenderer:
         path = os.path.join(self.cache, "image", key + ".png")
         if os.path.isfile(path):
             return path
+        rid = None
         try:
             provider = get_image(pid)
             state, hint = provider.status()
             if state != "ready":
                 raise ProviderError(pid, f"nicht einsatzbereit ({state})")
-            if provider.paid:
-                self.ledger.ensure_can_spend(provider.estimate_cost(1), f"KI-Bild ({provider.label})")
+            rid = self.ledger.reserve(provider.estimate_cost(1) if provider.paid else 0.0,
+                                      f"KI-Bild ({provider.label})")
             w, h = dimensions(self.p["aspect_ratio"], "1080p")
             tmp = path + ".tmp.png"
             cost = provider.generate(prompt, w, h, tmp)
             os.replace(tmp, path)
-            self.ledger.charge(cost, provider.id, "image")
+            self.ledger.commit(rid, cost, provider.id, "image")
             return path
         except BudgetExceeded:
             raise
         except (ProviderError, StudioError) as exc:
+            self.ledger.release(rid)
             self.fallbacks.append({"scene_id": scene["id"], "kind": "image", "provider": pid,
                                    "fallback": "motion", "reason": str(exc)})
             self.warnings.append(
                 f"Bild-Provider '{pid}' nicht nutzbar — Szene mit lokalem Motion-Hintergrund gerendert.")
             return None
+        except BaseException:
+            self.ledger.release(rid)
+            raise
 
     def _base_inputs(self, index: int, scene: dict, dur: float, w: int, h: int,
                      offset: float) -> tuple[list[str], str]:
@@ -237,10 +269,17 @@ class StudioRenderer:
             if ext in IMAGE_EXT:
                 image, mode = path, "image"
             elif ext in VIDEO_EXT:
+                self._note_upscale(path, w, h)
                 return (["-stream_loop", "-1", "-i", path],
                         f"{_cover(w, h)},fps={self.fps}{_grade(self.p['style'])}")
             else:
                 raise StudioError("media_unsupported", "Dieser Medientyp kann nicht als Visual dienen.", 415)
+        if mode == "image" and image:
+            self._note_upscale(image, w, h)
+        if mode == "image" and image and not self.opt.image_animation:
+            # Option „Bildanimation aus“: Standbild ohne Ken-Burns
+            return (["-loop", "1", "-framerate", str(self.fps), "-i", image],
+                    f"{_cover(w, h)}{_grade(self.p['style'])}")
         if mode == "image" and image:
             frames = max(2, int(round(dur * self.fps)))
             speed = 0.0006 if self.p["style"] == "cinematic" else 0.0012
@@ -267,6 +306,7 @@ class StudioRenderer:
             half = (self.h // 2) // 2 * 2
             inputs, chain = self._base_inputs(index, scene, dur, self.w, self.h - half, offset)
             gp = self._media(gameplay)
+            self._note_upscale(gp, self.w, half)
             gdur = media_duration(gp) or 1.0
             cmd = ["ffmpeg", "-y", *inputs, "-stream_loop", "-1", "-ss", f"{offset % gdur:.3f}",
                    "-i", gp, "-filter_complex",
@@ -358,6 +398,8 @@ class StudioRenderer:
         music_path = None
         beat_info = None
         track = self.p["music"].get("track")
+        if track and self.opt.music_mode == "none":
+            track = None  # Option „ohne Musik“ gewinnt über einen gespeicherten Titel
         if track:
             try:
                 music_path = resolve_music(self.dir, track)
@@ -473,6 +515,7 @@ class StudioRenderer:
                          "duration": round(plan["total"], 3)},
             "bytes": os.path.getsize(out_path),
             "aspect_ratio": self.p["aspect_ratio"], "resolution": self.p["resolution"],
+            "options": self.opt.to_dict(),
             "voice": plan["voice"],
             "word_timing": plan["timing"],
             "music": {"track": self.p["music"].get("track") if plan["music_path"] else None,

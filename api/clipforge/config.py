@@ -35,7 +35,11 @@ class Settings:
     segment_gap_seconds: float = _get_float("CLIPFORGE_SEGMENT_GAP", 0.6)
 
     # --- Scoring (Claude) ---
-    anthropic_api_key: str | None = os.environ.get("ANTHROPIC_API_KEY")
+    # default_factory: der Key wird bei JEDEM get_settings() frisch gelesen, damit
+    # ein zur Laufzeit gesetzter/gelöschter Schlüssel sofort wirkt (kein Neustart).
+    anthropic_api_key: str | None = field(
+        default_factory=lambda: os.environ.get("ANTHROPIC_API_KEY") or None
+    )
     llm_model: str = os.environ.get("CLIPFORGE_LLM_MODEL", "claude-sonnet-4-6")
     use_llm: bool = os.environ.get("CLIPFORGE_USE_LLM", "auto") != "off"
     # Timeout (Sekunden) für den optionalen LLM-Aufruf; danach → Fallback.

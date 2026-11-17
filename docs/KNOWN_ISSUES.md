@@ -134,3 +134,10 @@ wichtigsten Grenzen:
 - **JavaScript-only-Seiten und Login-Seiten** liefern beim URL-Import keinen Text.
 - **Backend-Fehlermeldungen sind nur auf Deutsch**, auch bei englischer Oberfläche.
 - **Der Automation-Worker läuft nur, solange das Backend läuft.**
+- **`goal`, `audience` und `creative_instructions` wirken nur mit Skript-KI**
+  (`ANTHROPIC_API_KEY`); ohne Key werden sie gespeichert, aber nicht umgesetzt.
+- **Kostenbuch = Schätzung.** Verbucht wird der Listenpreis, nicht die echte
+  Abrechnung des Anbieters.
+- **Der Token-Schutz ist keine Benutzeranmeldung**; siehe
+  [`LOCAL_API_SECURITY.md`](LOCAL_API_SECURITY.md).
+- **API-Schlüssel liegen in `.env`** (Rechte 0600), nicht im OS-Schlüsselbund.

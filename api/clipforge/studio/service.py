@@ -19,6 +19,7 @@ from .audio import AUDIO_EXT, detect_beats, run_ffmpeg
 from .costs import CostLedger, estimate_project
 from .errors import BudgetExceeded, StudioError
 from .flags import is_enabled
+from .options import ProductionOptions, options_of
 from .projects import (
     IMAGE_EXT, VIDEO_EXT, WORKFLOWS, ProjectStore, apply_patch, new_project,
     normalize_scene, summary,
@@ -105,6 +106,12 @@ def _probe_av(path: str) -> dict:
                           "Die Datei ist kein lesbares Audio/Video.", 415) from exc
     if info.duration <= 0 or (not info.has_audio and not info.width):
         raise StudioError("file_unreadable", "Die Datei ist kein lesbares Audio/Video.", 415)
+    max_minutes = _env_mb("CLIPFORGE_STUDIO_MAX_SOURCE_MINUTES", 180)
+    if info.duration > max_minutes * 60:
+        raise StudioError(
+            "file_too_long",
+            f"Die Datei ist zu lang ({info.duration / 60:.0f} Minuten, Maximum {max_minutes}).",
+            413)
     return {"duration": round(info.duration, 2), "width": info.width,
             "height": info.height, "has_audio": info.has_audio}
 
@@ -121,6 +128,32 @@ class StudioService:
         self.tasks.register("ingest", self._task_ingest)
         self.tasks.register("render", self._task_render)
         self.tasks.register("scene", self._task_scene)
+        self.tasks.on_finish(self._on_task_finish)
+
+    def _on_task_finish(self, task: dict) -> None:
+        """Hält den Projektstatus konsistent, wenn ein Ingest NICHT sauber endet.
+
+        Ohne das bliebe ein Projekt nach Cancel oder Prozessneustart für immer
+        auf „ingesting“ stehen.
+        """
+        if task.get("kind") != "ingest" or task["status"] not in ("canceled", "interrupted"):
+            return
+        pid = task.get("project_id")
+        if not pid or not self.store.exists(pid):
+            return
+        if task["status"] == "canceled":
+            new_status, err = "draft", {"code": "canceled",
+                                        "message": "Die Verarbeitung wurde abgebrochen."}
+        else:
+            new_status, err = "failed", {
+                "code": "interrupted",
+                "message": "Die Verarbeitung wurde durch einen Neustart unterbrochen. "
+                           "Bitte erneut starten."}
+
+        def apply(p: dict) -> None:
+            if p["status"] == "ingesting":
+                p["status"], p["status_error"] = new_status, err
+        self.store.mutate(pid, apply)
 
     # ---------------------------------------------------------- Übersicht
     @staticmethod
@@ -191,6 +224,14 @@ class StudioService:
         except (TypeError, ValueError):
             target = 45
         project["source"]["target_seconds"] = max(10, min(target, 600))
+        # EIN typisiertes Produktionsmodell: API → project.json → Pipeline
+        raw_options = dict(req.get("options") or {})
+        raw_options.setdefault("duration_target", project["source"]["target_seconds"])
+        options = ProductionOptions.from_dict(raw_options, strict=True)
+        project["options"] = options.to_dict()
+        project["source"]["target_seconds"] = options.duration_target
+        if req.get("aspect_ratio") is None:
+            project["aspect_ratio"] = options.default_aspect_ratio()
         if isinstance(req.get("lineage"), dict):
             project["lineage"] = req["lineage"]
         if workflow == "music":
@@ -348,6 +389,8 @@ class StudioService:
         pid = task["project_id"]
         try:
             result = self._ingest(pid, progress, should_cancel)
+        except TaskCanceled:
+            raise  # kein Fehler: der Finish-Hook setzt den Projektstatus
         except StudioError as exc:
             self.store.mutate(pid, lambda p: p.update(status="failed", status_error=exc.to_dict()))
             raise
@@ -364,6 +407,7 @@ class StudioService:
         wf = project["workflow"]
         src = project["source"]
         settings = get_settings()
+        options = options_of(project)
         title = project["title"] if project["title"] != "Neues Video" else ""
         text = src.get("text") or ""
         scenes: list[dict] | None = None
@@ -437,18 +481,22 @@ class StudioService:
             progress("Skript und Szenen werden erstellt …")
             script = scriptgen.generate_script(
                 workflow=wf, source_text=text, title=title, language=project["language"],
-                target_seconds=src.get("target_seconds") or 45, tone=project.get("tone") or "",
+                target_seconds=options.duration_target, tone=project.get("tone") or "",
                 style="cinematic lighting" if project["style"] == "cinematic" else "",
-                product=src.get("product"), settings=settings, llm_client=self.llm_client)
-            scenes = [normalize_scene({**s, "visual": {"mode": "motion", "seed": i}})
+                product=src.get("product"), settings=settings, llm_client=self.llm_client,
+                brief=options)
+            scenes = [normalize_scene({**s, "visual": {"mode": options.media_type, "seed": i}})
                       for i, s in enumerate(script["scenes"])]
             if scenes and wf != "audio":
                 scenes[0]["headline"] = " ".join(script["title"].split()[:4])[:40]
             title = title or script["title"]
             script_meta = {k: script[k] for k in ("generator", "needs_review", "notes")}
-            self._artifact(pid, "script.json", {"workflow": wf, **script})
+            self._artifact(pid, "script.json", {"workflow": wf, "options": options.to_dict(),
+                                                **script})
         if not scenes:
             raise StudioError("script_empty", "Aus der Quelle konnten keine Szenen erstellt werden.", 422)
+        if should_cancel():  # letzter Checkpoint: nach Cancel nichts mehr schreiben
+            raise TaskCanceled()
 
         def apply(p: dict) -> None:
             p["scenes"] = scenes
@@ -691,8 +739,12 @@ class StudioService:
                     data = read_json(os.path.join(rdir, name), None)
                     if isinstance(data, dict) and os.path.isfile(
                             os.path.join(rdir, data.get("file") or "")):
+                        data["_mtime"] = os.stat(os.path.join(rdir, name)).st_mtime_ns
                         out.append(data)
-        return sorted(out, key=lambda r: r.get("rendered_at") or "", reverse=True)
+        # rendered_at hat nur Sekunden-Auflösung → genaue Dateizeit als Zweitschlüssel,
+        # damit „neuester Render“ auch bei mehreren Renders pro Sekunde eindeutig ist.
+        return sorted(out, key=lambda r: (r.get("rendered_at") or "", r.get("_mtime", 0)),
+                      reverse=True)
 
     def get_render(self, pid: str, render_id: str) -> dict:
         require_id(render_id, "Render-ID")

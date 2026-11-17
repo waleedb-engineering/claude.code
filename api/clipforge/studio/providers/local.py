@@ -38,7 +38,7 @@ class SilentVoice(VoiceProvider):
     def voices(self, language):
         return [{"id": "silent", "label": "Stille", "tone": "neutral", "language": language}]
 
-    def synthesize(self, text, language, voice_id, out_path):
+    def synthesize(self, text, language, voice_id, out_path, model=None):
         seconds = speech_seconds(text)
         with wave.open(out_path, "wb") as wf:
             wf.setnchannels(1)
@@ -61,7 +61,7 @@ class MockVoice(VoiceProvider):
             {"id": "mock_high", "label": "Mock hoch", "tone": "energetic", "language": language},
         ]
 
-    def synthesize(self, text, language, voice_id, out_path):
+    def synthesize(self, text, language, voice_id, out_path, model=None):
         seconds = speech_seconds(text)
         freq = 330.0 if voice_id == "mock_high" else 220.0
         rate = 44100
@@ -95,7 +95,7 @@ class MacSayVoice(VoiceProvider):
         return [{"id": v, "label": v, "tone": t, "language": language}
                 for v, t in self._VOICES.get(language, self._VOICES["en"])]
 
-    def synthesize(self, text, language, voice_id, out_path):
+    def synthesize(self, text, language, voice_id, out_path, model=None):
         allowed = {v for v, _ in self._VOICES.get(language, self._VOICES["en"])}
         voice = voice_id if voice_id in allowed else next(iter(
             v for v, _ in self._VOICES.get(language, self._VOICES["en"])))
@@ -125,7 +125,7 @@ class EspeakVoice(VoiceProvider):
         return [{"id": language, "label": f"espeak {language}", "tone": "neutral",
                  "language": language}]
 
-    def synthesize(self, text, language, voice_id, out_path):
+    def synthesize(self, text, language, voice_id, out_path, model=None):
         lang = language if language in ("de", "en") else "en"
         with tempfile.TemporaryDirectory() as tmp:
             txt = os.path.join(tmp, "in.txt")

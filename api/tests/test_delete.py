@@ -16,6 +16,8 @@ import tempfile
 import zipfile
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+# Tests laufen ohne Token-Pflicht; test_studio_hardening.py prüft sie gezielt.
+os.environ.setdefault("CLIPFORGE_API_AUTH", "off")
 
 import jobs as jobs_mod
 from jobs import (

@@ -84,7 +84,8 @@ test("Studio: Skript → Editor (Autosave, Undo, Reihenfolge) → Render → Pub
     expect(drafts.drafts.every((d: { published_at: string | null }) => d.published_at === null)).toBe(true);
   } finally {
     // Seite verlassen, bevor aufgeräumt wird — sonst pollt sie gelöschte Daten (404).
-    await page.goto("about:blank");
+    await page.goto("/studio/setup");
+    await page.getByRole("heading", { name: "Einrichtung & Bereitschaft" }).waitFor();
     await cleanupProject(projectId);
   }
 });
@@ -111,7 +112,7 @@ test("Studio: Einrichtung zeigt Readiness ohne Secrets, Sprache umschaltbar", as
   await page.goto("/studio/setup");
   await expect(page.getByRole("heading", { name: "Einrichtung & Bereitschaft" })).toBeVisible();
   await expect(page.getByText("ElevenLabs (Cloud)")).toBeVisible();
-  await expect(page.getByText("ELEVENLABS_API_KEY", { exact: true })).toBeVisible();
+  await expect(page.getByText("ELEVENLABS_API_KEY", { exact: true }).first()).toBeVisible();
   await expect(page.getByText("Nicht konfiguriert").first()).toBeVisible();
   await expect(page.getByText("Nicht verbunden").first()).toBeVisible();
 
@@ -153,4 +154,37 @@ test("Studio: Idee speichern, filtern, Automation anlegen und pausieren", async 
   await expect(card.getByText(/Nächster Lauf:/)).toBeVisible();
   await card.getByRole("button", { name: "Löschen" }).click();
   await expect(page.getByText(name)).toHaveCount(0);
+});
+
+test("Studio: API-Schlüssel setzen wirkt sofort, Wert erscheint nie, Entfernen ebenso", async ({ page }) => {
+  const secret = "sentinel-e2e-elevenlabs-key";
+  await page.goto("/studio/setup");
+  const card = page.getByRole("listitem").filter({ hasText: "ELEVENLABS_API_KEY" }).first();
+  await expect(card.getByText("Nicht hinterlegt")).toBeVisible();
+  await card.getByLabel(/Schlüssel/).fill(secret);
+  await card.getByRole("button", { name: "Speichern" }).click();
+  await expect(card.getByText("Hinterlegt", { exact: true }).first()).toBeVisible();
+  // Provider ist ohne Neustart einsatzbereit
+  const providers = await (await fetch(`${API_URL}/api/studio/providers`)).json();
+  const eleven = providers.providers.find((p: { id: string }) => p.id === "elevenlabs");
+  expect(eleven.status).toBe("ready");
+  expect(JSON.stringify(providers)).not.toContain(secret);
+  expect(await page.content()).not.toContain(secret);
+  await card.getByRole("button", { name: "Entfernen" }).click();
+  await expect(card.getByText("Nicht hinterlegt").first()).toBeVisible();
+  const after = await (await fetch(`${API_URL}/api/studio/providers`)).json();
+  expect(after.providers.find((p: { id: string }) => p.id === "elevenlabs").status).toBe("not_configured");
+});
+
+test("Local API: Mutation ohne Token und von fremder Herkunft wird abgewiesen", async ({ request }) => {
+  const body = { workflow: "script", script: "Erster Satz hier. Zweiter Satz hier." };
+  const noToken = await request.post(`${API_URL}/api/studio/projects`, { data: body });
+  expect(noToken.status()).toBe(401);
+  const foreign = await request.post(`${API_URL}/api/studio/projects`, {
+    data: body,
+    headers: { Origin: "https://evil.example", "X-ClipForge-Token": "e2e-local-token-0123456789abcdef" },
+  });
+  expect(foreign.status()).toBe(403);
+  const session = await request.get(`${API_URL}/api/session`, { headers: { Origin: "https://evil.example" } });
+  expect(session.status()).toBe(403);
 });

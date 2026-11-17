@@ -41,6 +41,7 @@ function editable(p: Project): Record<string, unknown> {
     music: p.music,
     captions: p.captions,
     visuals: p.visuals,
+    options: p.options,
     budget_limit_usd: p.budget_limit_usd,
   };
 }

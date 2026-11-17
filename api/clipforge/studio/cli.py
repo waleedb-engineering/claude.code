@@ -32,12 +32,26 @@ class ApiError(Exception):
 class Client:
     def __init__(self, base: str) -> None:
         self.base = base.rstrip("/")
+        self._token: str | None = None
+
+    def token(self) -> str | None:
+        """Local-API-Token: aus CLIPFORGE_API_TOKEN, sonst vom lokalen Backend."""
+        if self._token is None:
+            self._token = os.environ.get("CLIPFORGE_API_TOKEN") or ""
+            if not self._token:
+                try:
+                    with urllib.request.urlopen(self.base + "/api/session", timeout=10) as resp:  # noqa: S310
+                        self._token = json.loads(resp.read().decode("utf-8")).get("token") or ""
+                except (OSError, ValueError):
+                    self._token = ""
+        return self._token or None
 
     def call(self, method: str, path: str, body: dict | None = None, raw: bool = False):
         data = json.dumps(body).encode("utf-8") if body is not None else None
-        req = urllib.request.Request(
-            self.base + path, data=data, method=method,
-            headers={"Content-Type": "application/json"} if data is not None else {})
+        headers = {"Content-Type": "application/json"} if data is not None else {}
+        if method not in ("GET", "HEAD") and self.token():
+            headers["X-ClipForge-Token"] = self.token()
+        req = urllib.request.Request(self.base + path, data=data, method=method, headers=headers)
         try:
             with urllib.request.urlopen(req, timeout=120) as resp:  # noqa: S310 — lokale API
                 payload = resp.read()

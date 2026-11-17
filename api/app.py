@@ -138,14 +138,11 @@ def _upload_size(file: UploadFile) -> int:
 
 app = FastAPI(title="ClipForge AI API", version=CLIPFORGE_VERSION)
 
-# CORS offen für lokale Entwicklung (Next.js-Client kommt in Schritt 3).
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=False,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+# Local-App-Schutz: CORS nur für lokale Frontend-Origins + Session-Token für
+# alle mutierenden /api/-Requests (siehe local_security.py, docs/LOCAL_API_SECURITY.md).
+import local_security  # noqa: E402
+
+local_security.install(app)
 
 registry = JobRegistry(JOBS_DIR, max_workers=_max_workers())
 

@@ -30,6 +30,7 @@ kein Public/Unlisted, kein TikTok/Instagram-Auto-Upload.
 - 🎬 **Bedienung & Einrichtung:** [`docs/STUDIO.md`](docs/STUDIO.md) — Provider, Plattformen, Automationen, CLI.
 - 📊 **Ehrlicher Funktionsstand:** [`docs/REVID_PARITY_STATUS.md`](docs/REVID_PARITY_STATUS.md) — was lokal läuft, was Zugangsdaten braucht, was fehlt.
 - 🔌 **Studio-API:** [`docs/API_STUDIO.md`](docs/API_STUDIO.md)
+- 🔐 **Schutz der lokalen API:** [`docs/LOCAL_API_SECURITY.md`](docs/LOCAL_API_SECURITY.md) — Token für Mutationen, CORS nur lokal.
 
 ### Technische Dokumentation
 
@@ -105,8 +106,9 @@ Reset):** [`docs/LOCAL_BETA_GUIDE.md`](docs/LOCAL_BETA_GUIDE.md)
 - **Kostenpflichtige Provider nur mit Budget:** Das Budgetlimit eines
   Studio-Projekts steht auf 0; damit wird kein bezahlter Dienst aufgerufen.
 - **Keine Secrets im DOM/Log/Response**; YouTube-Tokens nur im OS-Keychain.
-- **Nicht für Internet-Exposition** gedacht (kein Auth, offene CORS für lokale
-  Entwicklung). Details: [`docs/SECURITY_PRIVACY_REVIEW.md`](docs/SECURITY_PRIVACY_REVIEW.md).
+- **Lokale API geschützt:** CORS nur für die lokale Oberfläche, jede Mutation
+  braucht ein Session-Token ([`docs/LOCAL_API_SECURITY.md`](docs/LOCAL_API_SECURITY.md)).
+- **Nicht für Internet-Exposition** gedacht (keine Benutzeranmeldung). Details: [`docs/SECURITY_PRIVACY_REVIEW.md`](docs/SECURITY_PRIVACY_REVIEW.md).
 
 ## YouTube-Status
 

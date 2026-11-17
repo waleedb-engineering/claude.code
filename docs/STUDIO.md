@@ -33,6 +33,38 @@ Alles liegt lokal unter `api/studio_data/` (Pfad änderbar mit
 Ideen, Metriken. Jede Projektänderung erhöht eine Versionsnummer; die letzten
 25 Stände lassen sich im Editor wiederherstellen.
 
+## Produktionsoptionen
+
+Jedes Projekt trägt ein typisiertes Optionsmodell (`options` in
+`project.json`). Dieselben Werte gehen von der API über die Speicherung bis in
+Skript, Qualitätsprüfung und Render.
+
+| Option | Wirkung |
+|---|---|
+| `platform` | Standard-Seitenverhältnis (X: 16:9, sonst 9:16) und empfohlene Maximaldauer in der Qualitätsprüfung |
+| `duration_target` | Ziellänge des Skripts |
+| `cta` | wird wörtlich die letzte Szene |
+| `forbidden_topics` | Sätze dazu werden aus der Quelle ausgelassen; eine Szene, die ein Thema berührt, blockiert den Render |
+| `visual_style` | wird an jeden Visual-Prompt angehängt (wirkt bei KI-Bildern) |
+| `media_type` | Standard-Visual neuer Szenen: `motion`, `static`, `ai_image` |
+| `image_animation` | Ken-Burns für Bilder an/aus |
+| `voice_model` | Modell des Cloud-Sprachproviders |
+| `music_mode` | `none` rendert ohne Musik, auch wenn ein Titel gewählt ist |
+| `goal`, `audience`, `creative_instructions` | gehen in den Auftrag an die Skript-KI. **Ohne `ANTHROPIC_API_KEY` haben sie keine Wirkung** und werden nur gespeichert |
+| `video_provider`, `video_model` | werden abgelehnt: es gibt keinen KI-Video-Adapter |
+
+Bei „Skript → Video“ bleibt dein Text wörtlich erhalten; Verstöße gegen
+`forbidden_topics` werden dort gemeldet, nicht umgeschrieben.
+
+## API-Schlüssel
+
+Unter **Studio → Einrichtung** lassen sich Schlüssel für ElevenLabs, OpenAI
+und Anthropic setzen, prüfen und entfernen. Sie werden in `.env` im Repo-Root
+geschrieben (atomar, Rechte `0600`, andere Einträge bleiben unverändert) und
+wirken **sofort im laufenden Backend**, ohne Neustart. „Schlüssel prüfen“ ist
+eine ausdrückliche Aktion und der einzige Moment, in dem dafür ein Netzaufruf
+passiert. Werte werden nie angezeigt oder zurückgegeben.
+
 ## Provider
 
 Die Seite **Studio → Einrichtung** zeigt den Zustand jedes Providers. Schlüssel
@@ -50,15 +82,32 @@ Namen der benötigten Variablen, nie Werte.
 
 Regeln für kostenpflichtige Provider:
 
-- Das **Budgetlimit** eines Projekts steht standardmäßig auf 0. Mit 0 wird nie
-  ein kostenpflichtiger Provider aufgerufen.
-- Vor dem Render wird geschätzt. Übersteigt die Schätzung das Budget, startet
-  nichts. Reicht das Budget mitten im Lauf nicht mehr, bricht der Render ab,
-  bevor der nächste kostenpflichtige Aufruf passiert.
+- Das **Budgetlimit** gehört zum einzelnen Projekt und gilt für Stimme und
+  Bilder zusammen, über alle Renders und Wiederholungen hinweg. Es steht
+  standardmäßig auf 0; mit 0 wird nie ein kostenpflichtiger Provider aufgerufen.
+- Vor **jedem** kostenpflichtigen Aufruf wird der erwartete Betrag unter einer
+  Projekt-Sperre reserviert. Passt er nicht mehr ins Budget, wird keine Anfrage
+  gesendet und der Render endet mit `budget_exceeded` samt benötigtem und
+  verbleibendem Betrag. Nach Erfolg werden die Kosten verbucht, nach einem
+  Fehler wird die Reservierung freigegeben.
+- Fertige Szenen bleiben im Cache. Nach einer Budgeterhöhung zahlt „Erneut
+  versuchen“ nur noch die fehlenden Teile.
+- Die verbuchten Beträge sind Schätzungen nach Listenpreis, keine
+  Abrechnungsdaten des Anbieters.
 - Preise sind Schätzwerte. Mit `CLIPFORGE_PROVIDER_PRICES` (JSON) lassen sie
   sich anpassen.
 - Fällt ein Provider aus, wird die Szene lokal gerendert und der Vorfall im
   Render-Bericht vermerkt.
+
+## Auflösung und 4K
+
+720p, 1080p und 4K werden lokal in der echten Zielauflösung gerendert
+(9:16 → 2160×3840, 16:9 → 3840×2160, 1:1 → 2160×2160, 4:5 → 2160×2700).
+Ist ein eigenes Medium, ein Gameplay-Video oder ein KI-Bild kleiner als die
+Zielauflösung, wird es **kontrolliert hochskaliert**, und der finale
+Render-Bericht nennt Datei, Ausgangsgröße und Faktor. OpenAI-Bilder kommen mit
+höchstens 1536 Pixeln Kantenlänge und werden bei 4K daher immer hochskaliert.
+Vorschau-Renders sind bewusst klein und melden das nicht.
 
 ## Musik
 
@@ -132,10 +181,19 @@ Backend nicht erreichbar.
 | `CLIPFORGE_STUDIO_MAX_FETCH_MB` | 5 | Größenlimit für URL-Abrufe |
 | `CLIPFORGE_STUDIO_FETCH_TIMEOUT` | 15 | Zeitlimit für URL-Abrufe (Sekunden) |
 | `CLIPFORGE_STUDIO_MAX_PDF_MB` | 50 | Größenlimit für PDFs |
+| `CLIPFORGE_STUDIO_MAX_SOURCE_MINUTES` | 180 | maximale Dauer von Audio-/Video-Quellen |
+| `CLIPFORGE_PROVIDER_MAX_RESPONSE_MB` | 50 | Größenlimit für Antworten von Cloud-Providern; größere Antworten werden verworfen, nicht abgeschnitten |
+| `CLIPFORGE_RENDER_TIMEOUT` | 1800 | Zeitlimit je FFmpeg-Lauf der Shorts-Pipeline (Sekunden, min. 60) |
+| `CLIPFORGE_ENV_FILE` | `.env` im Repo-Root | Ablage der API-Schlüssel |
 | `CLIPFORGE_PROVIDER_PRICES` | – | JSON mit eigenen Preisschätzungen |
 | `CLIPFORGE_FLAG_<NAME>` | – | überschreibt ein Flag aus `feature_flags.json` |
 
 Feature Flags stehen in `feature_flags.json` im Repo-Root.
+
+## Schutz der lokalen API
+
+Mutierende Requests brauchen ein Token, fremde Webseiten werden abgewiesen.
+Details und Konfiguration: [`LOCAL_API_SECURITY.md`](LOCAL_API_SECURITY.md).
 
 ## Sicherheit beim URL-Import
 

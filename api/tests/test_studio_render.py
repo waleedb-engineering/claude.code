@@ -83,8 +83,9 @@ def test_aspect_ratios_caption_styles_and_cinematic_render():
                                       ("4:5", "none", "clean", (360, 450))):
             p = svc.update_project(p["id"], {"aspect_ratio": ar, "captions": {"style": style},
                                              "style": look}, p["version"])
-            task, report = _render(svc, p["id"])
+            task, _ = _render(svc, p["id"])
             assert task["status"] == "succeeded", task
+            report = svc.get_render(p["id"], task["result"]["render_id"])
             assert (report["width"], report["height"]) == size, (ar, report["width"])
             assert report["captions"]["studio_style"] == style
             if style == "none":

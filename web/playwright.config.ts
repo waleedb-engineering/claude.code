@@ -90,6 +90,9 @@ export default defineConfig({
         // Creator Studio: isolierte Daten + Mock-Provider (kein Netz, keine Kosten)
         CLIPFORGE_STUDIO_DIR: join(E2E_JOBS_DIR, "..", ".e2e-studio"),
         CLIPFORGE_FLAG_STUDIO_MOCK_PROVIDERS: "true",
+        // Festes Test-Token; die Token-Pflicht bleibt in der E2E-Suite AKTIV.
+        CLIPFORGE_API_TOKEN: process.env.CLIPFORGE_API_TOKEN ?? "e2e-local-token-0123456789abcdef",
+        CLIPFORGE_ENV_FILE: join(E2E_JOBS_DIR, "..", ".e2e-studio", "e2e.env"),
       },
     },
     {

@@ -37,9 +37,20 @@ export default function CreatePage() {
   const [product, setProduct] = useState({ name: "", problem: "", benefits: "", price: "", cta: "" });
   const [seconds, setSeconds] = useState(45);
   const [aspect, setAspect] = useState("9:16");
+  const [aspectTouched, setAspectTouched] = useState(false);
   const [resolution, setResolution] = useState("1080p");
   const [captions, setCaptions] = useState("karaoke");
   const [language, setLanguage] = useState<"de" | "en">(locale);
+  const [opts, setOpts] = useState({
+    platform: "generic",
+    goal: "",
+    audience: "",
+    cta: "",
+    creative_instructions: "",
+    forbidden_topics: "",
+    visual_style: "",
+    media_type: "motion",
+  });
   const [busy, setBusy] = useState<string | null>(null);
   const [upload, setUpload] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -76,7 +87,14 @@ export default function CreatePage() {
         aspect_ratio: aspect,
         resolution,
         captions: { style: captions, use_brand: true },
+        options: {
+          ...opts,
+          duration_target: seconds,
+          forbidden_topics: opts.forbidden_topics.split(",").map((x) => x.trim()).filter(Boolean),
+        },
       };
+      // Das Seitenverhältnis folgt der Plattform, solange es nicht bewusst geändert wurde.
+      if (!aspectTouched) delete body.aspect_ratio;
       if (selected === "script") body.script = text;
       else if (needs === "text" || needs === "file") body.prompt = text;
       if (needs === "url") body.url = url;
@@ -307,7 +325,15 @@ export default function CreatePage() {
             <label htmlFor="c-aspect" className={labelCls}>
               {t("create.aspect")}
             </label>
-            <select id="c-aspect" className={inputCls} value={aspect} onChange={(e) => setAspect(e.target.value)}>
+            <select
+              id="c-aspect"
+              className={inputCls}
+              value={aspect}
+              onChange={(e) => {
+                setAspect(e.target.value);
+                setAspectTouched(true);
+              }}
+            >
               {["9:16", "16:9", "1:1", "4:5"].map((a) => (
                 <option key={a}>{a}</option>
               ))}
@@ -348,6 +374,69 @@ export default function CreatePage() {
             />
           </div>
         </section>
+      )}
+
+      {!isShorts && (
+        <details className={cardCls}>
+          <summary className="cursor-pointer text-sm font-semibold text-neutral-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400">
+            {t("opt.title")}
+          </summary>
+          <p className="mt-2 text-xs text-neutral-300">{t("opt.llmHint")}</p>
+          <div className="mt-3 grid gap-3 sm:grid-cols-2">
+            <div>
+              <label htmlFor="o-platform" className={labelCls}>
+                {t("opt.platform")}
+              </label>
+              <select
+                id="o-platform"
+                className={inputCls}
+                value={opts.platform}
+                onChange={(e) => setOpts({ ...opts, platform: e.target.value })}
+              >
+                {["generic", "youtube_shorts", "tiktok", "instagram_reels", "x"].map((p) => (
+                  <option key={p}>{p}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label htmlFor="o-media" className={labelCls}>
+                {t("opt.mediaType")}
+              </label>
+              <select
+                id="o-media"
+                className={inputCls}
+                value={opts.media_type}
+                onChange={(e) => setOpts({ ...opts, media_type: e.target.value })}
+              >
+                <option value="motion">{t("ed.mode.motion")}</option>
+                <option value="static">{t("ed.mode.static")}</option>
+                <option value="ai_image">{t("ed.mode.ai_image")}</option>
+              </select>
+            </div>
+            {(
+              [
+                ["cta", "opt.cta"],
+                ["forbidden_topics", "opt.forbidden"],
+                ["visual_style", "opt.visualStyle"],
+                ["goal", "opt.goal"],
+                ["audience", "opt.audience"],
+                ["creative_instructions", "opt.instructions"],
+              ] as const
+            ).map(([field, key]) => (
+              <div key={field}>
+                <label htmlFor={`o-${field}`} className={labelCls}>
+                  {t(key)}
+                </label>
+                <input
+                  id={`o-${field}`}
+                  className={inputCls}
+                  value={opts[field]}
+                  onChange={(e) => setOpts({ ...opts, [field]: e.target.value })}
+                />
+              </div>
+            ))}
+          </div>
+        </details>
       )}
 
       {upload !== null && <Progress value={upload} label={busy ?? t("create.uploading")} />}

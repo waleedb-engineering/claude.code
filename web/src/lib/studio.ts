@@ -2,6 +2,7 @@
 // Keine Fachlogik hier — nur Typen, Aufrufe und einheitliche Fehler.
 
 import { API_BASE } from "./api";
+import { TOKEN_HEADER, apiFetch, getToken } from "./session";
 
 export type StudioErrorDetail = {
   code: string;
@@ -64,6 +65,7 @@ export type Project = {
   captions: { style: CaptionStyleId; use_brand: boolean };
   visuals: { image_provider: string; gameplay_media: string | null; headlines: boolean };
   budget_limit_usd: number;
+  options: ProductionOptions;
   lineage: Record<string, unknown>;
   linked_job_id: string | null;
   exports: { job_id: string; render_id: string; exported_at: string }[];
@@ -163,6 +165,25 @@ export type ProviderInfo = {
   status: "ready" | "not_configured" | "disabled" | "unavailable";
   hint: string;
   requires_env: string[];
+};
+
+export type CredentialStatus = { provider: string; label: string; env: string; configured: boolean };
+
+export type ProductionOptions = {
+  platform: string;
+  duration_target: number;
+  goal: string;
+  audience: string;
+  cta: string;
+  creative_instructions: string;
+  forbidden_topics: string[];
+  visual_style: string;
+  media_type: "motion" | "static" | "ai_image";
+  image_animation: boolean;
+  voice_model: string;
+  video_provider: string;
+  video_model: string;
+  music_mode: "track" | "none";
 };
 
 export type PlatformReadiness = {
@@ -297,7 +318,7 @@ export type Idea = {
 async function request<T>(method: string, path: string, body?: unknown, headers?: Record<string, string>): Promise<T> {
   let res: Response;
   try {
-    res = await fetch(`${API_BASE}/api/studio${path}`, {
+    res = await apiFetch(`${API_BASE}/api/studio${path}`, {
       method,
       cache: "no-store",
       headers: { ...(body !== undefined ? { "Content-Type": "application/json" } : {}), ...headers },
@@ -334,12 +355,23 @@ export function uploadFile<T>(
   onProgress?: (fraction: number) => void,
   fields: Record<string, string> = {},
 ): Promise<T> {
+  return getToken().then((token) => uploadWithToken<T>(path, file, onProgress, fields, token));
+}
+
+function uploadWithToken<T>(
+  path: string,
+  file: File,
+  onProgress: ((fraction: number) => void) | undefined,
+  fields: Record<string, string>,
+  token: string | null,
+): Promise<T> {
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
     const form = new FormData();
     form.append("file", file);
     Object.entries(fields).forEach(([k, v]) => form.append(k, v));
     xhr.open("POST", `${API_BASE}/api/studio${path}`);
+    if (token) xhr.setRequestHeader(TOKEN_HEADER, token);
     xhr.upload.onprogress = (e) => {
       if (e.lengthComputable && onProgress) onProgress(e.loaded / e.total);
     };
@@ -368,10 +400,17 @@ export function uploadFile<T>(
 export const studio = {
   overview: () => get<Overview>("/overview"),
   providers: () => get<{ providers: ProviderInfo[]; platforms: PlatformReadiness[] }>("/providers"),
+  credentials: () =>
+    get<{ credentials: CredentialStatus[] }>("/credentials").then((d) => d.credentials),
+  setCredential: (provider: string, apiKey: string) =>
+    request<CredentialStatus>("PUT", `/credentials/${provider}`, { api_key: apiKey }),
+  deleteCredential: (provider: string) => request<CredentialStatus>("DELETE", `/credentials/${provider}`),
+  testCredential: (provider: string) =>
+    post<{ ok: boolean; reason: string; message: string }>(`/credentials/${provider}/test`),
   voices: (language: string, tone = "") =>
     get<VoiceOptions>(`/voices?language=${encodeURIComponent(language)}&tone=${encodeURIComponent(tone)}`),
   async voicePreview(language: string, provider: string, voiceId: string | null, confirmCost = false): Promise<string> {
-    const res = await fetch(`${API_BASE}/api/studio/voices/preview`, {
+    const res = await apiFetch(`${API_BASE}/api/studio/voices/preview`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ language, provider, voice_id: voiceId, confirm_cost: confirmCost }),

@@ -11,6 +11,8 @@ import time
 import wave
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+# Tests laufen ohne Token-Pflicht; test_studio_hardening.py prüft sie gezielt.
+os.environ.setdefault("CLIPFORGE_API_AUTH", "off")
 
 ENV_KEYS = ("CLIPFORGE_JOBS_DIR", "CLIPFORGE_STUDIO_DIR", "CLIPFORGE_FLAG_STUDIO_MOCK_PROVIDERS",
             "CLIPFORGE_BRAND_KIT_PATH", "CLIPFORGE_STUDIO_WORKER")

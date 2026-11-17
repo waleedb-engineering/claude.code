@@ -25,6 +25,7 @@ import type {
   YouTubeUploadResult,
   YouTubeUploadStatus,
 } from "./types";
+import { apiFetch } from "./session";
 
 export const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, "") ||
@@ -53,7 +54,7 @@ async function parseError(res: Response): Promise<never> {
 async function getJson<T>(path: string): Promise<T> {
   let res: Response;
   try {
-    res = await fetch(`${API_BASE}${path}`, { cache: "no-store" });
+    res = await apiFetch(`${API_BASE}${path}`, { cache: "no-store" });
   } catch {
     throw new ApiError(
       `Backend nicht erreichbar unter ${API_BASE}. Läuft FastAPI auf Port 8000?`,
@@ -84,7 +85,7 @@ export async function getClips(jobId: string): Promise<ClipsJson> {
 async function del<T>(path: string): Promise<T> {
   let res: Response;
   try {
-    res = await fetch(`${API_BASE}${path}`, { method: "DELETE" });
+    res = await apiFetch(`${API_BASE}${path}`, { method: "DELETE" });
   } catch {
     throw new ApiError(
       `Backend nicht erreichbar unter ${API_BASE}. Läuft FastAPI auf Port 8000?`,
@@ -146,7 +147,7 @@ export async function getBrandKit(): Promise<BrandKit> {
 export async function saveBrandKit(kit: Partial<BrandKit>): Promise<BrandKit> {
   let res: Response;
   try {
-    res = await fetch(`${API_BASE}/api/brand-kit`, {
+    res = await apiFetch(`${API_BASE}/api/brand-kit`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(kit),
@@ -171,7 +172,7 @@ export interface CancelJobResult {
 export async function cancelJob(jobId: string): Promise<CancelJobResult> {
   let res: Response;
   try {
-    res = await fetch(`${API_BASE}/api/jobs/${jobId}/cancel`, { method: "POST" });
+    res = await apiFetch(`${API_BASE}/api/jobs/${jobId}/cancel`, { method: "POST" });
   } catch {
     throw new ApiError(
       `Backend nicht erreichbar unter ${API_BASE}. Läuft FastAPI auf Port 8000?`,
@@ -189,7 +190,7 @@ export async function bulkDeleteJobs(
 ): Promise<BulkDeleteResult> {
   let res: Response;
   try {
-    res = await fetch(`${API_BASE}/api/jobs/bulk-delete`, {
+    res = await apiFetch(`${API_BASE}/api/jobs/bulk-delete`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ job_ids: jobIds, confirm, force }),
@@ -237,7 +238,7 @@ export async function createJob({
 
   let res: Response;
   try {
-    res = await fetch(`${API_BASE}/api/jobs`, { method: "POST", body: form });
+    res = await apiFetch(`${API_BASE}/api/jobs`, { method: "POST", body: form });
   } catch {
     throw new ApiError(
       `Backend nicht erreichbar unter ${API_BASE}. Läuft FastAPI auf Port 8000?`,
@@ -278,7 +279,7 @@ export async function batchUpload({
 
   let res: Response;
   try {
-    res = await fetch(`${API_BASE}/api/jobs/batch`, { method: "POST", body: form });
+    res = await apiFetch(`${API_BASE}/api/jobs/batch`, { method: "POST", body: form });
   } catch {
     throw new ApiError(
       `Backend nicht erreichbar unter ${API_BASE}. Läuft FastAPI auf Port 8000?`,
@@ -303,7 +304,7 @@ export async function rerenderClip(
 ): Promise<ManualExport> {
   let res: Response;
   try {
-    res = await fetch(
+    res = await apiFetch(
       `${API_BASE}/api/jobs/${jobId}/clips/${clipIndex}/rerender`,
       {
         method: "POST",
@@ -356,7 +357,7 @@ async function sendJson<T>(
 ): Promise<T> {
   let res: Response;
   try {
-    res = await fetch(`${API_BASE}${path}`, {
+    res = await apiFetch(`${API_BASE}${path}`, {
       method,
       headers: body !== undefined ? { "Content-Type": "application/json" } : undefined,
       body: body !== undefined ? JSON.stringify(body) : undefined,

@@ -8,6 +8,20 @@ bzw. das echte Betriebssystem gelaufen.
 Viralität wird nirgends versprochen; der Score heißt durchgehend
 „Performance-Potenzial“ und ist eine Schätzung.
 
+## Härtungsrunde (Stand dieses Arbeitsbaums)
+
+| Bereich | Stand |
+|---|---|
+| Studio-Optionen wirken bis in Skript, Qualitätsprüfung und Render | vollständig funktionsfähig, getestet. Ausnahme: `goal`, `audience`, `creative_instructions` wirken nur mit Skript-KI (benötigt API-Key); `video_provider`/`video_model` werden abgelehnt (noch nicht implementiert) |
+| Eine Source of Truth (`project.json`, Projekt-Sperre, atomare Writes) | vollständig funktionsfähig |
+| Quellen PDF, Audio, Podcast, Longform, eigene Medien | vollständig funktionsfähig lokal; Transkription braucht `faster-whisper` oder ein Transkript-JSON |
+| Gesamtbudget je Projekt mit atomarer Reservierung | vollständig funktionsfähig, auch unter parallelen Anfragen getestet. Beträge sind Schätzungen |
+| API-Schlüssel ohne Neustart setzen/löschen/prüfen | vollständig funktionsfähig; die Prüfung gegen den Anbieter ist nur mit gemocktem HTTP getestet |
+| Local-API-Schutz (Token, CORS, Origin, Host) | vollständig funktionsfähig, in Backend-Tests und Browser-Suite geprüft |
+| Cancel dauerhaft, Recovery nach Neustart, Retry idempotent | vollständig funktionsfähig, getestet |
+| Seitenverhältnisse und 720p/1080p/4K real per ffprobe geprüft | vollständig funktionsfähig; kleinere Quellen werden hochskaliert und das wird im Render-Bericht gemeldet |
+| Provider-Antworten begrenzt und inhaltlich geprüft, Timeouts für alle FFmpeg-/ffprobe-Aufrufe | vollständig funktionsfähig, getestet |
+
 ## Feature-Matrix
 
 Legende: **L** funktioniert lokal · **P** benötigt Provider/API-Key ·
@@ -46,7 +60,7 @@ Legende: **L** funktioniert lokal · **P** benötigt Provider/API-Key ·
 | Storyboard-Ansicht | teilweise | Szenenliste mit Visual-Prompt; keine Thumbnail-Vorschau je Szene außer nach „Szene neu generieren“ |
 | 9:16, 16:9, 1:1, 4:5 | L | getestet |
 | 720p, 1080p | L | getestet |
-| 4K | L (ungetestet) | Abmessungen getestet, ein echter 4K-Render wurde nicht gemessen |
+| 4K | L | echter 4K-Render per ffprobe geprüft; kleinere Quellen werden hochskaliert und gemeldet |
 | Kostenabschätzung + hartes Budgetlimit | L | Preise sind Schätzwerte; Abbruch vor Mehrkosten getestet |
 
 ### Voice, Musik, Captions

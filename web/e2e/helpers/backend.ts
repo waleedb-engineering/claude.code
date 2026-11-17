@@ -15,6 +15,22 @@ import { join } from "node:path";
 
 export const API_URL = process.env.E2E_API_URL ?? "http://127.0.0.1:8000";
 
+// Local-API-Schutz: Das Backend verlangt für Mutationen ein Token. Die E2E-Suite
+// startet es mit einem festen Test-Token (playwright.config.ts); Helfer, die das
+// Backend direkt ansprechen, senden es automatisch mit. Der Browser holt sich
+// das Token dagegen über den echten Weg (GET /api/session).
+export const E2E_API_TOKEN =
+  process.env.CLIPFORGE_API_TOKEN ?? "e2e-local-token-0123456789abcdef";
+const realFetch = globalThis.fetch;
+globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
+  const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+  const method = (init?.method ?? "GET").toUpperCase();
+  if (!url.startsWith(API_URL) || method === "GET") return realFetch(input, init);
+  const headers = new Headers(init?.headers);
+  headers.set("X-ClipForge-Token", E2E_API_TOKEN);
+  return realFetch(input, { ...init, headers });
+}) as typeof fetch;
+
 export const E2E_PREFIX = "e2e-smoke";
 
 const API_DIR = join(__dirname, "..", "..", "..", "api");

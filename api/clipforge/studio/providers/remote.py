@@ -15,12 +15,50 @@ from ..errors import ProviderError
 from .base import ImageProvider, VoiceProvider, VoiceResult
 
 
+class ResponseTooLarge(ValueError):
+    pass
+
+
+def max_response_bytes() -> int:
+    try:
+        mb = int(os.environ.get("CLIPFORGE_PROVIDER_MAX_RESPONSE_MB", "50"))
+    except ValueError:
+        mb = 50
+    return max(1, mb) * 1024 * 1024
+
+
 def _http_post(url: str, headers: dict, payload: dict, timeout: float = 120.0) -> bytes:
+    """POST an einen FEST im Code stehenden Provider-Host.
+
+    Die Antwort wird in Blöcken gelesen und hart begrenzt: ist sie größer als
+    das Limit, wird abgebrochen (statt still abzuschneiden und eine kaputte
+    Datei zu speichern).
+    """
     req = urllib.request.Request(
         url, data=json.dumps(payload).encode("utf-8"), method="POST",
         headers={"Content-Type": "application/json", **headers})
+    limit = max_response_bytes()
     with urllib.request.urlopen(req, timeout=timeout) as resp:  # noqa: S310 — feste HTTPS-Hosts
-        return resp.read(64 * 1024 * 1024)
+        declared = resp.headers.get("Content-Length")
+        if declared and declared.isdigit() and int(declared) > limit:
+            raise ResponseTooLarge()
+        chunks, total = [], 0
+        while True:
+            chunk = resp.read(65536)
+            if not chunk:
+                break
+            total += len(chunk)
+            if total > limit:
+                raise ResponseTooLarge()
+            chunks.append(chunk)
+        return b"".join(chunks)
+
+
+def looks_like_audio(data: bytes) -> bool:
+    """Magic-Bytes statt Content-Type-Header: MP3 (ID3/Frame-Sync), WAV, OGG, FLAC."""
+    head = data[:12]
+    return (head[:3] == b"ID3" or (len(head) > 1 and head[0] == 0xFF and head[1] & 0xE0 == 0xE0)
+            or (head[:4] == b"RIFF" and head[8:12] == b"WAVE") or head[:4] in (b"OggS", b"fLaC"))
 
 
 # In Tests ersetzbar (Monkeypatch) — nie ein echter Netz-Call in der Suite.
@@ -32,6 +70,8 @@ def _post(provider: str, url: str, headers: dict, payload: dict) -> bytes:
         return HTTP_POST(url, headers, payload)
     except urllib.error.HTTPError as exc:
         raise ProviderError(provider, f"HTTP {exc.code}") from None
+    except ResponseTooLarge:
+        raise ProviderError(provider, "Antwort überschreitet das Größenlimit") from None
     except Exception as exc:  # noqa: BLE001
         raise ProviderError(provider, f"Anfrage fehlgeschlagen ({type(exc).__name__})") from None
 
@@ -58,16 +98,16 @@ class ElevenLabsVoice(VoiceProvider):
         from ..costs import price
         return chars / 1000.0 * price("elevenlabs_per_1k_chars")
 
-    def synthesize(self, text, language, voice_id, out_path):
+    def synthesize(self, text, language, voice_id, out_path, model=None):
         ids = {v for v, _, _ in self._VOICES}
         voice = voice_id if voice_id in ids else self._VOICES[0][0]
         body = _post(self.id, f"https://api.elevenlabs.io/v1/text-to-speech/{voice}",
                      {"xi-api-key": os.environ.get("ELEVENLABS_API_KEY", ""),
                       "Accept": "audio/mpeg"},
-                     {"text": text, "model_id": os.environ.get(
+                     {"text": text, "model_id": model or os.environ.get(
                          "CLIPFORGE_ELEVENLABS_MODEL", "eleven_multilingual_v2")})
-        if len(body) < 64:
-            raise ProviderError(self.id, "leere Audio-Antwort")
+        if len(body) < 64 or not looks_like_audio(body):
+            raise ProviderError(self.id, "Antwort ist kein Audio")
         with open(out_path, "wb") as fh:
             fh.write(body)
         return VoiceResult(path=out_path, cost_usd=self.estimate_cost(len(text)))
@@ -90,14 +130,14 @@ class OpenAIVoice(VoiceProvider):
         from ..costs import price
         return chars / 1000.0 * price("openai_tts_per_1k_chars")
 
-    def synthesize(self, text, language, voice_id, out_path):
+    def synthesize(self, text, language, voice_id, out_path, model=None):
         voice = voice_id if voice_id in {v for v, _ in self._VOICES} else "alloy"
         body = _post(self.id, "https://api.openai.com/v1/audio/speech",
                      {"Authorization": "Bearer " + os.environ.get("OPENAI_API_KEY", "")},
-                     {"model": os.environ.get("CLIPFORGE_OPENAI_TTS_MODEL", "tts-1"),
+                     {"model": model or os.environ.get("CLIPFORGE_OPENAI_TTS_MODEL", "tts-1"),
                       "voice": voice, "input": text, "response_format": "mp3"})
-        if len(body) < 64:
-            raise ProviderError(self.id, "leere Audio-Antwort")
+        if len(body) < 64 or not looks_like_audio(body):
+            raise ProviderError(self.id, "Antwort ist kein Audio")
         with open(out_path, "wb") as fh:
             fh.write(body)
         return VoiceResult(path=out_path, cost_usd=self.estimate_cost(len(text)))

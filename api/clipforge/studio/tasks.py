@@ -38,6 +38,18 @@ class TaskManager:
         self._handlers: dict[str, callable] = {}
         self._lock = threading.RLock()
         self._cancel: set[str] = set()
+        self._finish_hooks: list = []
+
+    def on_finish(self, hook) -> None:
+        """hook(task) läuft nach JEDEM Endzustand (auch Cancel/Recovery)."""
+        self._finish_hooks.append(hook)
+
+    def _finished(self, task: dict) -> None:
+        for hook in self._finish_hooks:
+            try:
+                hook(task)
+            except Exception:  # noqa: BLE001 — Hook darf den Worker nie stören
+                pass
 
     def register(self, kind: str, handler) -> None:
         self._handlers[kind] = handler
@@ -117,6 +129,7 @@ class TaskManager:
             if task["status"] == "queued":
                 task.update(status="canceled", finished_at=now_iso())
                 self._save(task)
+                self._finished(task)
             return task
 
     def is_cancel_requested(self, tid: str) -> bool:
@@ -135,6 +148,12 @@ class TaskManager:
             except StudioError:
                 return
             if task["status"] != "queued":
+                return  # z. B. bereits abgebrochen → bleibt abgebrochen
+            if tid in self._cancel:
+                task.update(status="canceled", finished_at=now_iso())
+                self._save(task)
+                self._cancel.discard(tid)
+                self._finished(task)
                 return
             task.update(status="running", started_at=now_iso(),
                         attempts=int(task.get("attempts") or 0) + 1)
@@ -157,9 +176,14 @@ class TaskManager:
                     "message": f"Unerwarteter Fehler ({type(exc).__name__})."}}
         with self._lock:
             task = self.get(tid)
+            if tid in self._cancel:
+                # Cancel bleibt Cancel: ein spät fertig gewordener Handler
+                # überschreibt den Abbruchwunsch nicht.
+                update = {"status": "canceled"}
             task.update(update, finished_at=now_iso())
             self._save(task)
             self._cancel.discard(tid)
+        self._finished(task)
 
     def recover(self) -> dict:
         """Nach (Neu-)Start aufrufen. Liefert Zähler für das Startlog."""
@@ -170,6 +194,7 @@ class TaskManager:
                     "code": "interrupted",
                     "message": "Beim Neustart unterbrochen. Über „Erneut versuchen“ neu starten."})
                 self._save(task)
+                self._finished(task)
                 interrupted.append(task["id"])
             elif task["status"] == "queued" and task["kind"] in self._handlers:
                 requeued.append(task["id"])

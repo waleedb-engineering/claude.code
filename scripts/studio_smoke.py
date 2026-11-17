@@ -9,7 +9,7 @@ Ordner und fährt den kompletten Weg über die CLI:
 
 Kein Netz, keine Zugangsdaten, keine Kosten. Exit-Code 0 = alles bestanden.
 
-    python3 scripts/studio_smoke.py [--keep]
+    python3 scripts/studio_smoke.py [--keep] [--out=/pfad/video.mp4]
 """
 
 from __future__ import annotations
@@ -22,6 +22,7 @@ import subprocess
 import sys
 import tempfile
 import time
+import urllib.error
 import urllib.request
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -70,7 +71,11 @@ def main() -> int:
            "CLIPFORGE_STUDIO_DIR": os.path.join(tmp, "studio"),
            "CLIPFORGE_BRAND_KIT_PATH": os.path.join(tmp, "brand_kit.json"),
            "CLIPFORGE_FLAG_STUDIO_MOCK_PROVIDERS": "true",
+           "CLIPFORGE_ENV_FILE": os.path.join(tmp, "smoke.env"),
+           "CLIPFORGE_API_TOKEN_FILE": os.path.join(tmp, "api_token"),
+           "CLIPFORGE_API_AUTH": "on",
            "CLIPFORGE_ENABLE_YOUTUBE_UPLOAD": "false"}
+    env.pop("CLIPFORGE_API_TOKEN", None)
     log = open(os.path.join(tmp, "backend.log"), "w")
     server = subprocess.Popen(
         [sys.executable, "-m", "uvicorn", "app:app", "--host", "127.0.0.1", "--port", str(port)],
@@ -137,8 +142,23 @@ def main() -> int:
         analytics = get(base, "/api/studio/analytics")
         check("Analytics ohne erfundene Werte", analytics["rows"] == [])
 
+        noauth = urllib.request.Request(
+            base + "/api/studio/projects", method="POST",
+            data=json.dumps({"workflow": "script", "script": SCRIPT}).encode(),
+            headers={"Content-Type": "application/json"})
+        try:
+            urllib.request.urlopen(noauth, timeout=10)  # noqa: S310 — lokal
+            status_code = 200
+        except urllib.error.HTTPError as exc:
+            status_code = exc.code
+        check("Mutation ohne API-Token wird abgewiesen", status_code == 401, f"HTTP {status_code}")
+
         print("\nSTUDIO SMOKE PASSED")
-        if keep:
+        target = next((a.split("=", 1)[1] for a in sys.argv if a.startswith("--out=")), None)
+        if target:
+            shutil.copyfile(out, target)
+            print(f"Testvideo: {os.path.abspath(target)}")
+        elif keep:
             print(f"Testvideo: {out}")
         return 0
     finally:

@@ -169,6 +169,11 @@ def migrate(data: dict) -> dict:
         "image_provider": str(vis.get("image_provider") or "openai_image"),
         "gameplay_media": vis.get("gameplay_media") or None,
         "headlines": bool(vis.get("headlines", True))}
+    from .options import ProductionOptions
+    legacy = dict(p.get("options") or {}) if isinstance(p.get("options"), dict) else {}
+    if "duration_target" not in legacy and isinstance(p["source"].get("target_seconds"), (int, float)):
+        legacy["duration_target"] = p["source"]["target_seconds"]  # altes Feld übernehmen
+    p["options"] = ProductionOptions.from_dict(legacy).to_dict()
     p["budget_limit_usd"] = _clamp(p.get("budget_limit_usd"), 0.0, 10000.0, 0.0)
     p["lineage"] = p.get("lineage") if isinstance(p.get("lineage"), dict) else {}
     p.setdefault("linked_job_id", None)
@@ -183,7 +188,8 @@ def migrate(data: dict) -> dict:
 
 
 _EDITABLE = ("title", "language", "tone", "style", "aspect_ratio", "resolution",
-             "scenes", "voice", "music", "captions", "visuals", "budget_limit_usd")
+             "scenes", "voice", "music", "captions", "visuals", "budget_limit_usd",
+             "options")
 
 
 def apply_patch(project: dict, patch: dict, project_dir: str) -> dict:
@@ -241,6 +247,12 @@ def apply_patch(project: dict, patch: dict, project_dir: str) -> dict:
                     raise StudioError("media_not_found", "Gameplay-Datei nicht gefunden.", 404)
                 value = {**value, "gameplay_media": gm}
             p["visuals"] = value
+        elif key == "options":
+            from .options import ProductionOptions
+            if not isinstance(value, dict):
+                raise StudioError("validation_error", "Ungültige Produktionsoptionen.")
+            p["options"] = ProductionOptions.from_dict(
+                {**p.get("options", {}), **value}, strict=True).to_dict()
         elif key == "voice":
             if not isinstance(value, dict):
                 raise StudioError("validation_error", "Ungültige Voice-Einstellungen.")

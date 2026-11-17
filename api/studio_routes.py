@@ -23,7 +23,7 @@ from pydantic import BaseModel, Field
 from clipforge.captions import STYLES as BASE_CAPTION_STYLES
 from clipforge.config import get_settings
 from clipforge.publishing import list_drafts
-from clipforge.studio import analytics, audio, ideas, publish_ops
+from clipforge.studio import analytics, audio, credentials, ideas, publish_ops
 from clipforge.studio.automation import AutomationService, Worker
 from clipforge.studio.errors import StudioError
 from clipforge.studio.flags import is_enabled, load_flags
@@ -61,6 +61,7 @@ class ProjectCreate(BaseModel):
     voice: dict[str, Any] | None = None
     music: dict[str, Any] | None = None
     budget_limit_usd: float | None = Field(default=None, ge=0, le=10000)
+    options: dict[str, Any] | None = None
     auto_ingest: bool = True
 
 
@@ -77,6 +78,7 @@ class ProjectPatch(BaseModel):
     music: dict[str, Any] | None = None
     captions: dict[str, Any] | None = None
     visuals: dict[str, Any] | None = None
+    options: dict[str, Any] | None = None
     budget_limit_usd: float | None = Field(default=None, ge=0, le=10000)
 
 
@@ -124,6 +126,10 @@ class AutomationPayload(BaseModel):
     publishing: dict[str, Any] | None = None
     budget_per_run_usd: float | None = Field(default=None, ge=0, le=10000)
     monthly_budget_usd: float | None = Field(default=None, ge=0, le=10000)
+
+
+class CredentialPayload(BaseModel):
+    api_key: str = Field(min_length=8, max_length=500)
 
 
 class MarkPublished(BaseModel):
@@ -269,6 +275,24 @@ def init_studio(app: FastAPI, registry, youtube_status=None,
     def providers() -> dict:
         return {"providers": provider_readiness(), "platforms": studio.readiness(),
                 "note": "Es werden nur Namen benötigter Variablen genannt, nie Werte."}
+
+    # --------------------------------------------------------- Credentials
+    @r.get("/credentials")
+    def credential_status() -> dict:
+        return {"credentials": credentials.status(),
+                "note": "Es werden nie Schlüsselwerte zurückgegeben."}
+
+    @r.put("/credentials/{provider}")
+    def credential_set(provider: str, req: CredentialPayload) -> dict:
+        return credentials.set_key(provider, req.api_key)
+
+    @r.delete("/credentials/{provider}")
+    def credential_delete(provider: str) -> dict:
+        return credentials.delete_key(provider)
+
+    @r.post("/credentials/{provider}/test")
+    def credential_test(provider: str) -> dict:
+        return credentials.test_key(provider)
 
     @r.get("/voices")
     def voices(language: str = "de", tone: str = "") -> dict:

@@ -16,6 +16,8 @@ def _check(cid: str, level: str, message: str, scene_id: str | None = None) -> d
 
 def pre_render_checks(project: dict) -> dict:
     """Inhaltliche Prüfung. level: ok | warn | fail (fail blockiert den Render)."""
+    from .options import options_of
+    opt = options_of(project)
     checks = []
     scenes = project.get("scenes") or []
     if not scenes:
@@ -33,6 +35,11 @@ def pre_render_checks(project: dict) -> dict:
         if words > 45:
             checks.append(_check("scene_long", "warn",
                                  f"Szene {i} ist sehr lang ({words} Wörter) — besser teilen.", s["id"]))
+        hits = opt.find_forbidden(text + " " + (s.get("voice_text") or ""))
+        if hits:
+            checks.append(_check("forbidden_topic", "fail",
+                                 f"Szene {i} berührt ein ausgeschlossenes Thema ({', '.join(hits)}).",
+                                 s["id"]))
         if _contains_forbidden_claim(text):
             checks.append(_check("forbidden_claim", "fail",
                                  f"Szene {i} verspricht Viralität — bitte umformulieren.", s["id"]))
@@ -42,9 +49,10 @@ def pre_render_checks(project: dict) -> dict:
     if scenes and scenes[0].get("kind") != "hook":
         checks.append(_check("no_hook", "warn", "Die erste Szene ist nicht als Hook markiert."))
     est = total_words / WORDS_PER_SECOND
-    if est > 180:
+    if est > opt.max_seconds():
         checks.append(_check("too_long", "warn",
-                             f"Geschätzte Länge {est:.0f}s — für Shorts sind unter 60–90s üblich."))
+                             f"Geschätzte Länge {est:.0f}s — für '{opt.platform}' sind höchstens "
+                             f"{opt.max_seconds()}s empfohlen."))
     if (project.get("script") or {}).get("needs_review"):
         checks.append(_check("needs_review", "warn",
                              "Das Skript ist ein automatisch erzeugtes Gerüst und sollte geprüft werden."))

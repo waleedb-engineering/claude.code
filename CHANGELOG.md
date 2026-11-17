@@ -27,6 +27,10 @@ Semver mit Beta-Suffix (`MAJOR.MINOR.PATCH-beta.N`). Aktuelle Version: siehe
   fällige Entwürfe, manuell bestätigte Veröffentlichung
 - Analytics mit manuellen/synchronisierten Metriken, Hook-Vergleich, Remix
 - Ideen-Bibliothek, Studio-CLI, `feature_flags.json`
+- Härtung: Local-API-Schutz (Token für Mutationen, CORS nur lokal), atomare
+  Budgetreservierung je Projekt, API-Schlüssel setzen/löschen ohne Neustart,
+  typisierte Produktionsoptionen bis in den Render, Cancel bleibt Cancel,
+  unterbrochene Projekte werden nach Neustart erkannt
 - Nicht enthalten: KI-Video, Talking Avatar, Face Swap, Voice Cloning,
   YouTube-Import, Upload zu TikTok/Instagram/X — siehe
   `docs/REVID_PARITY_STATUS.md`

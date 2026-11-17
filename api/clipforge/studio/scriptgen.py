@@ -174,6 +174,42 @@ def _scene(text: str, language: str, style: str, kind: str = "body",
     }
 
 
+def _drop_forbidden(text: str, brief) -> tuple[str, int]:
+    """Entfernt Sätze, die ein ausgeschlossenes Thema berühren."""
+    if brief is None or not brief.forbidden_topics:
+        return text, 0
+    kept, dropped = [], 0
+    for sent in split_sentences(text):
+        if brief.find_forbidden(sent):
+            dropped += 1
+        else:
+            kept.append(sent)
+    return " ".join(kept), dropped
+
+
+def apply_brief(script: dict, brief, language: str, style: str) -> dict:
+    """Setzt die verbindlichen Vorgaben durch — auch nach einer LLM-Antwort."""
+    if brief is None:
+        return script
+    scenes = [s for s in script["scenes"] if not brief.find_forbidden(s["text"])]
+    removed = len(script["scenes"]) - len(scenes)
+    if brief.cta:
+        cta = _scene(brief.cta, language, style, "cta")
+        if scenes and scenes[-1]["kind"] == "cta":
+            scenes[-1] = cta
+        else:
+            scenes.append(cta)
+    if brief.visual_style:
+        for s in scenes:
+            if brief.visual_style.lower() not in s["visual_prompt"].lower():
+                s["visual_prompt"] = f"{s['visual_prompt']}, {brief.visual_style}".strip(", ")[:300]
+    if removed:
+        script["notes"].append(
+            f"{removed} Szene(n) wegen ausgeschlossener Themen entfernt.")
+    script["scenes"] = scenes
+    return script
+
+
 def rule_based_script(*, workflow: str, source_text: str, title: str, language: str,
                       target_seconds: int, style: str = "", product: dict | None = None,
                       ) -> dict:
@@ -257,6 +293,7 @@ _LLM_SYSTEM = (
 )
 _LLM_PROMPT = """Write a {seconds}-second vertical video script in language "{lang}".
 Workflow: {workflow}. Tone: {tone}. Visual style: {style}.
+{brief}
 Return JSON: {{"title": str, "scenes": [{{"kind": "hook"|"body"|"cta", "text": str,
 "visual_prompt": str}}]}} with 4-12 scenes, each text at most 30 words.
 <SOURCE>
@@ -264,8 +301,22 @@ Return JSON: {{"title": str, "scenes": [{{"kind": "hook"|"body"|"cta", "text": s
 </SOURCE>"""
 
 
+def _brief_lines(brief) -> str:
+    if brief is None:
+        return ""
+    lines = []
+    for label, value in (("Platform", brief.platform if brief.platform != "generic" else ""),
+                         ("Goal", brief.goal), ("Audience", brief.audience),
+                         ("Call to action (use verbatim as last scene)", brief.cta),
+                         ("Creative instructions", brief.creative_instructions),
+                         ("Never mention", ", ".join(brief.forbidden_topics))):
+        if value:
+            lines.append(f"{label}: {value}")
+    return "\n".join(lines)
+
+
 def llm_script(*, workflow, source_text, title, language, target_seconds, tone, style,
-               settings, client=None) -> dict | None:
+               settings, client=None, brief=None) -> dict | None:
     """Skript via Claude. Liefert None bei JEDEM Fehler (→ rule_based)."""
     try:
         if client is None:
@@ -274,7 +325,7 @@ def llm_script(*, workflow, source_text, title, language, target_seconds, tone, 
                 api_key=settings.anthropic_api_key, timeout=settings.llm_timeout_seconds)
         prompt = _LLM_PROMPT.format(
             seconds=int(target_seconds), lang=language, workflow=workflow,
-            tone=tone or "neutral", style=style or "clean",
+            tone=tone or "neutral", style=style or "clean", brief=_brief_lines(brief),
             source=((title + "\n\n") if title else "") + (source_text or "")[:24000])
         resp = client.messages.create(
             model=settings.llm_model, max_tokens=2048, system=_LLM_SYSTEM,
@@ -302,21 +353,30 @@ def llm_script(*, workflow, source_text, title, language, target_seconds, tone, 
 def generate_script(*, workflow: str, source_text: str, title: str = "",
                     language: str | None = None, target_seconds: int = 45,
                     tone: str = "", style: str = "", product: dict | None = None,
-                    settings=None, llm_client=None, use_llm: bool = True) -> dict:
+                    settings=None, llm_client=None, use_llm: bool = True,
+                    brief=None) -> dict:
     lang = _lang(language, source_text or json.dumps(product or {}, ensure_ascii=False))
     target_seconds = max(10, min(int(target_seconds or 45), 600))
+    dropped = 0
+    if workflow != "script":  # ein geliefertes Skript bleibt wörtlich erhalten
+        source_text, dropped = _drop_forbidden(source_text or "", brief)
     llm_ok = bool(use_llm and settings is not None and
                   (llm_client is not None or getattr(settings, "llm_available", False)))
     if llm_ok and workflow != "script" and (source_text or "").strip():
         result = llm_script(
             workflow=workflow, source_text=source_text, title=title, language=lang,
             target_seconds=target_seconds, tone=tone, style=style, settings=settings,
-            client=llm_client)
+            client=llm_client, brief=brief)
         if result:
-            return result
+            return apply_brief(result, brief, lang, style)
     result = rule_based_script(
         workflow=workflow, source_text=source_text or "", title=title or "",
         language=lang, target_seconds=target_seconds, style=style, product=product)
     if llm_ok and workflow != "script":
         result["notes"].append("LLM nicht erreichbar — lokaler Fallback verwendet.")
-    return result
+    if dropped:
+        result["notes"].append(
+            f"{dropped} Quellsatz/-sätze wegen ausgeschlossener Themen ausgelassen.")
+    if workflow == "script":
+        return result  # Voice-over-Skript des Nutzers: nichts umschreiben
+    return apply_brief(result, brief, lang, style)
