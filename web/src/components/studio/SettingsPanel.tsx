@@ -14,6 +14,7 @@ import {
   type VoiceOptions,
 } from "@/lib/studio";
 import BackgroundTool from "./BackgroundTool";
+import FaceSwapTool from "./FaceSwapTool";
 import { ErrorBox, Progress, btnCls, cardCls, inputCls, labelCls } from "./ui";
 
 type Props = {
@@ -37,6 +38,7 @@ export default function SettingsPanel({ project, media, estimate, onChange, onMe
   const [templatePick, setTemplatePick] = useState("");
   const [notice, setNotice] = useState<string | null>(null);
   const [bgTarget, setBgTarget] = useState<string | null>(null);
+  const [fsTarget, setFsTarget] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const language = project.language;
 
@@ -455,6 +457,16 @@ export default function SettingsPanel({ project, media, estimate, onChange, onMe
                     {t("bg.button")}
                   </button>
                 )}
+                {m.kind !== "audio" && (
+                  <button
+                    type="button"
+                    className="text-neutral-400 underline hover:text-white"
+                    aria-expanded={fsTarget === m.name}
+                    onClick={() => setFsTarget(fsTarget === m.name ? null : m.name)}
+                  >
+                    {t("fs.swap")}
+                  </button>
+                )}
                 <button
                   type="button"
                   className="text-neutral-400 underline hover:text-white"
@@ -479,6 +491,9 @@ export default function SettingsPanel({ project, media, estimate, onChange, onMe
                     onDone={onMediaChanged}
                     onClose={() => setBgTarget(null)}
                   />
+                )}
+                {fsTarget === m.name && (
+                  <FaceSwapTool projectId={project.id} item={m} onDone={onMediaChanged} onClose={() => setFsTarget(null)} />
                 )}
               </li>
             ))}

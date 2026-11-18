@@ -13,10 +13,12 @@ export default function ModelsSection() {
   const [models, setModels] = useState<LocalModel[]>([]);
   const [busy, setBusy] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
+  const [hw, setHw] = useState<Awaited<ReturnType<typeof studio.hardware>> | null>(null);
 
   const load = useCallback(async () => {
     try {
       setModels(await studio.models());
+      setHw(await studio.hardware());
     } catch (e) {
       setError(errorMessage(e));
     }
@@ -65,6 +67,19 @@ export default function ModelsSection() {
       </h2>
       <p className="text-sm text-neutral-300">{t("models.hint")}</p>
       <ErrorBox message={error} />
+      {hw && (
+        <div className="rounded-xl border border-neutral-800 p-3 text-xs text-neutral-300">
+          <p className="font-semibold text-neutral-200">{t("models.localVideo")}</p>
+          <p>
+            {hw.system} · {hw.nvidia_gpus.map((g) => `${g.name} (${g.vram_gb} GB)`).join(", ") || (hw.apple_silicon ? "Apple Silicon" : t("models.noGpu"))}
+            {hw.ram_gb ? ` · ${hw.ram_gb} GB RAM` : ""}
+          </p>
+          <p className={hw.local_ai_video === "unsuitable" ? "text-amber-300" : "text-emerald-300"}>{hw.note}</p>
+          <p>
+            {t("models.notBuiltIn")} {t("models.freeAlt")}: {hw.free_alternatives.join(", ")}. {hw.paid_alternative}.
+          </p>
+        </div>
+      )}
       {GROUPS.map((g) => (
         <div key={g} className="space-y-1">
           <h3 className="text-xs font-semibold uppercase tracking-wide text-neutral-400">{t(`models.group.${g}` as TKey)}</h3>

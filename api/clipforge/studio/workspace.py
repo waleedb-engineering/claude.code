@@ -88,7 +88,7 @@ def visible(owner: str | None) -> bool:
 
 # Bestandteile, die je Benutzer getrennt liegen (Rest bleibt gemeinsam)
 PER_USER_ITEMS = ("projects", "tasks", "templates.json", "ideas", "analytics", "accounts",
-                  "voices", "automations", "music", "previews")
+                  "voices", "automations", "music", "previews", "faces", "media_library")
 
 
 def migrate_shared(user: str, jobs_dir: str | None = None) -> dict:

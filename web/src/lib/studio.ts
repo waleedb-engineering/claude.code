@@ -545,6 +545,30 @@ export const studio = {
     get<{ engines: { id: string; label: string; paid: boolean; ready: boolean | Record<string, boolean> }[] }>(
       "/translation/engines",
     ),
+  hardware: () =>
+    get<{ system: string; nvidia_gpus: { name: string; vram_gb: number }[]; apple_silicon: boolean; ram_gb: number | null; local_ai_video: string; note: string; free_alternatives: string[]; paid_alternative: string }>(
+      "/hardware",
+    ),
+  faces: () =>
+    get<{
+      enabled: boolean;
+      reason: string;
+      label: string;
+      faces: { id: string; name: string; created_at: string; consent: { basis: string; person: string } }[];
+    }>("/faces"),
+  async registerFace(form: FormData) {
+    const res = await apiFetch(`${API_BASE}/api/studio/faces`, { method: "POST", body: form });
+    const data = await res.json().catch(() => null);
+    if (!res.ok) throw new StudioApiError(res.status, data?.detail?.code ? data.detail : { code: "http_error", message: "Registrierung fehlgeschlagen." });
+    return data;
+  },
+  deleteFace: (id: string) => request<{ deleted: boolean }>("DELETE", `/faces/${id}`),
+  faceAudit: () => get<{ entries: { at: string; event: string; result?: string; target?: string }[] }>("/faces/audit"),
+  faceSwap: (id: string, name: string, faceId: string, confirmCost: boolean) =>
+    post<{ task: Task }>(`/projects/${id}/media/${encodeURIComponent(name)}/faceswap`, {
+      face_id: faceId,
+      confirm_cost: confirmCost,
+    }).then((d) => d.task),
   models: (group?: string) =>
     get<{ models: LocalModel[] }>(`/models${group ? `?group=${group}` : ""}`).then((d) => d.models),
   downloadModel: (id: string) =>

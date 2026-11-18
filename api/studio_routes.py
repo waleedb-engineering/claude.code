@@ -137,6 +137,11 @@ class SocialCopyRequest(BaseModel):
     confirm_cost: bool = False
 
 
+class FaceSwapRequest(BaseModel):
+    face_id: str
+    confirm_cost: bool = False
+
+
 class ApplyTemplate(BaseModel):
     expected_version: int
     template_id: str
@@ -721,10 +726,59 @@ def init_studio(app: FastAPI, registry, youtube_status=None,
         from clipforge.studio import trends
         return trends.youtube_trends(region.upper(), category)
 
+    @r.get("/hardware")
+    def hardware_check() -> dict:
+        from clipforge.studio import hardware
+        return hardware.check()
+
     @r.get("/translation/engines")
     def translation_engines() -> dict:
         from clipforge.studio import translate as tr
         return {"engines": tr.engines_status(), "languages": tr.LANG_NAMES}
+
+    # ------------------------------------------------------------ Face Swap
+    @r.get("/faces")
+    def faces_list() -> dict:
+        from clipforge.studio import faceswap
+        ok, why = faceswap.enabled()
+        return {"enabled": ok, "reason": why, "faces": faceswap.list_faces() if ok else [],
+                "label": faceswap.LABEL, "consent": faceswap.CONSENT_TEXT,
+                "no_deception": faceswap.NO_DECEPTION, "live_verified": False}
+
+    @r.post("/faces", status_code=201)
+    def faces_register(request: Request, file: UploadFile = File(...), name: str = Form(...),
+                       basis: str = Form(...), person: str = Form(default=""),
+                       no_deception: bool = Form(default=False)) -> dict:
+        from clipforge.studio import faceswap
+        ext = os.path.splitext(file.filename or "")[1].lower()
+        if ext not in (".png", ".jpg", ".jpeg", ".webp"):
+            raise StudioError("file_type_not_allowed", "Referenz muss ein Foto sein.", 415)
+        tmp = tempfile.mkdtemp(prefix="cf_face_")
+        try:
+            path = os.path.join(tmp, "ref" + ext)
+            save_upload(file.file, path, 15 * 1024 * 1024)
+            return {"face": faceswap.register_face(
+                path, name=name, basis=basis, person=person, no_deception=no_deception,
+                user=getattr(request.state, "user", None))}
+        finally:
+            import shutil
+            shutil.rmtree(tmp, ignore_errors=True)
+
+    @r.delete("/faces/{face_id}")
+    def faces_delete(face_id: str) -> dict:
+        from clipforge.studio import faceswap
+        faceswap.delete_face(face_id)
+        return {"deleted": True}
+
+    @r.get("/faces/audit")
+    def faces_audit() -> dict:
+        from clipforge.studio import faceswap
+        return {"entries": faceswap.audit()}
+
+    @r.post("/projects/{pid}/media/{name}/faceswap", status_code=202)
+    def media_faceswap(pid: str, name: str, req: FaceSwapRequest, request: Request) -> dict:
+        return {"task": svc.start_face_swap(pid, name, req.face_id, req.confirm_cost,
+                                            getattr(request.state, "user", None))}
 
     # ------------------------------------------------------- lokale Modelle
     @r.get("/models")

@@ -7,6 +7,7 @@ import { ErrorBox, Loading, Notice, Pill, btnCls, cardCls, inputCls, labelCls } 
 import VoiceCloneSection from "@/components/studio/VoiceCloneSection";
 import AccountsSection from "@/components/studio/AccountsSection";
 import ModelsSection from "@/components/studio/ModelsSection";
+import FacesSection from "@/components/studio/FacesSection";
 import UsersSection from "@/components/studio/UsersSection";
 
 export default function SetupPage() {
@@ -143,6 +144,8 @@ export default function SetupPage() {
       <ModelsSection />
 
       <VoiceCloneSection />
+
+      <FacesSection />
 
       {providers && (
         <section aria-labelledby="su-prov">

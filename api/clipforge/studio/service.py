@@ -129,6 +129,7 @@ class StudioService:
         self.tasks.register("media_background", self._task_background)
         self.tasks.register("model_download", self._task_model_download)
         self.tasks.register("broll_auto", self._task_broll_auto)
+        self.tasks.register("face_swap", self._task_face_swap)
         self.tasks.on_finish(self._on_task_finish)
 
     def _on_task_finish(self, task: dict) -> None:
@@ -528,6 +529,78 @@ class StudioService:
             self.store.mutate(pid, apply)
         self._artifact(pid, "broll.json", {"assigned": log, "stock": params.get("stock")})
         return {"assigned": len(log), "log": log}
+
+    # ---------------------------------------------------------------- Face Swap
+    def start_face_swap(self, pid: str, name: str, face_id: str, confirm_cost: bool,
+                        user: str | None) -> dict:
+        from . import faceswap
+        faceswap._require_enabled()
+        project = self.store.load(pid)
+        target = self.media_path(pid, name)
+        ext = os.path.splitext(name)[1].lower()
+        is_video = ext in VIDEO_EXT
+        if not is_video and ext not in IMAGE_EXT:
+            raise StudioError("media_unsupported", "Nur Bilder und Videos.", 415)
+        faceswap.verify_reference(face_id)
+        if faceswap.target_faces(target, is_video) < 1:
+            raise StudioError("face_count", "Im Ziel wurde kein Gesicht gefunden.", 422)
+        seconds = _probe_av(target).get("duration", 0.0) if is_video else 0.0
+        cost = faceswap.estimate(is_video, seconds)
+        if not confirm_cost:
+            raise StudioError("cost_confirmation_required",
+                              f"Face Swap über fal.ai kostet ca. {cost:.2f} USD. Bitte bestätigen.",
+                              402, {"estimated_usd": cost})
+        CostLedger(self.store.dir(pid), project.get("budget_limit_usd") or 0.0)  # Budget existiert
+        return self.tasks.submit("face_swap", pid, {"name": name, "face_id": face_id,
+                                                    "cost": cost, "user": user,
+                                                    "is_video": is_video})
+
+    def _task_face_swap(self, task: dict, progress, should_cancel) -> dict:
+        import tempfile
+
+        from . import faceswap
+        from .broll import set_media_meta
+        pid, prm = task["project_id"], task["params"]
+        faceswap._require_enabled()
+        project = self.store.load(pid)
+        pdir = self.store.dir(pid)
+        ref = faceswap.verify_reference(prm["face_id"])
+        target = self.media_path(pid, prm["name"])
+        ext = ".mp4" if prm["is_video"] else ".png"
+        out_name = f"{os.path.splitext(prm['name'])[0][:40]}_faceswap_{new_id()[:6]}{ext}"
+        out = safe_child(os.path.join(pdir, "media"), out_name)
+        ledger = CostLedger(pdir, project.get("budget_limit_usd") or 0.0)
+        rid = ledger.reserve(prm["cost"], "Face Swap (fal.ai)")
+        try:
+            with tempfile.TemporaryDirectory() as tmp:
+                raw = os.path.join(tmp, "raw" + ext)
+                progress("Face Swap läuft (fal.ai) …")
+                faceswap.run_swap(ref["path"], target, raw, prm["is_video"], should_cancel)
+                progress("Kennzeichnung „KI-verändert“ wird eingebrannt …")
+                if prm["is_video"]:
+                    faceswap.label_video(raw, out)
+                else:
+                    shutil.copyfile(raw, out)
+                    faceswap.label_image(out)
+            ledger.commit(rid, prm["cost"], "fal", "face_swap")
+        except BaseException:
+            ledger.release(rid)
+            if os.path.exists(out):
+                os.remove(out)
+            raise
+        set_media_meta(pdir, out_name, tags=["faceswap"], origin={
+            "source": "face_swap", "face": prm["face_id"], "target": prm["name"],
+            "label": faceswap.LABEL, "created_at": now_iso()})
+
+        def mark(p: dict) -> None:
+            labels = list(p.get("disclosure") or [])
+            if faceswap.LABEL not in labels:
+                p["disclosure"] = (labels + [faceswap.LABEL])[:3]
+        self.store.mutate(pid, mark)
+        faceswap._log({"event": "face_swap", "user": prm.get("user"), "project": pid,
+                       "face": prm["face_id"], "target": prm["name"], "result": out_name,
+                       "cost_usd": prm["cost"]})
+        return {"media": out_name, "label": faceswap.LABEL}
 
     def _task_model_download(self, task: dict, progress, should_cancel) -> dict:
         from . import models
