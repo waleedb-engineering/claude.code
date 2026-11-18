@@ -10,6 +10,7 @@ import io
 import json
 import os
 import shutil
+import subprocess
 import socket
 import tempfile
 
@@ -241,9 +242,20 @@ def test_voice_clone_requires_consent_and_is_recorded():
         voices = client.get("/api/studio/voices?language=de").json()
         eleven = next(p for p in voices["providers"] if p["id"] == "elevenlabs")
         assert any(v["id"] == "abcDEF123" and "geklont" in v["label"] for v in eleven["voices"])
+        # Browser-Aufnahme (WebM/Opus) wird vor dem Senden in WAV umgewandelt
+        webm = os.path.join(tmp, "rec.webm")
+        subprocess.run(["ffmpeg", "-y", "-v", "error", "-f", "lavfi", "-i", "sine=f=300:d=2",
+                        "-c:a", "libopus", webm], check=True)
+        r = post({"name": "Aufnahme", "basis": "own", "no_deception": "true"},
+                 [("files", ("aufnahme.webm", open(webm, "rb")))])
+        assert r.status_code == 201, r.text
+        assert b'filename="probe_0.wav"' in calls[-1][3] and b"RIFF" in calls[-1][3]
+        r = post({"name": "Kaputt", "basis": "own", "no_deception": "true"},
+                 [("files", ("x.webm", io.BytesIO(b"keine aufnahme")))])
+        assert r.status_code == 415
         assert client.delete(f"/api/studio/voices/clones/{clone['id']}").json() == {"deleted": True}
         assert calls[-1][0] == "DELETE" and calls[-1][1].endswith("/v1/voices/abcDEF123")
-        assert client.get("/api/studio/voices/clones").json()["clones"] == []
+        assert len(client.get("/api/studio/voices/clones").json()["clones"]) == 1
         os.environ.pop("ELEVENLABS_API_KEY")
         r = post({"name": "Meine Stimme", "basis": "own", "no_deception": "true"})
         assert r.status_code == 409 and r.json()["detail"]["code"] == "provider_not_configured"

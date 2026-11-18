@@ -101,6 +101,16 @@ def normalize_scene(raw: dict, project_dir: str | None = None) -> dict:
         start = 0.0
     if media and 0 < start < 86400:
         scene["visual"]["start"] = round(start, 3)
+    vm = raw.get("voice_media")
+    if vm:
+        from .audio import AUDIO_EXT
+        vm = safe_filename(str(vm))
+        if os.path.splitext(vm)[1].lower() not in AUDIO_EXT | VIDEO_EXT:
+            raise StudioError("validation_error", "Eigene Aufnahme muss eine Audio-/Videodatei sein.")
+        if project_dir is not None and not os.path.isfile(
+                safe_child(os.path.join(project_dir, "media"), vm)):
+            raise StudioError("media_not_found", f"Aufnahme '{vm}' gibt es nicht.", 404)
+        scene["voice_media"] = vm
     if raw.get("fit_speech"):
         scene["fit_speech"] = True
     if isinstance(raw.get("source_text"), str) and raw["source_text"].strip():
@@ -191,6 +201,8 @@ def migrate(data: dict) -> dict:
         "avatar_image": vis.get("avatar_image") or None,
         "video_provider": str(vis.get("video_provider") or "fal_video"),
         "avatar_provider": str(vis.get("avatar_provider") or "fal_avatar"),
+        "avatar_layout": vis.get("avatar_layout") if vis.get("avatar_layout") in (
+            "full", "pip_br", "pip_bl", "pip_tr", "bottom_half") else "full",
         "headlines": bool(vis.get("headlines", True))}
     from .options import ProductionOptions
     legacy = dict(p.get("options") or {}) if isinstance(p.get("options"), dict) else {}

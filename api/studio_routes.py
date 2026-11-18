@@ -365,10 +365,19 @@ def init_studio(app: FastAPI, registry, youtube_status=None,
             paths = []
             for i, up in enumerate(files):
                 ext = os.path.splitext(up.filename or "")[1].lower()
-                if ext not in audio.AUDIO_EXT:
+                # .webm/.mp4: Browser-Aufnahmen (MediaRecorder)
+                if ext not in audio.AUDIO_EXT | {".webm", ".mp4"}:
                     raise StudioError("file_type_not_allowed", "Sprachproben müssen Audiodateien sein.", 415)
                 dest = os.path.join(tmp, f"probe_{i}{ext}")
                 save_upload(up.file, dest, MAX_SAMPLE_BYTES)
+                if ext in (".webm", ".mp4", ".ogg"):
+                    wav = os.path.join(tmp, f"probe_{i}.wav")
+                    try:
+                        audio.run_ffmpeg(["ffmpeg", "-y", "-i", dest, "-vn", "-ac", "1", "-ar", "44100",
+                                          "-c:a", "pcm_s16le", wav], "Aufnahme umwandeln")
+                    except StudioError:
+                        raise StudioError("file_unreadable", "Die Aufnahme ist kein lesbares Audio.", 415)
+                    dest = wav
                 if audio.media_duration(dest) <= 0:
                     raise StudioError("file_unreadable", "Eine Probe ist kein lesbares Audio.", 415)
                 paths.append(dest)

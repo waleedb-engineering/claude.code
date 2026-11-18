@@ -502,6 +502,21 @@ export default function SettingsPanel({ project, media, estimate, onChange, onMe
               </option>
             ))}
         </select>
+        <label htmlFor="s-avlayout" className={labelCls}>
+          {t("ed.avatarLayout")}
+        </label>
+        <select
+          id="s-avlayout"
+          className={inputCls}
+          value={project.visuals.avatar_layout ?? "full"}
+          onChange={(e) => onChange({ visuals: { ...project.visuals, avatar_layout: e.target.value } })}
+        >
+          {["full", "pip_br", "pip_bl", "pip_tr", "bottom_half"].map((l) => (
+            <option key={l} value={l}>
+              {t(`ed.avatarLayout.${l}` as Parameters<typeof t>[0])}
+            </option>
+          ))}
+        </select>
         <label htmlFor="s-gameplay" className={labelCls}>
           {t("ed.gameplay")}
         </label>

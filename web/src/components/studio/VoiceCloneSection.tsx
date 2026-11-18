@@ -1,14 +1,16 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { useT } from "@/lib/i18n";
+import { useLocale, useT } from "@/lib/i18n";
 import { errorMessage, studio } from "@/lib/studio";
+import AudioRecorder from "./AudioRecorder";
 import { ErrorBox, btnCls, cardCls, inputCls, labelCls, primaryCls } from "./ui";
 
-type Clone = { id: string; name: string; created_at: string; consent: { basis: string; speaker: string } };
+type Clone = { id: string; name: string; voice_id: string; created_at: string; consent: { basis: string; speaker: string } };
 
 export default function VoiceCloneSection() {
   const t = useT();
+  const locale = useLocale();
   const [clones, setClones] = useState<Clone[]>([]);
   const [enabled, setEnabled] = useState(false);
   const [name, setName] = useState("");
@@ -18,6 +20,7 @@ export default function VoiceCloneSection() {
   const [files, setFiles] = useState<File[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [preview, setPreview] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -78,6 +81,21 @@ export default function VoiceCloneSection() {
                 type="button"
                 className={btnCls}
                 onClick={async () => {
+                  if (!window.confirm(t("vc.previewCost"))) return;
+                  setError(null);
+                  try {
+                    setPreview(await studio.voicePreview(locale, "elevenlabs", c.voice_id, true));
+                  } catch (err) {
+                    setError(errorMessage(err));
+                  }
+                }}
+              >
+                ▶ {t("ed.voicePreview")}
+              </button>
+              <button
+                type="button"
+                className={btnCls}
+                onClick={async () => {
                   try {
                     await studio.deleteClone(c.id);
                     await load();
@@ -92,6 +110,8 @@ export default function VoiceCloneSection() {
           ))}
         </ul>
       )}
+      {preview && <audio src={preview} controls autoPlay className="w-full" aria-label={t("ed.voicePreview")} />}
+      <p className="text-[11px] text-neutral-400">{t("vc.languages")}</p>
       <form onSubmit={submit} className="space-y-3">
         <div>
           <label htmlFor="vc-name" className={labelCls}>
@@ -107,11 +127,31 @@ export default function VoiceCloneSection() {
             id="vc-files"
             type="file"
             multiple
-            required
             accept="audio/*"
             className={inputCls}
-            onChange={(e) => setFiles(Array.from(e.target.files ?? []).slice(0, 5))}
+            onChange={(e) => setFiles((prev) => [...prev, ...Array.from(e.target.files ?? [])].slice(0, 5))}
           />
+          <div className="mt-2">
+            <AudioRecorder onRecorded={(f) => setFiles((prev) => [...prev, f].slice(0, 5))} />
+          </div>
+          {files.length > 0 && (
+            <ul className="mt-2 space-y-1 text-xs text-neutral-300">
+              {files.map((f, i) => (
+                <li key={`${f.name}-${i}`} className="flex items-center justify-between gap-2">
+                  <span className="truncate">
+                    {f.name} ({Math.round(f.size / 1024)} KB)
+                  </span>
+                  <button
+                    type="button"
+                    className="underline"
+                    onClick={() => setFiles((prev) => prev.filter((_, j) => j !== i))}
+                  >
+                    {t("common.delete")}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
         <fieldset className="space-y-2 text-sm text-neutral-200">
           <label className="flex items-start gap-2">

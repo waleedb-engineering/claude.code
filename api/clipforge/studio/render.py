@@ -150,6 +150,11 @@ class StudioRenderer:
                         "-vn", "-ac", "1", "-ar", "44100", "-c:a", "pcm_s16le", out],
                        "Audio-Ausschnitt")
             return out, src["end"] - src["start"], "transcribed"
+        own = scene.get("voice_media")
+        if own:  # eigene Sprachaufnahme aus der Mediathek statt Text-zu-Sprache
+            run_ffmpeg(["ffmpeg", "-y", "-i", self._media(own), "-vn", "-ac", "1", "-ar", "44100",
+                        "-c:a", "pcm_s16le", out], "Eigene Aufnahme")
+            return out, media_duration(out), "estimated"
         text = scene.get("voice_text") or scene["text"]
         if not text.strip():
             return self._silence(out, 1.0), 0.0, "none"
@@ -452,11 +457,44 @@ class StudioRenderer:
                  f":r={self.fps}:d={dur:.3f}"],
                 f"setsar=1{_grade(self.p['style'])}")
 
+    AVATAR_LAYOUTS = ("full", "pip_br", "pip_bl", "pip_tr", "bottom_half")
+
+    def _avatar_overlay(self, index: int, scene: dict, dur: float, out: str, offset: float,
+                        enc: list[str]) -> None:
+        """Avatar als Bild-im-Bild bzw. untere Hälfte über einem Hintergrund
+        (Szenen-Medium, sonst Motion-Hintergrund)."""
+        layout = self.p["visuals"].get("avatar_layout")
+        bg_scene = {**scene, "visual": {**scene["visual"],
+                                        "mode": "media" if scene["visual"].get("media") else "motion"}}
+        bg_inputs, bg_chain = self._base_inputs(index, bg_scene, dur, self.w, self.h, offset)
+        if layout == "bottom_half":
+            pw, ph = self.w, (self.h // 2) // 2 * 2
+            x, y = 0, self.h - ph
+        else:
+            pw = int(self.w * 0.42) // 2 * 2
+            ph = int(pw * 1.25) // 2 * 2
+            m = int(self.w * 0.04)
+            x = m if layout == "pip_bl" else self.w - pw - m
+            y = m + int(self.h * 0.06) if layout == "pip_tr" else self.h - ph - int(self.h * 0.24)
+        av_inputs, av_chain = self._base_inputs(index, scene, dur, pw, ph, offset)
+        border = "" if layout == "bottom_half" else ",pad=iw+8:ih+8:4:4:white"
+        if border:
+            x, y = x - 4, y - 4
+        cmd = ["ffmpeg", "-y", *bg_inputs, *av_inputs, "-filter_complex",
+               f"[0:v]{bg_chain}[bg];[1:v]{av_chain}{border}[av];"
+               f"[bg][av]overlay=x={x}:y={y}:shortest=0:eof_action=repeat[v]",
+               "-map", "[v]", *enc]
+        run_ffmpeg(cmd, f"Szene {index + 1} (Avatar)")
+
     def render_segment(self, index: int, scene: dict, dur: float, out: str, offset: float) -> None:
         split = scene["visual"]["mode"] == "split"
         gameplay = self.p["visuals"].get("gameplay_media")
         enc = ["-an", "-c:v", "libx264", "-preset", self.preset, "-crf", self.crf,
                "-pix_fmt", "yuv420p", "-r", str(self.fps), "-t", f"{dur:.3f}", out]
+        if scene["visual"]["mode"] == "avatar" and \
+                self.p["visuals"].get("avatar_layout", "full") in self.AVATAR_LAYOUTS[1:]:
+            self._avatar_overlay(index, scene, dur, out, offset, enc)
+            return
         if split and gameplay:
             half = (self.h // 2) // 2 * 2
             inputs, chain = self._base_inputs(index, scene, dur, self.w, self.h - half, offset)

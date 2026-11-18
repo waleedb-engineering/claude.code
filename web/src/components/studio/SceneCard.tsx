@@ -128,7 +128,29 @@ export default function SceneCard(p: Props) {
           )}
         </div>
         <div className="space-y-3">
-          {!s.audio_source && (
+          {!s.audio_source && p.media.some((m) => m.kind === "audio") && (
+            <div>
+              <label htmlFor={`${id}-vmedia`} className={labelCls}>
+                {t("ed.voiceMedia")}
+              </label>
+              <select
+                id={`${id}-vmedia`}
+                className={inputCls}
+                value={s.voice_media ?? ""}
+                onChange={(e) => p.onChange({ voice_media: e.target.value || null })}
+              >
+                <option value="">{t("common.none")}</option>
+                {p.media
+                  .filter((m) => m.kind === "audio")
+                  .map((m) => (
+                    <option key={m.name} value={m.name}>
+                      {m.name}
+                    </option>
+                  ))}
+              </select>
+            </div>
+          )}
+          {!s.audio_source && !s.voice_media && (
             <div>
               <label htmlFor={`${id}-voice`} className={labelCls}>
                 {t("ed.voiceText")}

@@ -42,6 +42,7 @@ export type Scene = {
   pause_after: number;
   transition?: TransitionId;
   source_text?: string;
+  voice_media?: string | null;
   fit_speech?: boolean;
   visual: SceneVisual;
   audio_source?: { start: number; end: number };
@@ -102,6 +103,7 @@ export type Project = {
     avatar_image: string | null;
     video_provider: string;
     avatar_provider: string;
+    avatar_layout?: string;
     headlines: boolean;
   };
   budget_limit_usd: number;
@@ -468,7 +470,7 @@ export const studio = {
     request<CredentialStatus>("PUT", `/credentials/${provider}`, { api_key: apiKey }),
   deleteCredential: (provider: string) => request<CredentialStatus>("DELETE", `/credentials/${provider}`),
   clones: () =>
-    get<{ clones: { id: string; name: string; created_at: string; consent: { basis: string; speaker: string } }[]; enabled: boolean }>(
+    get<{ clones: { id: string; name: string; voice_id: string; created_at: string; consent: { basis: string; speaker: string } }[]; enabled: boolean }>(
       "/voices/clones",
     ),
   async createClone(form: FormData) {
