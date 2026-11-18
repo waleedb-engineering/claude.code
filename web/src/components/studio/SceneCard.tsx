@@ -121,6 +121,11 @@ export default function SceneCard(p: Props) {
             value={s.text}
             onChange={(e) => p.onChange({ text: e.target.value })}
           />
+          {s.source_text && (
+            <p className="mt-1 text-[11px] text-neutral-400">
+              {t("ed.sourceText")}: {s.source_text}
+            </p>
+          )}
         </div>
         <div className="space-y-3">
           {!s.audio_source && (

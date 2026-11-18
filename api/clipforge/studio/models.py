@@ -55,6 +55,21 @@ CATALOG: dict[str, dict] = {
                    "sha256": "0ba9fbfa01b5270c96627c4ef784da859931e02f04419c829e83484087c34e79"}],
         "mb": 37, "license": "Apache-2.0 (OpenCV Zoo SFace)", "commercial": True,
     },
+    # --- Übersetzung (Argos Translate, CTranslate2-Format)
+    "translate_de_en": {
+        "label": "Übersetzung Deutsch → Englisch (Argos)", "group": "translate",
+        "files": [{"name": "translate-de_en-1_3.argosmodel",
+                   "url": "https://argos-net.com/v1/translate-de_en-1_3.argosmodel"}],
+        "mb": 100, "license": "Argos-Translate-Paket (Lizenz im Paket, OPUS-Daten) – prüfen",
+        "commercial": None,
+    },
+    "translate_en_de": {
+        "label": "Übersetzung Englisch → Deutsch (Argos)", "group": "translate",
+        "files": [{"name": "translate-en_de-1_3.argosmodel",
+                   "url": "https://argos-net.com/v1/translate-en_de-1_3.argosmodel"}],
+        "mb": 100, "license": "Argos-Translate-Paket (Lizenz im Paket, OPUS-Daten) – prüfen",
+        "commercial": None,
+    },
     # --- Piper-Stimmen (Hugging Face rhasspy/piper-voices)
     "piper_de_thorsten": {
         "label": "Piper Deutsch – Thorsten (mittel)", "group": "piper", "language": "de",

@@ -75,7 +75,7 @@ def test_catalog_has_only_fixed_https_urls():
     for spec in models.CATALOG.values():
         for f in spec["files"]:
             assert f["url"].startswith(("https://github.com/", "https://media.githubusercontent.com/",
-                                        "https://huggingface.co/"))
+                                        "https://huggingface.co/", "https://argos-net.com/"))
             assert "/" not in f["name"] and ".." not in f["name"]
 
 

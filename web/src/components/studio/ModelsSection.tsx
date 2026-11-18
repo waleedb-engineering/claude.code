@@ -5,7 +5,7 @@ import { useT, type TKey } from "@/lib/i18n";
 import { errorMessage, studio, waitForTask, type LocalModel } from "@/lib/studio";
 import { ErrorBox, btnCls, cardCls } from "./ui";
 
-const GROUPS = ["piper", "background", "face"] as const;
+const GROUPS = ["piper", "translate", "background", "face"] as const;
 
 /** Lokale Modelle laden/löschen — Download nur nach ausdrücklicher Bestätigung. */
 export default function ModelsSection() {

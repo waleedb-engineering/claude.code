@@ -28,6 +28,7 @@ export type SceneVisual = {
   media: string | null;
   color: string | null;
   seed: number;
+  start?: number;
 };
 
 export type Scene = {
@@ -40,6 +41,8 @@ export type Scene = {
   duration: number | null;
   pause_after: number;
   transition?: TransitionId;
+  source_text?: string;
+  fit_speech?: boolean;
   visual: SceneVisual;
   audio_source?: { start: number; end: number };
   words?: { text: string; start: number; end: number }[];
@@ -523,6 +526,10 @@ export const studio = {
     post<{ task: Task }>(`/projects/${id}/broll/auto`, { stock: stock || null }).then((d) => d.task),
   setMediaTags: (id: string, name: string, tags: string[]) =>
     request<{ tags: string[] }>("PUT", `/projects/${id}/media/${encodeURIComponent(name)}/tags`, { tags }),
+  translationEngines: () =>
+    get<{ engines: { id: string; label: string; paid: boolean; ready: boolean | Record<string, boolean> }[] }>(
+      "/translation/engines",
+    ),
   models: (group?: string) =>
     get<{ models: LocalModel[] }>(`/models${group ? `?group=${group}` : ""}`).then((d) => d.models),
   downloadModel: (id: string) =>

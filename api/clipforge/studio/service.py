@@ -44,6 +44,7 @@ SOURCE_EXT = {
     "podcast": AUDIO_EXT | VIDEO_EXT,
     "longform": VIDEO_EXT,
     "youtube": VIDEO_EXT,
+    "translate": VIDEO_EXT | AUDIO_EXT,
 }
 WORKFLOW_INFO = [
     # id, braucht, lokal lauffähig
@@ -52,7 +53,7 @@ WORKFLOW_INFO = [
     ("audio", "file", True), ("music", "file", True), ("podcast", "file", True),
     ("longform", "file", True), ("media", "file", True), ("job", "job", True),
     ("product_ad", "product", True), ("cinematic", "text", True),
-    ("youtube", "youtube", True), ("avatar", "text", False),
+    ("youtube", "youtube", True), ("avatar", "text", False), ("translate", "file", True),
 ]
 
 
@@ -223,6 +224,26 @@ class StudioService:
             source["rights"] = {"confirmed": True, "confirmed_at": now_iso(),
                                 "statement": "Rechteinhaber oder Erlaubnis zur Bearbeitung",
                                 "verified": False}
+        elif workflow == "translate":
+            from . import translate as tr
+            cfg = req.get("translation") if isinstance(req.get("translation"), dict) else {}
+            target = cfg.get("target")
+            if target not in tr.LANG_NAMES:
+                raise StudioError("validation_error", "Zielsprache: de oder en.")
+            engine = cfg.get("engine") or "manual"
+            if engine not in tr.ENGINES:
+                raise StudioError("validation_error", "Unbekannte Übersetzungs-Engine.")
+            mode = cfg.get("mode") or "subtitles"
+            if mode not in ("subtitles", "dub"):
+                raise StudioError("validation_error", "Modus: subtitles oder dub.")
+            src_lang = cfg.get("source") if cfg.get("source") in tr.LANG_NAMES else None
+            if req.get("rights_confirmed") is not True:
+                raise StudioError("rights_confirmation_required",
+                                  "Bitte bestätigen, dass du das Video übersetzen und "
+                                  "veröffentlichen darfst.")
+            source["translation"] = {"target": target, "engine": engine, "mode": mode,
+                                     "source": src_lang}
+            source["rights"] = {"confirmed": True, "confirmed_at": now_iso(), "verified": False}
         elif workflow == "job":
             job_id = str(req.get("job_id") or "")
             if self.registry is None or self.registry.get(job_id) is None:
@@ -642,6 +663,8 @@ class StudioService:
                 scenes = [normalize_scene({"text": "", "duration": 2.0,
                                            "visual": {"mode": "motion", "seed": i}})
                           for i in range(8)]
+        elif wf == "translate":
+            return self._ingest_translate(pid, project, settings, progress, should_cancel)
         elif wf in ("podcast", "longform"):
             return self._start_shorts_job(pid, project, progress)
         elif wf == "youtube":
@@ -707,6 +730,86 @@ class StudioService:
         saved = self.store.mutate(pid, apply)
         return {"scene_count": len(saved["scenes"]), "version": saved["version"],
                 "generator": script_meta.get("generator")}
+
+    def _ingest_translate(self, pid: str, project: dict, settings, progress, should_cancel) -> dict:
+        """Video übersetzen: Transkript → Übersetzung → Szenen über dem Originalbild."""
+        from . import translate as tr
+        src = project["source"]
+        cfg = src.get("translation") or {}
+        target, engine, mode = cfg.get("target"), cfg.get("engine", "manual"), cfg.get("mode", "subtitles")
+        transcript = self._transcript(pid, src, settings, progress)
+        detected = (transcript.get("language") or "").lower()[:2]
+        source_lang = cfg.get("source") or detected
+        if source_lang not in tr.LANG_NAMES:
+            raise StudioError("language_unsupported",
+                              f"Erkannte Sprache '{detected or '?'}' wird noch nicht unterstützt "
+                              "(Deutsch/Englisch).", 422)
+        if source_lang == target:
+            raise StudioError("validation_error", "Quell- und Zielsprache sind gleich.", 422)
+        # je Satz-Segment eine Szene: so bleiben Übersetzung und Bild eng synchron
+        scenes = []
+        for seg in transcript.get("segments") or []:
+            text = str(seg.get("text") or "").strip()
+            if text and seg.get("end", 0) > seg.get("start", 0):
+                scenes.append(normalize_scene({
+                    "text": text, "kind": "hook" if not scenes else "body",
+                    "audio_source": {"start": seg["start"], "end": seg["end"]}}))
+        if not scenes:
+            raise StudioError("transcription_empty", "Es wurde keine Sprache erkannt.", 422)
+        texts = [s["text"] for s in scenes]
+        if should_cancel():
+            raise TaskCanceled()
+        cost = tr.estimate_cost(engine, texts)
+        ledger = CostLedger(self.store.dir(pid), project.get("budget_limit_usd") or 0.0)
+        rid = ledger.reserve(cost, f"Übersetzung ({engine})")
+        try:
+            progress(f"Übersetzung {source_lang}→{target} ({engine}) …")
+            translated = tr.translate(texts, source_lang, target, engine)
+            ledger.commit(rid, cost, engine, "translation")
+        except BaseException:
+            ledger.release(rid)
+            raise
+        ext = os.path.splitext(src["file"])[1].lower()
+        video = None
+        if ext in VIDEO_EXT:
+            video = self._adopt_source_as_media(pid, src["file"])
+        out = []
+        for scene, text in zip(scenes, translated):
+            a = scene["audio_source"]
+            raw = {"id": scene["id"], "kind": scene["kind"], "text": text,
+                   "source_text": scene["text"],
+                   "visual": ({"mode": "media", "media": video, "start": a["start"]} if video
+                              else {"mode": "motion"})}
+            if mode == "dub":
+                raw.update(duration=round(a["end"] - a["start"], 3), fit_speech=True)
+            else:  # Untertitel: Originalton bleibt
+                raw["audio_source"] = a
+            out.append(normalize_scene(raw, self.store.dir(pid)))
+        labels = ["KI-übersetzt" if target == "de" else "AI-translated"]
+        if mode == "dub":
+            labels.append("synthetische Stimme" if target == "de" else "synthetic voice")
+        self._artifact(pid, "translation.json", {
+            "source_language": source_lang, "detected_language": detected, "target": target,
+            "engine": engine, "mode": mode, "cost_usd": cost,
+            "segments": [{"source": s["text"], "translated": t,
+                          "start": s["audio_source"]["start"], "end": s["audio_source"]["end"]}
+                         for s, t in zip(scenes, translated)]})
+        if should_cancel():
+            raise TaskCanceled()
+
+        def apply(p: dict) -> None:
+            p["scenes"] = out
+            p["language"] = target
+            p["disclosure"] = labels
+            p["source"]["audio_file"] = src["file"]
+            p["script"] = {"generator": f"translate:{engine}", "needs_review": engine == "manual",
+                           "notes": ["Übersetzung bitte im Editor prüfen."]}
+            p["status"], p["status_error"] = "ready", None
+            if mode == "subtitles":
+                p["voice"] = {**p["voice"], "provider": "none"}
+        saved = self.store.mutate(pid, apply)
+        return {"scene_count": len(out), "version": saved["version"], "language": target,
+                "detected_language": detected, "engine": engine}
 
     def _transcript(self, pid: str, src: dict, settings, progress) -> dict:
         pdir = self.store.dir(pid)

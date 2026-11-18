@@ -187,6 +187,23 @@ class StudioRenderer:
         run_ffmpeg(["ffmpeg", "-y", "-i", cached, "-vn", "-ac", "1", "-ar", "44100",
                     "-c:a", "pcm_s16le", out], "Voice-Normalisierung")
         words = read_json(words_file, None)
+        target = scene.get("duration")
+        if scene.get("fit_speech") and target:
+            speech = media_duration(out)
+            if speech > target * 1.02:
+                # Synchronisation: Sprache zeitlich stauchen (max. 1,6×), damit Bild und Ton
+                # beim Quellvideo bleiben
+                factor = min(1.6, speech / target)
+                fitted = out[:-4] + "_fit.wav"
+                run_ffmpeg(["ffmpeg", "-y", "-i", out, "-filter:a", f"atempo={factor:.4f}",
+                            "-ac", "1", "-ar", "44100", "-c:a", "pcm_s16le", fitted], "Sprachtempo")
+                out = fitted
+                if isinstance(words, list):
+                    words = [{**w, "start": w["start"] / factor, "end": w["end"] / factor}
+                             for w in words]
+                if factor >= 1.6:
+                    self.warnings.append(f"Szene {scene['id']}: übersetzter Text ist deutlich "
+                                         "länger als das Original — Szene wird verlängert.")
         # Wort-Timings passen nur, wenn die Caption genau den gesprochenen Text zeigt
         if isinstance(words, list) and words and not scene.get("voice_text"):
             self._tts_words[scene["id"]] = words
@@ -403,6 +420,11 @@ class StudioRenderer:
                 image, mode = path, "image"
             elif ext in VIDEO_EXT:
                 self._note_upscale(path, w, h)
+                start = float(scene["visual"].get("start") or 0.0)
+                if start > 0:  # Ausschnitt ab Quellzeit (z. B. übersetzte Videos)
+                    return (["-ss", f"{start:.3f}", "-i", path],
+                            f"{_cover(w, h)},fps={self.fps},tpad=stop_mode=clone:stop_duration=600"
+                            f"{_grade(self.p['style'])}")
                 return (["-stream_loop", "-1", "-i", path],
                         f"{_cover(w, h)},fps={self.fps}{_grade(self.p['style'])}")
             else:
@@ -500,6 +522,14 @@ class StudioRenderer:
                 body = (f"{{\\an8\\fs{int(vw * 0.085)}\\b1\\bord4\\fad(250,200)"
                         f"\\move({vw // 2},{y - 40},{vw // 2},{y},0,350)}}{_escape(text.upper())}")
                 events.append(f"Dialogue: 1,{_fmt_ts(start)},{_fmt_ts(end)},Caption,,0,0,0,,{body}")
+        labels = [str(x)[:60] for x in (self.p.get("disclosure") or []) if str(x).strip()]
+        if labels:
+            # Kennzeichnung synthetischer/übersetzter Inhalte: ganzes Video, nicht abschaltbar
+            body = (f"{{\\an9\\fs{int(vw * 0.032)}\\bord2\\shad0\\1a&H30&}}"
+                    f"{_escape(' · '.join(labels[:3]))}")
+            events.append(f"Dialogue: 2,{_fmt_ts(0)},{_fmt_ts(total)},Caption,,"
+                          f"{int(vw * 0.03)},{int(vw * 0.03)},{int(vh * 0.03)},,{body}")
+            info["disclosure"] = labels[:3]
         if self.p["style"] == "cinematic":
             bar = int(vh * 0.085)
             for an, y in ((7, 0), (1, vh)):

@@ -36,7 +36,7 @@ LANGUAGES = ("de", "en")
 WORKFLOWS = (
     "prompt", "script", "article_url", "website_review", "social_url", "pdf",
     "audio", "music", "podcast", "longform", "media", "job", "product_ad",
-    "cinematic", "idea", "youtube", "avatar",
+    "cinematic", "idea", "youtube", "avatar", "translate",
 )
 IMAGE_EXT = {".png", ".jpg", ".jpeg", ".webp"}
 VIDEO_EXT = {".mp4", ".mov", ".mkv", ".webm", ".avi", ".m4v"}
@@ -95,6 +95,16 @@ def normalize_scene(raw: dict, project_dir: str | None = None) -> dict:
     except (TypeError, ValueError):
         seed = 0
     scene["visual"] = {"mode": mode, "media": media, "color": color, "seed": seed}
+    try:
+        start = float(visual.get("start") or 0.0)
+    except (TypeError, ValueError):
+        start = 0.0
+    if media and 0 < start < 86400:
+        scene["visual"]["start"] = round(start, 3)
+    if raw.get("fit_speech"):
+        scene["fit_speech"] = True
+    if isinstance(raw.get("source_text"), str) and raw["source_text"].strip():
+        scene["source_text"] = raw["source_text"][:1200]  # Originaltext vor Übersetzung
     # Szenen aus Original-Audio (Audio→Video): Ausschnitt + echte Wort-Timings
     src = raw.get("audio_source")
     if isinstance(src, dict):
@@ -189,6 +199,8 @@ def migrate(data: dict) -> dict:
     p["options"] = ProductionOptions.from_dict(legacy).to_dict()
     p["budget_limit_usd"] = _clamp(p.get("budget_limit_usd"), 0.0, 10000.0, 0.0)
     p["lineage"] = p.get("lineage") if isinstance(p.get("lineage"), dict) else {}
+    disc = p.get("disclosure") if isinstance(p.get("disclosure"), list) else []
+    p["disclosure"] = [str(x)[:60] for x in disc if str(x).strip()][:3]
     p.setdefault("linked_job_id", None)
     p["exports"] = p.get("exports") if isinstance(p.get("exports"), list) else []
     try:

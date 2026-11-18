@@ -63,6 +63,7 @@ class ProjectCreate(BaseModel):
     budget_limit_usd: float | None = Field(default=None, ge=0, le=10000)
     options: dict[str, Any] | None = None
     rights_confirmed: bool | None = None
+    translation: dict[str, Any] | None = None
     template_id: str | None = None
     auto_ingest: bool = True
 
@@ -467,7 +468,7 @@ def init_studio(app: FastAPI, registry, youtube_status=None,
                                          project["version"])
             task_id = None
             needs_file = project["workflow"] in (
-                "pdf", "audio", "music", "podcast", "longform", "media", "youtube")
+                "pdf", "audio", "music", "podcast", "longform", "media", "youtube", "translate")
             if req.auto_ingest and not needs_file:
                 task_id = svc.start_ingest(project["id"])["id"]
             return {"project_id": project["id"], "task_id": task_id}
@@ -478,7 +479,7 @@ def init_studio(app: FastAPI, registry, youtube_status=None,
         project = svc.store.load(result["project_id"])
         return {"project": project, "task_id": result["task_id"], "replayed": replayed,
                 "needs_upload": project["workflow"] in (
-                    "pdf", "audio", "music", "podcast", "longform", "media", "youtube")
+                    "pdf", "audio", "music", "podcast", "longform", "media", "youtube", "translate")
                 and not project["source"].get("file")}
 
     # ------------------------------------------------------------ Vorlagen
@@ -600,6 +601,11 @@ def init_studio(app: FastAPI, registry, youtube_status=None,
     @r.put("/projects/{pid}/media/{name}/tags")
     def media_tags(pid: str, name: str, req: MediaTags) -> dict:
         return svc.set_media_tags(pid, name, req.tags)
+
+    @r.get("/translation/engines")
+    def translation_engines() -> dict:
+        from clipforge.studio import translate as tr
+        return {"engines": tr.engines_status(), "languages": tr.LANG_NAMES}
 
     # ------------------------------------------------------- lokale Modelle
     @r.get("/models")

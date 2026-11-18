@@ -55,6 +55,8 @@ export default function CreatePage() {
   const [rights, setRights] = useState(false);
   const [templates, setTemplates] = useState<Template[]>([]);
   const [templateId, setTemplateId] = useState("");
+  const [tl, setTl] = useState({ target: locale === "de" ? "en" : "de", mode: "subtitles", engine: "manual" });
+  const [engines, setEngines] = useState<{ id: string; label: string; paid: boolean; ready: boolean | Record<string, boolean> }[]>([]);
   const [busy, setBusy] = useState<string | null>(null);
   const [upload, setUpload] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -66,6 +68,7 @@ export default function CreatePage() {
         const o = await studio.overview();
         setWorkflows(o.workflows.filter((w) => w.id !== "idea"));
         setTemplates(await studio.templates());
+        setEngines((await studio.translationEngines()).engines);
         const all = await listJobs();
         setJobs(all.filter((j) => j.status === "completed"));
       } catch (e) {
@@ -106,6 +109,10 @@ export default function CreatePage() {
       else if (needs === "text" || needs === "file") body.prompt = text;
       if (needs === "url" || needs === "youtube") body.url = url;
       if (needs === "youtube") body.rights_confirmed = rights;
+      if (selected === "translate") {
+        body.rights_confirmed = rights;
+        body.translation = tl;
+      }
       if (needs === "job") body.job_id = jobId;
       if (needs === "product")
         body.product = { ...product, benefits: product.benefits.split("\n").filter((b) => b.trim()) };
@@ -213,6 +220,56 @@ export default function CreatePage() {
               required={needs === "text"}
               onChange={(e) => setText(e.target.value)}
             />
+          </div>
+        )}
+
+        {selected === "translate" && (
+          <div className="grid gap-3 sm:grid-cols-3">
+            <p className="text-xs text-neutral-300 sm:col-span-3">{t("tl.hint")}</p>
+            <div>
+              <label htmlFor="c-tl-target" className={labelCls}>
+                {t("tl.target")}
+              </label>
+              <select id="c-tl-target" className={inputCls} value={tl.target} onChange={(e) => setTl({ ...tl, target: e.target.value })}>
+                <option value="de">Deutsch</option>
+                <option value="en">English</option>
+              </select>
+            </div>
+            <div>
+              <label htmlFor="c-tl-mode" className={labelCls}>
+                {t("tl.mode")}
+              </label>
+              <select id="c-tl-mode" className={inputCls} value={tl.mode} onChange={(e) => setTl({ ...tl, mode: e.target.value })}>
+                <option value="subtitles">{t("tl.mode.subtitles")}</option>
+                <option value="dub">{t("tl.mode.dub")}</option>
+              </select>
+            </div>
+            <div>
+              <label htmlFor="c-tl-engine" className={labelCls}>
+                {t("tl.engine")}
+              </label>
+              <select id="c-tl-engine" className={inputCls} value={tl.engine} onChange={(e) => setTl({ ...tl, engine: e.target.value })}>
+                {engines.map((en) => {
+                  const ready = typeof en.ready === "boolean" ? en.ready : Object.values(en.ready).some(Boolean);
+                  return (
+                    <option key={en.id} value={en.id} disabled={!ready}>
+                      {en.label}
+                      {ready ? "" : ` · ${t("tl.notReady")}`}
+                    </option>
+                  );
+                })}
+              </select>
+            </div>
+            <label className="flex items-start gap-2 text-sm text-neutral-200 sm:col-span-3">
+              <input
+                type="checkbox"
+                required
+                className="mt-1 accent-indigo-400"
+                checked={rights}
+                onChange={(e) => setRights(e.target.checked)}
+              />
+              {t("tl.rights")}
+            </label>
           </div>
         )}
 
