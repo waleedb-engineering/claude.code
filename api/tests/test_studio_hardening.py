@@ -472,7 +472,7 @@ def test_credentials_take_effect_without_restart_and_never_leak():
             remote.HTTP_POST = original
         # Datei: atomar, 0600, exakter Name, andere Einträge unversehrt, bash-lesbar
         content = open(env).read()
-        assert stat.S_IMODE(os.stat(env).st_mode) == 0o600
+        assert os.name == "nt" or stat.S_IMODE(os.stat(env).st_mode) == 0o600
         assert "# Kommentar bleibt" in content and "OPENAI_API_KEY_BACKUP=keep-me" in content
         assert "export OTHER='a b'" in content and "ELEVENLABS_API_KEY=old-value-123" in content
         assert not [f for f in os.listdir(tmp) if f.startswith(".env.")]
@@ -558,7 +558,7 @@ def test_mutations_require_token_and_foreign_origins_are_rejected():
         client, app_module = make_client(tmp, CLIPFORGE_API_AUTH="on",
                                          CLIPFORGE_API_TOKEN_FILE=token_file)
         token = open(token_file).read()
-        assert len(token) >= 32 and stat.S_IMODE(os.stat(token_file).st_mode) == 0o600
+        assert len(token) >= 32 and (os.name == "nt" or stat.S_IMODE(os.stat(token_file).st_mode) == 0o600)
         body = {"workflow": "script", "script": SCRIPT}
         good = {"X-ClipForge-Token": token}
         local = {"Origin": "http://127.0.0.1:3000"}

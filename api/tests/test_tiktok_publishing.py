@@ -99,7 +99,7 @@ def test_oauth_uses_pkce_and_stores_tokens_safely():
         assert st["state"] == "connected" and st["account"] == "user-123"
         assert "sentinel" not in json.dumps(st)
         path = os.path.join(tmp, "studio", "accounts", "tiktok.json")
-        assert stat.S_IMODE(os.stat(path).st_mode) == 0o600
+        assert os.name == "nt" or stat.S_IMODE(os.stat(path).st_mode) == 0o600
         # derselbe state darf nicht zweimal funktionieren
         r = client.get("/api/studio/accounts/tiktok/callback",
                        params={"code": "abc", "state": q["state"][0]}, follow_redirects=False)

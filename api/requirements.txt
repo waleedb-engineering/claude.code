@@ -36,3 +36,4 @@ espeakng-loader>=0.2.4
 # piper-tts>=1.8.0
 cryptography>=42.0.0  # verschlüsselte API-Schlüssel im Online-Betrieb (CLIPFORGE_AUTH=accounts)
 sentencepiece>=0.2.0  # lokale Übersetzung (Argos/OPUS-MT über CTranslate2 aus faster-whisper)
+tzdata>=2024.1  # Zeitzonen für Automationen (Windows hat keine System-Datenbank)

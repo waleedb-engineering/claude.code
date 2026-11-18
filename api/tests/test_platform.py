@@ -36,7 +36,8 @@ def test_windows_paths_are_converted_for_ffmpeg():
 def test_hostile_paths_work_with_real_ffmpeg():
     base = tempfile.mkdtemp(prefix="plat_")
     try:
-        d = os.path.join(base, "O'Neil [x]: a,b;c")
+        # Windows verbietet ':' in Namen; die übrigen Sonderzeichen bleiben
+        d = os.path.join(base, "O'Neil [x] a,b;c" if os.name == "nt" else "O'Neil [x]: a,b;c")
         os.makedirs(d)
         ass, seg = os.path.join(d, "c.ass"), os.path.join(d, "seg.mp4")
         with open(ass, "w") as fh:

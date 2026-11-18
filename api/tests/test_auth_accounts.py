@@ -76,7 +76,7 @@ def test_everything_requires_login_and_csrf():
         # Sitzungen liegen nur gehasht auf der Platte
         raw = open(os.path.join(tmp, "auth", "sessions.json")).read()
         assert cookie not in raw and PW not in open(os.path.join(tmp, "auth", "users.json")).read()
-        assert stat.S_IMODE(os.stat(os.path.join(tmp, "auth", "users.json")).st_mode) == 0o600
+        assert os.name == "nt" or stat.S_IMODE(os.stat(os.path.join(tmp, "auth", "users.json")).st_mode) == 0o600
         # Abmelden beendet die Sitzung serverseitig
         assert client.post("/api/auth/logout", headers=headers).status_code == 200
         client.cookies.set(auth.COOKIE, cookie)                    # altes Cookie wiederverwenden

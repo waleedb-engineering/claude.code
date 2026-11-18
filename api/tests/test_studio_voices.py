@@ -62,14 +62,18 @@ def test_speech_rate_changes_real_duration_for_every_local_provider():
 def test_auto_selection_prefers_free_local_speech_over_silence_and_paid():
     os.environ["OPENAI_API_KEY"] = "test-key-not-real"
     try:
+        # Windows: Systemstimmen (SAPI) gehen vor eSpeak — beides kostenlos und lokal
+        local = ("espeak", "windows_sapi", "macos_say")
         for lang in ("de", "en"):
             auto = select_voice(lang, "friendly")
-            assert auto["provider"] == "espeak" and auto["produces_speech"]
-            assert auto["tone"] == "friendly"
-        assert select_voice("de", "", allow_paid=True)["provider"] == "espeak"  # lokal vor Cloud
+            assert auto["provider"] in local and auto["produces_speech"]
+            if auto["provider"] == "espeak":
+                assert auto["tone"] == "friendly"
+        assert select_voice("de", "", allow_paid=True)["provider"] in local  # lokal vor Cloud
         states = {r["id"]: r["status"] for r in readiness()}
         assert states["espeak"] == "ready"
-        assert states["windows_sapi"] == "not_configured"     # Linux
+        if os.name != "nt":
+            assert states["windows_sapi"] == "not_configured"     # Linux/macOS
         assert states["piper"] == "not_configured"            # kein Modell vorhanden
     finally:
         clear_env("OPENAI_API_KEY")
