@@ -1,0 +1,17 @@
+# ClipForge auf einem eigenen Server (VPS) oder lokal mit Docker.
+#   1. Datei deploy/clipforge.env aus deploy/clipforge.env.example anlegen
+#   2. docker compose up -d --build
+services:
+  clipforge:
+    build: .
+    ports:
+      - "3000:3000"
+    env_file:
+      - deploy/clipforge.env
+    volumes:
+      - clipforge-data:/data
+    restart: unless-stopped
+    # FFmpeg-Renders brauchen Arbeitsspeicher; 2 GB sind ein sinnvolles Minimum.
+    mem_limit: 3g
+volumes:
+  clipforge-data:

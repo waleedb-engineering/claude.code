@@ -55,3 +55,4 @@ web/.e2e-studio/
 # Creator Studio: weitere Laufzeitdaten (Projekte, Uploads, API-Token)
 api/studio_projects/
 api/.clipforge_api_token
+deploy/clipforge.env
