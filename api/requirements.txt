@@ -34,3 +34,4 @@ espeakng-loader>=0.2.4
 # OPTIONAL: Piper — lokale neuronale Stimmen in besserer Qualität (zieht
 # onnxruntime nach, ~60 MB). Stimmmodelle separat laden, siehe docs/STUDIO.md.
 # piper-tts>=1.8.0
+cryptography>=42.0.0  # verschlüsselte API-Schlüssel im Online-Betrieb (CLIPFORGE_AUTH=accounts)

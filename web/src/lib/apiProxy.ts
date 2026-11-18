@@ -15,10 +15,14 @@
 //     die ausschließlich über einen vertrauenswürdigen, authentifizierten
 //     Proxy erreichbar sind (Cloud-Vorschau).
 
-const BACKEND = (process.env.CLIPFORGE_API_INTERNAL_URL || "http://127.0.0.1:8000").replace(/\/$/, "");
+// Zur Laufzeit lesen (nicht beim Build einfrieren).
+function backend(): string {
+  return (process.env["CLIPFORGE_API_INTERNAL_URL"] || "http://127.0.0.1:8000").replace(/\/$/, "");
+}
 const SAFE = new Set(["GET", "HEAD", "OPTIONS"]);
 const LOCAL = new Set(["localhost", "127.0.0.1", "[::1]"]);
-const DROP_REQUEST = new Set(["host", "origin", "referer", "connection", "content-length", "cookie"]);
+// Cookies werden durchgereicht (Sitzungs-Cookie im Online-Betrieb).
+const DROP_REQUEST = new Set(["host", "origin", "referer", "connection", "content-length"]);
 const DROP_RESPONSE = new Set(["content-encoding", "content-length", "transfer-encoding", "connection"]);
 
 function hostOf(value: string | null): string {
@@ -26,9 +30,9 @@ function hostOf(value: string | null): string {
 }
 
 function hostAllowed(host: string): boolean {
-  if (process.env.CLIPFORGE_PROXY_ANY_HOST === "1") return true;
+  if (process.env["CLIPFORGE_PROXY_ANY_HOST"] === "1") return true;
   const name = host.replace(/:\d+$/, "");
-  const extra = (process.env.CLIPFORGE_PUBLIC_HOSTS ?? "")
+  const extra = (process.env["CLIPFORGE_PUBLIC_HOSTS"] ?? "")
     .split(",")
     .map((h) => h.trim().toLowerCase())
     .filter(Boolean);
@@ -62,10 +66,13 @@ export async function proxy(request: Request): Promise<Response> {
   }
   const headers = new Headers();
   request.headers.forEach((value, key) => {
-    if (!DROP_REQUEST.has(key.toLowerCase()) && !key.toLowerCase().startsWith("x-forwarded")) {
-      headers.set(key, value);
-    }
+    const k = key.toLowerCase();
+    if (!DROP_REQUEST.has(k) && !k.startsWith("x-forwarded")) headers.set(key, value);
   });
+  // Client-IP für die Ratenbegrenzung des Backends (nur ausgewertet, wenn dort
+  // CLIPFORGE_TRUST_PROXY=1 gesetzt ist).
+  const fwd = request.headers.get("x-forwarded-for");
+  if (fwd) headers.set("x-forwarded-for", fwd);
   const init: RequestInit & { duplex?: "half" } = { method, headers, redirect: "manual" };
   if (!SAFE.has(method) && request.body) {
     init.body = request.body;
@@ -73,13 +80,16 @@ export async function proxy(request: Request): Promise<Response> {
   }
   let upstream: Response;
   try {
-    upstream = await fetch(`${BACKEND}${url.pathname}${url.search}`, init);
+    upstream = await fetch(`${backend()}${url.pathname}${url.search}`, init);
   } catch {
     return deny(502, "backend_unreachable", "Das ClipForge-Backend ist nicht erreichbar.");
   }
   const out = new Headers();
   upstream.headers.forEach((value, key) => {
-    if (!DROP_RESPONSE.has(key.toLowerCase())) out.set(key, value);
+    const k = key.toLowerCase();
+    if (!DROP_RESPONSE.has(k) && k !== "set-cookie") out.set(key, value);
   });
+  // Set-Cookie einzeln übernehmen (forEach würde mehrere zusammenfassen)
+  for (const cookie of upstream.headers.getSetCookie()) out.append("set-cookie", cookie);
   return new Response(upstream.body, { status: upstream.status, headers: out });
 }

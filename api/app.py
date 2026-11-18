@@ -144,6 +144,14 @@ def _upload_size(file: UploadFile) -> int:
 
 app = FastAPI(title="ClipForge AI API", version=CLIPFORGE_VERSION)
 
+# Online-Betrieb: verschlüsselt gespeicherte API-Schlüssel laden (no-op lokal).
+try:
+    from clipforge.studio.credentials import load_vault_into_env  # noqa: E402
+
+    load_vault_into_env()
+except Exception as _exc:  # noqa: BLE001 — falscher Schlüssel darf den Start nicht verhindern
+    print(f"[clipforge] API-Schlüssel nicht geladen: {type(_exc).__name__}")
+
 # Local-App-Schutz: CORS nur für lokale Frontend-Origins + Session-Token für
 # alle mutierenden /api/-Requests (siehe local_security.py, docs/LOCAL_API_SECURITY.md).
 import local_security  # noqa: E402

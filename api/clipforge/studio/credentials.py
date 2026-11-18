@@ -89,6 +89,81 @@ def _rewrite(name: str, value: str | None) -> bool:
     return existed
 
 
+# ------------------------------------------- verschlüsselte Ablage (Online)
+
+def _encrypted_mode() -> bool:
+    from ..auth import accounts_mode
+    return accounts_mode()
+
+
+def _fernet():
+    """Schlüssel aus CLIPFORGE_SECRET_KEY (≥ 32 Zeichen) — nie auf der Platte."""
+    import base64
+    import hashlib
+    secret = os.environ.get("CLIPFORGE_SECRET_KEY", "")
+    if len(secret) < 32:
+        raise StudioError(
+            "secret_key_missing",
+            "Für verschlüsselte API-Schlüssel muss CLIPFORGE_SECRET_KEY (mind. 32 Zeichen) "
+            "gesetzt sein.", 503)
+    try:
+        from cryptography.fernet import Fernet
+    except ImportError as exc:
+        raise StudioError("crypto_missing", "Paket 'cryptography' fehlt.", 503) from exc
+    key = base64.urlsafe_b64encode(hashlib.sha256(secret.encode("utf-8")).digest())
+    return Fernet(key)
+
+
+def _vault_path() -> str:
+    from ..auth import auth_dir
+    return os.path.join(auth_dir(), "credentials.enc")
+
+
+def _vault_read() -> dict:
+    import json
+    try:
+        with open(_vault_path(), "rb") as fh:
+            blob = fh.read()
+    except FileNotFoundError:
+        return {}
+    try:
+        return json.loads(_fernet().decrypt(blob))
+    except StudioError:
+        raise
+    except Exception as exc:  # noqa: BLE001 — falscher Schlüssel / beschädigt
+        raise StudioError("vault_unreadable",
+                          "Die gespeicherten API-Schlüssel lassen sich nicht entschlüsseln "
+                          "(CLIPFORGE_SECRET_KEY geändert?).", 500) from exc
+
+
+def _vault_write(values: dict) -> None:
+    import json
+    blob = _fernet().encrypt(json.dumps(values).encode("utf-8"))
+    path = _vault_path()
+    fd, tmp = tempfile.mkstemp(prefix=".vault.", dir=os.path.dirname(path))
+    try:
+        with os.fdopen(fd, "wb") as fh:
+            fh.write(blob)
+        from .storage import replace_file
+        replace_file(tmp, path)
+        os.chmod(path, 0o600)
+    finally:
+        if os.path.exists(tmp):
+            os.remove(tmp)
+
+
+def load_vault_into_env() -> list[str]:
+    """Beim Start im Online-Modus: entschlüsselte Schlüssel in den Prozess laden."""
+    if not _encrypted_mode() or not os.path.exists(_vault_path()):
+        return []
+    loaded = []
+    for name, value in _vault_read().items():
+        if name not in os.environ:
+            os.environ[name] = value
+            loaded.append(name)
+    return loaded
+
+
 def status() -> list[dict]:
     """Zustand je Provider — bezogen auf den LAUFENDEN Prozess."""
     return [{"provider": pid, "label": label, "env": name,
@@ -102,6 +177,12 @@ def set_key(provider: str, value: str) -> dict:
     if len(value) < 8 or len(value) > 500 or any(c in value for c in "\r\n\x00"):
         raise StudioError("validation_error", "Der Schlüssel hat ein ungültiges Format.")
     with _lock:
+        if _encrypted_mode():
+            values = _vault_read()
+            values[name] = value
+            _vault_write(values)
+            os.environ[name] = value
+            return {"provider": provider, "label": label, "env": name, "configured": True}
         try:
             _rewrite(name, value)
         except OSError as exc:
@@ -114,6 +195,16 @@ def set_key(provider: str, value: str) -> dict:
 def delete_key(provider: str) -> dict:
     name, label, _url, _hdr = _spec(provider)
     with _lock:
+        if _encrypted_mode():
+            values = _vault_read()
+            in_file = values.pop(name, None) is not None
+            if in_file:
+                _vault_write(values)
+            in_env = os.environ.pop(name, None) is not None
+            if not in_file and not in_env:
+                raise StudioError("credential_not_set",
+                                  f"Für {label} war kein Schlüssel hinterlegt.", 404)
+            return {"provider": provider, "label": label, "env": name, "configured": False}
         try:
             in_file = _rewrite(name, None)
         except OSError as exc:

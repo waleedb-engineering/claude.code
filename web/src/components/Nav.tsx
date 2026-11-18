@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import AccountMenu from "./AccountMenu";
 
 const links = [
   { href: "/", label: "Start" },
@@ -44,6 +45,7 @@ export default function Nav() {
             );
           })}
         </nav>
+        <AccountMenu />
       </div>
     </header>
   );

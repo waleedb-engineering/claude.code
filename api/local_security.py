@@ -29,6 +29,7 @@ from urllib.parse import urlsplit
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from pydantic import BaseModel, Field
 
 TOKEN_HEADER = "X-ClipForge-Token"
 SAFE_METHODS = {"GET", "HEAD", "OPTIONS"}
@@ -91,24 +92,60 @@ def _deny(status: int, code: str, message: str) -> JSONResponse:
     return JSONResponse(status_code=status, content={"detail": {"code": code, "message": message}})
 
 
+class LoginPayload(BaseModel):
+    username: str = Field(min_length=1, max_length=60)
+    password: str = Field(min_length=1, max_length=256)
+
+
+class PasswordPayload(BaseModel):
+    old_password: str = Field(min_length=1, max_length=256)
+    new_password: str = Field(min_length=1, max_length=256)
+
+
+ACCOUNT_EXEMPT = {"/health", "/api/session", "/api/auth/login", "/api/youtube/oauth/callback"}
+
+
 def install(app: FastAPI) -> None:
+    from clipforge import auth
+
     token = load_or_create_token()
     app.state.api_token = token
 
     @app.middleware("http")
     async def _guard(request: Request, call_next):
-        if request.method not in SAFE_METHODS and request.url.path.startswith("/api/"):
+        path = request.url.path
+        is_api = path.startswith("/api/")
+        mutating = request.method not in SAFE_METHODS
+        if is_api and mutating:
             origin = request.headers.get("origin")
             if origin is not None and origin.rstrip("/") not in allowed_origins():
                 return _deny(403, "origin_not_allowed",
-                             "Diese Herkunft darf die lokale ClipForge-API nicht verändern.")
-            if auth_enabled():
-                sent = request.headers.get(TOKEN_HEADER)
-                if not sent:
-                    return _deny(401, "token_missing",
-                                 f"Für diese Aktion fehlt der Header {TOKEN_HEADER}.")
-                if not hmac.compare_digest(sent.encode("utf-8"), token.encode("utf-8")):
-                    return _deny(403, "token_invalid", "Das API-Token ist ungültig.")
+                             "Diese Herkunft darf die ClipForge-API nicht verändern.")
+        if auth.accounts_mode():
+            # ------------------------------ Online-Betrieb mit Benutzerkonten
+            if request.method == "OPTIONS" or path in ACCOUNT_EXEMPT or not is_api:
+                return await call_next(request)
+            session = auth.session_for(request.cookies.get(auth.COOKIE))
+            if session is None:
+                return _deny(401, "login_required", "Bitte zuerst anmelden.")
+            ip = auth.client_ip(request.headers, request.client.host if request.client else None)
+            if not auth.request_allowed(f"{session['username']}|{ip}"):
+                return _deny(429, "rate_limited", "Zu viele Anfragen. Bitte kurz warten.")
+            if mutating:
+                sent = request.headers.get(TOKEN_HEADER) or ""
+                if not hmac.compare_digest(sent.encode("utf-8"), session["csrf"].encode("utf-8")):
+                    return _deny(403, "csrf_invalid",
+                                 "Sicherheits-Token fehlt oder ist ungültig. Seite neu laden.")
+            request.state.user = session["username"]
+            return await call_next(request)
+        # ---------------------------------------- Lokaler Modus (unverändert)
+        if is_api and mutating and auth_enabled():
+            sent = request.headers.get(TOKEN_HEADER)
+            if not sent:
+                return _deny(401, "token_missing",
+                             f"Für diese Aktion fehlt der Header {TOKEN_HEADER}.")
+            if not hmac.compare_digest(sent.encode("utf-8"), token.encode("utf-8")):
+                return _deny(403, "token_invalid", "Das API-Token ist ungültig.")
         return await call_next(request)
 
     # CORS zuletzt hinzufügen → äußerste Schicht (auch Fehlantworten bekommen Header)
@@ -122,13 +159,71 @@ def install(app: FastAPI) -> None:
 
     @app.get("/api/session")
     def session(request: Request):
-        """Liefert das Token an das lokale Frontend (nie an fremde Origins)."""
+        """Lokal: Token für die Oberfläche. Online: CSRF-Token der Sitzung."""
         origin = request.headers.get("origin")
         if origin is not None and origin.rstrip("/") not in allowed_origins():
             return _deny(403, "origin_not_allowed", "Herkunft nicht erlaubt.")
+        if auth.accounts_mode():
+            current = auth.session_for(request.cookies.get(auth.COOKIE))
+            if current is None:
+                return JSONResponse(status_code=401, headers={"Cache-Control": "no-store"},
+                                    content={"detail": {"code": "login_required",
+                                                        "message": "Bitte zuerst anmelden."},
+                                             "mode": "accounts"})
+            return JSONResponse(
+                content={"token": current["csrf"], "auth_required": True, "mode": "accounts",
+                         "user": current["username"], "header": TOKEN_HEADER},
+                headers={"Cache-Control": "no-store"})
         if not _host_is_local(request):
             return _deny(403, "host_not_local", "Nur über die lokale Adresse erreichbar.")
         return JSONResponse(
-            content={"token": token if auth_enabled() else None,
+            content={"token": token if auth_enabled() else None, "mode": "local",
                      "auth_required": auth_enabled(), "header": TOKEN_HEADER},
             headers={"Cache-Control": "no-store"})
+
+    def _auth_error(exc) -> JSONResponse:
+        return _deny(exc.status, exc.code, exc.message)
+
+    @app.post("/api/auth/login")
+    def login(req: LoginPayload, request: Request):
+        if not auth.accounts_mode():
+            return _deny(404, "accounts_disabled", "Benutzerkonten sind nicht aktiviert.")
+        ip = auth.client_ip(request.headers, request.client.host if request.client else None)
+        if not auth.login_allowed(ip, req.username):
+            return _deny(429, "rate_limited",
+                         "Zu viele Anmeldeversuche. Bitte 15 Minuten warten.")
+        try:
+            raw, sess = auth.login(req.username, req.password)
+        except auth.AuthError as exc:
+            return _auth_error(exc)
+        resp = JSONResponse(content={"user": sess["username"], "token": sess["csrf"],
+                                     "header": TOKEN_HEADER},
+                            headers={"Cache-Control": "no-store"})
+        resp.set_cookie(auth.COOKIE, raw, max_age=auth.SESSION_DAYS * 86400, httponly=True,
+                        secure=auth.cookie_secure(), samesite="lax", path="/")
+        return resp
+
+    @app.post("/api/auth/logout")
+    def logout(request: Request):
+        auth.logout(request.cookies.get(auth.COOKIE))
+        resp = JSONResponse(content={"logged_out": True})
+        resp.delete_cookie(auth.COOKIE, path="/")
+        return resp
+
+    @app.get("/api/auth/me")
+    def me(request: Request):
+        if not auth.accounts_mode():
+            return {"mode": "local", "user": None}
+        return {"mode": "accounts", "user": getattr(request.state, "user", None)}
+
+    @app.post("/api/auth/password")
+    def password(req: PasswordPayload, request: Request):
+        if not auth.accounts_mode():
+            return _deny(404, "accounts_disabled", "Benutzerkonten sind nicht aktiviert.")
+        try:
+            auth.change_password(request.state.user, req.old_password, req.new_password)
+        except auth.AuthError as exc:
+            return _auth_error(exc)
+        resp = JSONResponse(content={"changed": True, "logged_out": True})
+        resp.delete_cookie(auth.COOKIE, path="/")
+        return resp
