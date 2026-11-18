@@ -66,6 +66,23 @@ def safe_filename(name: str, default: str = "datei") -> str:
     return f"{stem[:60]}{ext}"
 
 
+def replace_file(src: str, dst: str, attempts: int = 8) -> None:
+    """os.replace mit kurzer Wiederholung.
+
+    Windows verweigert das Ersetzen, solange ein anderer Prozess/Thread die
+    Zieldatei gerade liest (PermissionError). Unter macOS/Linux greift das nie.
+    """
+    import time
+    for i in range(attempts):
+        try:
+            os.replace(src, dst)
+            return
+        except PermissionError:
+            if i == attempts - 1:
+                raise
+            time.sleep(0.05 * (i + 1))
+
+
 def write_json_atomic(path: str, data) -> None:
     os.makedirs(os.path.dirname(path), exist_ok=True)
     tmp = f"{path}.{uuid.uuid4().hex[:8]}.tmp"
@@ -75,7 +92,7 @@ def write_json_atomic(path: str, data) -> None:
                 json.dump(data, fh, ensure_ascii=False, indent=2)
                 fh.flush()
                 os.fsync(fh.fileno())
-            os.replace(tmp, path)
+            replace_file(tmp, path)
         finally:
             if os.path.exists(tmp):  # Abbruch mitten im Schreiben → keine Reste
                 os.remove(tmp)

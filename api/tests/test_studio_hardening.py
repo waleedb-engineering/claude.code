@@ -488,7 +488,8 @@ def test_credentials_take_effect_without_restart_and_never_leak():
             body = client.get(path).text
             assert key not in body and "zweiter-wert-123" not in body
         creds = {c["provider"]: c["configured"] for c in client.get("/api/studio/credentials").json()["credentials"]}
-        assert creds == {"elevenlabs": False, "openai": True, "anthropic": False}
+        # ELEVENLABS_API_KEY stand schon in der .env → das Backend lädt sie beim Start
+        assert creds == {"elevenlabs": True, "openai": True, "anthropic": False}
         # löschen: sofort „nicht konfiguriert“, Backup-Variable bleibt
         r = client.delete("/api/studio/credentials/openai")
         assert r.status_code == 200 and r.json()["configured"] is False

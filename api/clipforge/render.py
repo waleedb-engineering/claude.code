@@ -69,7 +69,8 @@ def _crop_filter(out_w: int, out_h: int) -> str:
 
 
 def _escape_ass_path(ass_path: str) -> str:
-    return ass_path.replace("\\", "\\\\").replace(":", "\\:")
+    from .ffmpeg_utils import filter_path
+    return filter_path(ass_path)
 
 
 def _write_ass_tmp(ass: str) -> str:
@@ -112,7 +113,7 @@ def _render_plain(
     crop_filter: str,
 ) -> None:
     """Originaler Single-Pass-Render (Captions + Crop werden übergeben)."""
-    vf = f"{crop_filter},ass='{_escape_ass_path(ass_path)}'"
+    vf = f"{crop_filter},ass={_escape_ass_path(ass_path)}"
     cmd = [
         "ffmpeg", "-y",
         "-ss", f"{clip.start:.3f}",
@@ -143,7 +144,7 @@ def _render_with_silence(
     # die Kommas im between()-Ausdruck im Filtergraph.
     vf = (
         f"select='{expr}',setpts=N/FRAME_RATE/TB,"
-        f"{crop_filter},ass='{_escape_ass_path(ass_path)}'"
+        f"{crop_filter},ass={_escape_ass_path(ass_path)}"
     )
     af = f"aselect='{expr}',asetpts=N/SR/TB"
     cmd = [
@@ -179,7 +180,7 @@ def _render_with_silence_smoothed(
     expr = select_expr(keeps)
     v_chain = (
         f"[0:v]select='{expr}',setpts=N/FRAME_RATE/TB,"
-        f"{crop_filter},ass='{_escape_ass_path(ass_path)}'[v]"
+        f"{crop_filter},ass={_escape_ass_path(ass_path)}[v]"
     )
     a_chain = audio_smoothing_filter(keeps, fade=0.015)
     filter_complex = f"{v_chain};{a_chain}"

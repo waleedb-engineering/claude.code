@@ -20,7 +20,7 @@ import wave
 
 from ..brand_kit import load_brand_kit, to_caption_overrides
 from ..captions import _escape, _fmt_ts, make_captions
-from ..ffmpeg_utils import probe
+from ..ffmpeg_utils import concat_entry, filter_path, probe
 from ..models import Word
 from . import audio as audio_mod
 from .audio import media_duration, run_ffmpeg
@@ -447,7 +447,7 @@ class StudioRenderer:
                 self.progress(f"Szene {i + 1}/{len(entries)} rendern")
                 seg = os.path.join(work, f"seg_{i:03d}.mp4")
                 self.render_segment(i, e["scene"], e["dur"], seg, e["start"])
-                listing.append(f"file '{seg}'")
+                listing.append(concat_entry(seg))
                 fitted = os.path.join(work, f"fit_{i:03d}.wav")
                 self._fit_wav(e["wav"], fitted, e["dur"])
                 voice_parts.append(fitted)
@@ -482,8 +482,8 @@ class StudioRenderer:
             ass_path = os.path.join(work, "captions.ass")
             with open(ass_path, "w", encoding="utf-8") as fh:
                 fh.write(ass)
-            esc = ass_path.replace("\\", "\\\\").replace(":", "\\:").replace("'", "\\'")
-            vf = f"ass='{esc}'"
+            esc = filter_path(ass_path)
+            vf = f"ass={esc}"
         filters = [f"[0:v]{vf}[v]"]
         music = plan["music_path"]
         # Ducking nur, wenn die Voice-Spur wirklich Ton enthält (nicht bei "none")
@@ -593,8 +593,8 @@ def caption_preview(style: str, aspect_ratio: str, text: str, out_png: str,
         ass_path = out_png + ".ass"
         with open(ass_path, "w", encoding="utf-8") as fh:
             fh.write(ass)
-        esc = ass_path.replace("\\", "\\\\").replace(":", "\\:").replace("'", "\\'")
-        cmd += ["-vf", f"ass='{esc}'"]
+        esc = filter_path(ass_path)
+        cmd += ["-vf", f"ass={esc}"]
     cmd += ["-ss", "0.5", "-frames:v", "1", out_png]
     try:
         run_ffmpeg(cmd, "Caption-Vorschau", timeout=60)

@@ -15,6 +15,7 @@ import importlib.util
 import json
 import os
 import re
+import platform
 import shutil
 import socket
 import subprocess
@@ -115,7 +116,9 @@ def check_npm(report: Report) -> None:
 def check_ffmpeg_tool(report: Report, name: str) -> None:
     path = shutil.which(name)
     if not path:
-        report.add(FAIL, name, "nicht gefunden — Kernfunktion (Rendering) benötigt dies")
+        hint = {"Windows": "winget install Gyan.FFmpeg, dann Terminal neu öffnen",
+                "Darwin": "brew install ffmpeg"}.get(platform.system(), "sudo apt install ffmpeg")
+        report.add(FAIL, name, f"nicht gefunden — Rendering braucht dies ({hint})")
         return
     rc, out = _run([path, "-version"])
     first_line = out.splitlines()[0] if out else ""
@@ -281,6 +284,19 @@ def print_report(report: Report) -> None:
         print("→ Alles bereit.")
 
 
+def check_local_voice(report: Report) -> None:
+    """Kostenlose lokale Stimme verfügbar? (Studio)"""
+    if _module_available("espeakng_loader"):
+        report.add(PASS, "Lokale Stimme", "eSpeak NG (pip) vorhanden — Videos bekommen Sprache")
+    elif shutil.which("say") or shutil.which("espeak-ng"):
+        report.add(PASS, "Lokale Stimme", "Systemstimme vorhanden")
+    else:
+        report.add(WARN, "Lokale Stimme",
+                   "keine — Videos bleiben ohne API-Schlüssel stumm (pip install espeakng-loader)")
+    if _module_available("piper"):
+        report.add(PASS, "Piper TTS", "installiert (Stimmmodell separat laden)")
+
+
 def main() -> int:
     as_json = "--json" in sys.argv
     report = Report()
@@ -295,6 +311,7 @@ def main() -> int:
     check_ports(report)
     check_brand_kit(report)
     check_optional_config(report)
+    check_local_voice(report)
 
     if as_json:
         print(json.dumps(

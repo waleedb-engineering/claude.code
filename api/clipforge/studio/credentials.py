@@ -80,7 +80,8 @@ def _rewrite(name: str, value: str | None) -> bool:
             fh.write("\n".join(kept) + ("\n" if kept else ""))
             fh.flush()
             os.fsync(fh.fileno())
-        os.replace(tmp, path)
+        from .storage import replace_file
+        replace_file(tmp, path)
         os.chmod(path, 0o600)
     finally:
         if os.path.exists(tmp):

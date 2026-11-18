@@ -25,6 +25,12 @@ import zipfile
 # unabhängig vom Startverzeichnis funktioniert.
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
+# .env laden (Windows hat kein `source`). Bereits gesetzte ENV-Werte gewinnen.
+from clipforge import envfile as _envfile  # noqa: E402
+
+_envfile.load(os.environ.get("CLIPFORGE_ENV_FILE") or os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))), ".env"))
+
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse

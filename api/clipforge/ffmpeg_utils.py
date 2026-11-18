@@ -13,13 +13,34 @@ class FFmpegNotFound(RuntimeError):
     pass
 
 
+def filter_path(path: str) -> str:
+    """Dateipfad als Filteroption (`ass=<rückgabe>`), auf allen Systemen.
+
+    Rückgabe NICHT in Anführungszeichen setzen. FFmpeg parst Filterketten in
+    zwei Stufen; beide werden escaped:
+      1. Optionswert:  \\  '  :
+      2. Filterkette:  \\  '  [  ]  ,  ;
+    Windows-Backslashes werden zuvor zu `/` (versteht FFmpeg überall).
+    """
+    p = path.replace("\\", "/")
+    level1 = "".join("\\" + c if c in "\\':" else c for c in p)
+    return "".join("\\" + c if c in "\\'[],;" else c for c in level1)
+
+
+def concat_entry(path: str) -> str:
+    """Eine Zeile für den concat-Demuxer (`file '…'`), Windows-sicher."""
+    p = path.replace("\\", "/").replace("'", "'\\''")
+    return f"file '{p}'"
+
+
 def ensure_ffmpeg() -> None:
     """Stellt sicher, dass ffmpeg und ffprobe verfügbar sind."""
     for tool in ("ffmpeg", "ffprobe"):
         if shutil.which(tool) is None:
             raise FFmpegNotFound(
-                f"'{tool}' wurde nicht gefunden. Bitte FFmpeg installieren "
-                f"(z.B. 'apt-get install ffmpeg')."
+                f"'{tool}' wurde nicht gefunden. Bitte FFmpeg installieren: Windows "
+                f"'winget install Gyan.FFmpeg' (danach Terminal neu öffnen), macOS "
+                f"'brew install ffmpeg', Linux 'sudo apt install ffmpeg'."
             )
 
 

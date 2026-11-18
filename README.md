@@ -45,6 +45,11 @@ kein Public/Unlisted, kein TikTok/Instagram-Auto-Upload.
 > `http://127.0.0.1:3000/upload` öffnen — die UI führt durch Upload → Job →
 > Clips → Editor → Publishing Planner → YouTube Dry-Run._
 
+## Installation (Windows, macOS, Linux)
+
+Schritt-für-Schritt-Anleitung für alle drei Systeme: [`docs/INSTALL.md`](docs/INSTALL.md).
+Unter Windows: `scripts\setup_windows.ps1` und `scripts\start_windows.ps1`.
+
 ## Schnellstart Web-App
 
 ```bash
