@@ -1,7 +1,7 @@
 "use client";
 
 import { useT, type TKey } from "@/lib/i18n";
-import type { MediaItem, Scene } from "@/lib/studio";
+import { TRANSITION_IDS, type MediaItem, type Scene } from "@/lib/studio";
 import { btnCls, cardCls, inputCls, labelCls } from "./ui";
 
 type Props = {
@@ -16,6 +16,7 @@ type Props = {
   onDuplicate: () => void;
   onDelete: () => void;
   onRegenerate: () => void;
+  dragProps?: React.LiHTMLAttributes<HTMLLIElement>;
 };
 
 const MODES = ["motion", "static", "media", "ai_image", "ai_video", "avatar", "split"] as const;
@@ -28,7 +29,7 @@ export default function SceneCard(p: Props) {
   const setVisual = (patch: Partial<Scene["visual"]>) => p.onChange({ visual: { ...s.visual, ...patch } });
 
   return (
-    <li className={cardCls} aria-label={`${t("ed.scene")} ${p.index + 1}`}>
+    <li className={cardCls} aria-label={`${t("ed.scene")} ${p.index + 1}`} {...p.dragProps}>
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2">
           <span className="grid h-7 w-7 place-items-center rounded-full bg-neutral-800 text-xs font-semibold text-white">
@@ -49,6 +50,26 @@ export default function SceneCard(p: Props) {
               </option>
             ))}
           </select>
+          {p.index > 0 && (
+            <>
+              <label htmlFor={`${id}-tr`} className="sr-only">
+                {t("ed.transitionIn")}
+              </label>
+              <select
+                id={`${id}-tr`}
+                title={t("ed.transitionIn")}
+                className="rounded-md border border-neutral-700 bg-neutral-900 px-2 py-1 text-xs text-neutral-100"
+                value={s.transition ?? "auto"}
+                onChange={(e) => p.onChange({ transition: e.target.value as Scene["transition"] })}
+              >
+                {TRANSITION_IDS.map((tr) => (
+                  <option key={tr} value={tr}>
+                    ⇢ {t(`tr.${tr}` as TKey)}
+                  </option>
+                ))}
+              </select>
+            </>
+          )}
           {s.audio_source && (
             <span className="rounded-full border border-sky-500/40 px-2 py-0.5 text-[11px] text-sky-300">
               {t("ed.originalAudio")} {s.audio_source.start.toFixed(1)}–{s.audio_source.end.toFixed(1)}s

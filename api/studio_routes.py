@@ -23,7 +23,7 @@ from pydantic import BaseModel, Field
 from clipforge.captions import STYLES as BASE_CAPTION_STYLES
 from clipforge.config import get_settings
 from clipforge.publishing import list_drafts
-from clipforge.studio import analytics, audio, credentials, ideas, publish_ops
+from clipforge.studio import analytics, audio, credentials, ideas, publish_ops, templates
 from clipforge.studio.automation import AutomationService, Worker
 from clipforge.studio.errors import StudioError
 from clipforge.studio.flags import is_enabled, load_flags
@@ -63,6 +63,7 @@ class ProjectCreate(BaseModel):
     budget_limit_usd: float | None = Field(default=None, ge=0, le=10000)
     options: dict[str, Any] | None = None
     rights_confirmed: bool | None = None
+    template_id: str | None = None
     auto_ingest: bool = True
 
 
@@ -80,7 +81,21 @@ class ProjectPatch(BaseModel):
     captions: dict[str, Any] | None = None
     visuals: dict[str, Any] | None = None
     options: dict[str, Any] | None = None
+    transitions: dict[str, Any] | None = None
     budget_limit_usd: float | None = Field(default=None, ge=0, le=10000)
+
+
+class TemplateSave(BaseModel):
+    name: str
+    description: str = ""
+    from_project: str | None = None
+    settings: dict[str, Any] | None = None
+    structure: list[dict[str, Any]] | None = None
+
+
+class ApplyTemplate(BaseModel):
+    expected_version: int
+    template_id: str
 
 
 class SceneOp(BaseModel):
@@ -418,7 +433,13 @@ def init_studio(app: FastAPI, registry, youtube_status=None,
     def project_create(req: ProjectCreate,
                        idempotency_key: str | None = Header(default=None)) -> dict:
         def make() -> dict:
-            project = svc.create_project(req.model_dump(exclude_none=True))
+            data = req.model_dump(exclude_none=True)
+            tid = data.pop("template_id", None)
+            template = templates.get_template(tid) if tid else None
+            project = svc.create_project(data)
+            if template:
+                project = svc.store.save(templates.apply_template(project, template),
+                                         project["version"])
             task_id = None
             needs_file = project["workflow"] in (
                 "pdf", "audio", "music", "podcast", "longform", "media", "youtube")
@@ -434,6 +455,37 @@ def init_studio(app: FastAPI, registry, youtube_status=None,
                 "needs_upload": project["workflow"] in (
                     "pdf", "audio", "music", "podcast", "longform", "media", "youtube")
                 and not project["source"].get("file")}
+
+    # ------------------------------------------------------------ Vorlagen
+    @r.get("/templates")
+    def template_list() -> dict:
+        return {"templates": templates.list_templates()}
+
+    def _template_body(req: TemplateSave) -> dict:
+        body = req.model_dump(exclude_none=True)
+        if req.from_project:
+            body = {**templates.from_project(svc.store.load(req.from_project)), **body}
+        return body
+
+    @r.post("/templates", status_code=201)
+    def template_create(req: TemplateSave) -> dict:
+        return {"template": templates.save_template(_template_body(req))}
+
+    @r.put("/templates/{tid}")
+    def template_update(tid: str, req: TemplateSave) -> dict:
+        return {"template": templates.save_template(_template_body(req), tid)}
+
+    @r.delete("/templates/{tid}")
+    def template_delete(tid: str) -> dict:
+        templates.delete_template(tid)
+        return {"deleted": True}
+
+    @r.post("/projects/{pid}/apply-template")
+    def project_apply_template(pid: str, req: ApplyTemplate) -> dict:
+        template = templates.get_template(req.template_id)
+        project = svc.store.load(pid)
+        return {"project": svc.store.save(templates.apply_template(project, template),
+                                          req.expected_version)}
 
     @r.get("/projects/{pid}")
     def project_get(pid: str) -> dict:

@@ -30,9 +30,12 @@ export default function JobsPage() {
   }
 
   useEffect(() => {
-    load();
+    const first = setTimeout(load, 0);
     const id = setInterval(load, 4000); // leichte Aktualisierung
-    return () => clearInterval(id);
+    return () => {
+      clearTimeout(first);
+      clearInterval(id);
+    };
   }, []);
 
   // Queue-Summary direkt aus der (bereits gepollten) Jobliste ableiten.

@@ -5,7 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import { listJobs } from "@/lib/api";
 import type { JobSummary } from "@/lib/types";
 import { tDyn, useLocale, useT } from "@/lib/i18n";
-import { errorMessage, studio, waitForTask, type Workflow } from "@/lib/studio";
+import { errorMessage, studio, waitForTask, type Template, type Workflow } from "@/lib/studio";
 import { ErrorBox, Loading, Progress, cardCls, inputCls, labelCls, primaryCls } from "@/components/studio/ui";
 
 const ACCEPT: Record<string, string> = {
@@ -53,6 +53,8 @@ export default function CreatePage() {
     media_type: "motion",
   });
   const [rights, setRights] = useState(false);
+  const [templates, setTemplates] = useState<Template[]>([]);
+  const [templateId, setTemplateId] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
   const [upload, setUpload] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -63,6 +65,7 @@ export default function CreatePage() {
       try {
         const o = await studio.overview();
         setWorkflows(o.workflows.filter((w) => w.id !== "idea"));
+        setTemplates(await studio.templates());
         const all = await listJobs();
         setJobs(all.filter((j) => j.status === "completed"));
       } catch (e) {
@@ -98,6 +101,7 @@ export default function CreatePage() {
       };
       // Das Seitenverhältnis folgt der Plattform, solange es nicht bewusst geändert wurde.
       if (!aspectTouched) delete body.aspect_ratio;
+      if (templateId) body.template_id = templateId;
       if (selected === "script") body.script = text;
       else if (needs === "text" || needs === "file") body.prompt = text;
       if (needs === "url" || needs === "youtube") body.url = url;
@@ -346,6 +350,19 @@ export default function CreatePage() {
       {!isShorts && (
         <section className={`${cardCls} grid gap-3 sm:grid-cols-2 lg:grid-cols-5`}>
           <h2 className="text-sm font-semibold text-neutral-200 sm:col-span-2 lg:col-span-5">{t("create.settings")}</h2>
+          <div className="sm:col-span-2 lg:col-span-5">
+            <label htmlFor="c-template" className={labelCls}>
+              {t("tpl.title")}
+            </label>
+            <select id="c-template" className={inputCls} value={templateId} onChange={(e) => setTemplateId(e.target.value)}>
+              <option value="">{t("tpl.none")}</option>
+              {templates.map((x) => (
+                <option key={x.id} value={x.id}>
+                  {locale === "en" ? x.name_en : x.name} — {x.description}
+                </option>
+              ))}
+            </select>
+          </div>
           <div>
             <label htmlFor="c-lang" className={labelCls}>
               {t("common.language")}

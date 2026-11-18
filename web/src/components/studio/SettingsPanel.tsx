@@ -2,7 +2,17 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useT } from "@/lib/i18n";
-import { errorMessage, studio, type Estimate, type MediaItem, type Project, type VoiceOptions } from "@/lib/studio";
+import {
+  TRANSITION_IDS,
+  errorMessage,
+  studio,
+  type Estimate,
+  type MediaItem,
+  type Project,
+  type Template,
+  type TransitionId,
+  type VoiceOptions,
+} from "@/lib/studio";
 import { ErrorBox, Progress, btnCls, cardCls, inputCls, labelCls } from "./ui";
 
 type Props = {
@@ -11,9 +21,10 @@ type Props = {
   estimate: Estimate | null;
   onChange: (patch: Partial<Project>) => void;
   onMediaChanged: () => void;
+  onApplyTemplate?: (templateId: string) => Promise<void>;
 };
 
-export default function SettingsPanel({ project, media, estimate, onChange, onMediaChanged }: Props) {
+export default function SettingsPanel({ project, media, estimate, onChange, onMediaChanged, onApplyTemplate }: Props) {
   const t = useT();
   const [voices, setVoices] = useState<VoiceOptions | null>(null);
   const [tracks, setTracks] = useState<{ id: string; name: string }[]>([]);
@@ -21,15 +32,19 @@ export default function SettingsPanel({ project, media, estimate, onChange, onMe
   const [error, setError] = useState<string | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [captionText, setCaptionText] = useState("");
+  const [templates, setTemplates] = useState<Template[]>([]);
+  const [templatePick, setTemplatePick] = useState("");
+  const [notice, setNotice] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const language = project.language;
 
   useEffect(() => {
     (async () => {
       try {
-        const [v, m] = await Promise.all([studio.voices(language), studio.music()]);
+        const [v, m, tp] = await Promise.all([studio.voices(language), studio.music(), studio.templates()]);
         setVoices(v);
         setTracks(m.tracks);
+        setTemplates(tp);
       } catch (e) {
         setError(errorMessage(e));
       }
@@ -59,6 +74,32 @@ export default function SettingsPanel({ project, media, estimate, onChange, onMe
       if (fileRef.current) fileRef.current.value = "";
     }
   }
+
+  async function saveAsTemplate() {
+    const name = window.prompt(t("tpl.namePrompt"), project.title);
+    if (!name) return;
+    setError(null);
+    try {
+      const tpl = await studio.saveTemplate({ name, from_project: project.id });
+      setTemplates((list) => [...list, tpl]);
+      setNotice(t("tpl.saved"));
+    } catch (e) {
+      setError(errorMessage(e));
+    }
+  }
+
+  async function removeTemplate(id: string) {
+    setError(null);
+    try {
+      await studio.deleteTemplate(id);
+      setTemplates((list) => list.filter((x) => x.id !== id));
+      setTemplatePick("");
+    } catch (e) {
+      setError(errorMessage(e));
+    }
+  }
+
+  const pickedTemplate = templates.find((x) => x.id === templatePick);
 
   async function playPreview() {
     setError(null);
@@ -221,11 +262,106 @@ export default function SettingsPanel({ project, media, estimate, onChange, onMe
           value={project.voice.speed}
           onChange={(e) => onChange({ voice: { ...project.voice, speed: Number(e.target.value) } })}
         />
+        <label htmlFor="s-vvol" className={labelCls}>
+          {t("ed.voiceVolume")}: {Math.round((project.voice.volume ?? 1) * 100)}%
+        </label>
+        <input
+          id="s-vvol"
+          type="range"
+          min={0}
+          max={2}
+          step={0.05}
+          className="w-full accent-indigo-400"
+          value={project.voice.volume ?? 1}
+          onChange={(e) => onChange({ voice: { ...project.voice, volume: Number(e.target.value) } })}
+        />
         {!usesSpeech && <p className="text-xs text-amber-300">{t("ed.noSpeech")}</p>}
         <button type="button" className={btnCls} onClick={playPreview}>
           ▶ {t("ed.voicePreview")}
         </button>
         {previewUrl && <audio src={previewUrl} controls autoPlay className="w-full" aria-label={t("ed.voicePreview")} />}
+      </div>
+
+      <div className="space-y-2">
+        <label htmlFor="s-template" className={labelCls}>
+          {t("tpl.title")}
+          {project.template_id ? ` · ${templates.find((x) => x.id === project.template_id)?.name ?? ""}` : ""}
+        </label>
+        <select
+          id="s-template"
+          className={inputCls}
+          value={templatePick}
+          onChange={(e) => setTemplatePick(e.target.value)}
+        >
+          <option value="">{t("tpl.none")}</option>
+          {templates.map((x) => (
+            <option key={x.id} value={x.id}>
+              {x.name}
+              {x.builtin ? "" : " ★"}
+            </option>
+          ))}
+        </select>
+        {pickedTemplate && <p className="text-xs text-neutral-400">{pickedTemplate.description}</p>}
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            className={btnCls}
+            disabled={!templatePick || !onApplyTemplate}
+            onClick={() => {
+              if (templatePick && onApplyTemplate && window.confirm(t("tpl.applyConfirm"))) void onApplyTemplate(templatePick);
+            }}
+          >
+            {t("tpl.apply")}
+          </button>
+          <button type="button" className={btnCls} onClick={() => void saveAsTemplate()}>
+            {t("tpl.saveAs")}
+          </button>
+          {pickedTemplate && !pickedTemplate.builtin && (
+            <button type="button" className={btnCls} onClick={() => void removeTemplate(pickedTemplate.id)}>
+              {t("tpl.delete")}
+            </button>
+          )}
+        </div>
+        {notice && (
+          <p role="status" className="text-xs text-emerald-300">
+            {notice}
+          </p>
+        )}
+      </div>
+
+      <div className="space-y-2">
+        <label htmlFor="s-transition" className={labelCls}>
+          {t("ed.transitionDefault")}
+        </label>
+        <select
+          id="s-transition"
+          className={inputCls}
+          value={project.transitions?.style ?? "cut"}
+          onChange={(e) =>
+            onChange({ transitions: { ...(project.transitions ?? { duration: 0.4 }), style: e.target.value as TransitionId } })
+          }
+        >
+          {TRANSITION_IDS.map((id) => (
+            <option key={id} value={id}>
+              {t(`tr.${id}` as Parameters<typeof t>[0])}
+            </option>
+          ))}
+        </select>
+        <label htmlFor="s-tdur" className={labelCls}>
+          {t("ed.transitionDuration")}: {(project.transitions?.duration ?? 0.4).toFixed(2)} s
+        </label>
+        <input
+          id="s-tdur"
+          type="range"
+          min={0.1}
+          max={1.5}
+          step={0.05}
+          className="w-full accent-indigo-400"
+          value={project.transitions?.duration ?? 0.4}
+          onChange={(e) =>
+            onChange({ transitions: { ...(project.transitions ?? { style: "cut" }), duration: Number(e.target.value) } })
+          }
+        />
       </div>
 
       <div className="space-y-2">

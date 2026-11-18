@@ -39,9 +39,26 @@ export type Scene = {
   headline: string;
   duration: number | null;
   pause_after: number;
+  transition?: TransitionId;
   visual: SceneVisual;
   audio_source?: { start: number; end: number };
   words?: { text: string; start: number; end: number }[];
+};
+
+export type TransitionId =
+  | "auto" | "cut" | "fade" | "fadeblack" | "zoom" | "slide" | "slideup" | "smooth" | "wipe" | "dissolve" | "circle";
+export const TRANSITION_IDS: TransitionId[] = [
+  "auto", "cut", "fade", "fadeblack", "zoom", "slide", "slideup", "smooth", "wipe", "dissolve", "circle",
+];
+
+export type Template = {
+  id: string;
+  builtin: boolean;
+  name: string;
+  name_en: string;
+  description: string;
+  settings: Record<string, unknown>;
+  structure: { kind: string; hint: string }[];
 };
 
 export type CaptionStyleId = "minimal" | "bold" | "karaoke" | "dynamic" | "none";
@@ -60,7 +77,9 @@ export type Project = {
   source: Record<string, unknown>;
   script: { generator?: string; needs_review?: boolean; notes?: string[] };
   scenes: Scene[];
-  voice: { provider: string; voice_id: string | null; tone: string; speed: number };
+  voice: { provider: string; voice_id: string | null; tone: string; speed: number; volume: number };
+  transitions: { style: TransitionId; duration: number };
+  template_id?: string;
   music: { track: string | null; volume: number; ducking: boolean; beat_sync: boolean };
   captions: { style: CaptionStyleId; use_brand: boolean };
   visuals: {
@@ -451,6 +470,16 @@ export const studio = {
     `${API_BASE}/api/studio/caption-preview?style=${style}&aspect_ratio=${encodeURIComponent(aspect)}&text=${encodeURIComponent(text)}&use_brand=${useBrand}`,
   music: () => get<{ tracks: { id: string; name: string; duration: number }[]; note: string }>("/music"),
   uploadMusic: (file: File, onProgress?: (f: number) => void) => uploadFile<{ id: string }>("/music", file, onProgress),
+
+  templates: () => get<{ templates: Template[] }>("/templates").then((d) => d.templates),
+  saveTemplate: (body: Record<string, unknown>) =>
+    post<{ template: Template }>("/templates", body).then((d) => d.template),
+  deleteTemplate: (id: string) => request<{ deleted: boolean }>("DELETE", `/templates/${id}`),
+  applyTemplate: (id: string, templateId: string, expectedVersion: number) =>
+    post<{ project: Project }>(`/projects/${id}/apply-template`, {
+      template_id: templateId,
+      expected_version: expectedVersion,
+    }).then((d) => d.project),
 
   projects: () => get<{ projects: ProjectSummary[] }>("/projects").then((d) => d.projects),
   createProject: (body: Record<string, unknown>, idempotencyKey: string) =>

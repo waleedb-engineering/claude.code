@@ -21,6 +21,7 @@ import wave
 from ..brand_kit import load_brand_kit, to_caption_overrides
 from ..captions import _escape, _fmt_ts, make_captions
 from ..ffmpeg_utils import concat_entry, filter_path, probe
+from . import transitions as transitions_mod
 from ..models import Word
 from . import audio as audio_mod
 from .audio import media_duration, run_ffmpeg
@@ -565,12 +566,15 @@ class StudioRenderer:
             plan = self.plan(work)
             entries, total = plan["entries"], plan["total"]
             listing, words, headlines = [], [], []
-            voice_parts = []
+            voice_parts, segments = [], []
+            trans = transitions_mod.plan(self.p, entries, self.fps)
+            extra = transitions_mod.extensions(trans)
             for i, e in enumerate(entries):
                 self._check()
                 self.progress(f"Szene {i + 1}/{len(entries)} rendern")
                 seg = os.path.join(work, f"seg_{i:03d}.mp4")
-                self.render_segment(i, e["scene"], e["dur"], seg, e["start"])
+                self.render_segment(i, e["scene"], e["dur"] + extra[i], seg, e["start"])
+                segments.append(seg)
                 listing.append(concat_entry(seg))
                 fitted = os.path.join(work, f"fit_{i:03d}.wav")
                 self._fit_wav(e["wav"], fitted, e["dur"])
@@ -580,6 +584,22 @@ class StudioRenderer:
                     headline = e["scene"].get("headline") or ""
                     if headline:
                         headlines.append((e["start"], e["start"] + min(e["dur"], 3.0), headline))
+            plan["transitions"] = [{"scene": e["scene"]["id"], "type": t, "duration": round(d, 3)}
+                                   for e, (t, d) in zip(entries, trans) if t != "cut"]
+            if plan["transitions"]:
+                self._check()
+                self.progress("Übergänge")
+                joined = os.path.join(work, "joined.mp4")
+                starts = [e["start"] for e in entries]
+                cmd = ["ffmpeg", "-y"]
+                for seg in segments:
+                    cmd += ["-i", seg]
+                cmd += ["-filter_complex", transitions_mod.filtergraph(trans, starts, self.fps),
+                        "-map", "[vx]", "-an", "-c:v", "libx264", "-preset", self.preset,
+                        "-crf", self.crf, "-pix_fmt", "yuv420p", "-r", str(self.fps),
+                        "-t", f"{total:.3f}", joined]
+                run_ffmpeg(cmd, "Übergänge")
+                listing = [concat_entry(joined)]
             concat_txt = os.path.join(work, "concat.txt")
             with open(concat_txt, "w", encoding="utf-8") as fh:
                 fh.write("\n".join(listing) + "\n")
@@ -609,6 +629,11 @@ class StudioRenderer:
             esc = filter_path(ass_path)
             vf = f"ass={esc}"
         filters = [f"[0:v]{vf}[v]"]
+        vvol = float(self.p["voice"].get("volume", 1.0))
+        voice_in = "[1:a]"
+        if abs(vvol - 1.0) > 1e-3:
+            filters.append(f"[1:a]volume={vvol:.3f}[vv]")
+            voice_in = "[vv]"
         music = plan["music_path"]
         # Ducking nur, wenn die Voice-Spur wirklich Ton enthält (nicht bei "none")
         speech = plan["voice"].get("provider") != "none" or "transcribed" in plan["timing"]
@@ -619,13 +644,15 @@ class StudioRenderer:
             filters.append(f"[2:a]aresample=44100,volume={vol:.3f},"
                            f"afade=t=out:st={fade:.3f}:d=1.5[m]")
             if speech and self.p["music"].get("ducking", True):
-                filters.append("[1:a]asplit=2[vo][sc]")
+                filters.append(f"{voice_in}asplit=2[vo][sc]")
                 filters.append("[m][sc]sidechaincompress=threshold=0.02:ratio=10:"
                                "attack=15:release=350[duck]")
                 filters.append("[vo][duck]amix=inputs=2:duration=first:normalize=0[a]")
             else:
-                filters.append("[1:a][m]amix=inputs=2:duration=first:normalize=0[a]")
+                filters.append(f"{voice_in}[m]amix=inputs=2:duration=first:normalize=0[a]")
             amap = "[a]"
+        elif voice_in != "[1:a]":
+            amap = voice_in
         else:
             amap = "1:a"
         tmp = out_path + ".part.mp4"
@@ -653,6 +680,7 @@ class StudioRenderer:
             "options": self.opt.to_dict(),
             "voice": plan["voice"],
             "word_timing": plan["timing"],
+            "transitions": plan.get("transitions", []),
             "music": {"track": self.p["music"].get("track") if plan["music_path"] else None,
                       "bpm": (plan["beats"] or {}).get("bpm"),
                       "beat_synced": bool(plan["beats"] and plan["beats"]["beats"])},

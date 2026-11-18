@@ -42,6 +42,7 @@ function editable(p: Project): Record<string, unknown> {
     captions: p.captions,
     visuals: p.visuals,
     options: p.options,
+    transitions: p.transitions,
     budget_limit_usd: p.budget_limit_usd,
   };
 }
@@ -469,6 +470,33 @@ export default function EditorPage() {
                       }
                       onDelete={() => setScenes((sc) => sc.filter((s) => s.id !== scene.id))}
                       onRegenerate={() => regenerate(scene.id)}
+                      dragProps={{
+                        draggable: true,
+                        onDragStart: (e) => {
+                          // Ziehen nur am Kartenrand, nicht beim Markieren von Text in Feldern
+                          const tag = (e.target as HTMLElement).tagName;
+                          if (tag === "TEXTAREA" || tag === "INPUT" || tag === "SELECT") {
+                            e.preventDefault();
+                            return;
+                          }
+                          e.dataTransfer.setData("text/clipforge-scene", String(i));
+                          e.dataTransfer.effectAllowed = "move";
+                        },
+                        onDragOver: (e) => {
+                          if (e.dataTransfer.types.includes("text/clipforge-scene")) e.preventDefault();
+                        },
+                        onDrop: (e) => {
+                          const from = Number(e.dataTransfer.getData("text/clipforge-scene"));
+                          if (!Number.isInteger(from) || from === i) return;
+                          e.preventDefault();
+                          setScenes((sc) => {
+                            const next = [...sc];
+                            const [moved] = next.splice(from, 1);
+                            next.splice(i, 0, moved);
+                            return next;
+                          });
+                        },
+                      }}
                     />
                   ))}
                 </ol>
@@ -647,6 +675,19 @@ export default function EditorPage() {
             estimate={estimate}
             onChange={(patch) => edit((p) => ({ ...p, ...patch }))}
             onMediaChanged={() => void refresh(false)}
+            onApplyTemplate={async (templateId) => {
+              if (!(await save())) return;
+              const cur = projectRef.current;
+              if (!cur) return;
+              try {
+                setPast((h) => [...h.slice(-49), cur]);
+                setFuture([]);
+                applyServer(await studio.applyTemplate(id, templateId, cur.version));
+                await refresh(false);
+              } catch (e) {
+                setError(errorMessage(e));
+              }
+            }}
           />
         </div>
       )}

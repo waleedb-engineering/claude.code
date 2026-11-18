@@ -93,7 +93,8 @@ export default function ClipEditPage() {
   }, [jobId, clipIndex]);
 
   useEffect(() => {
-    refreshExports();
+    const t = setTimeout(refreshExports, 0);
+    return () => clearTimeout(t);
   }, [refreshExports]);
 
   const duration = useMemo(() => Math.max(0, end - start), [start, end]);

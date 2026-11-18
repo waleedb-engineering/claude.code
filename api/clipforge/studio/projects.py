@@ -28,6 +28,9 @@ ASPECT_RATIOS = ("9:16", "16:9", "1:1", "4:5")
 RESOLUTIONS = ("720p", "1080p", "4k")
 CAPTION_STYLES = ("minimal", "bold", "karaoke", "dynamic", "none")
 VISUAL_MODES = ("motion", "static", "media", "ai_image", "split", "ai_video", "avatar")
+# Übergang *in* eine Szene hinein; "auto" = nach Stil bzw. Projekt-Vorgabe
+TRANSITIONS = ("auto", "cut", "fade", "fadeblack", "zoom", "slide", "slideup", "smooth",
+               "wipe", "dissolve", "circle")
 STYLES = ("clean", "cinematic")
 LANGUAGES = ("de", "en")
 WORKFLOWS = (
@@ -70,6 +73,7 @@ def normalize_scene(raw: dict, project_dir: str | None = None) -> dict:
         "headline": str(raw.get("headline") or "")[:60].strip(),
         "duration": None,
         "pause_after": _clamp(raw.get("pause_after"), 0.0, 5.0, 0.0),
+        "transition": raw.get("transition") if raw.get("transition") in TRANSITIONS else "auto",
     }
     if raw.get("duration") not in (None, "", 0):
         scene["duration"] = _clamp(raw.get("duration"), 0.5, 120.0, None)
@@ -155,7 +159,12 @@ def migrate(data: dict) -> dict:
     p["voice"] = {"provider": str(voice.get("provider") or "auto"),
                   "voice_id": voice.get("voice_id") or None,
                   "tone": str(voice.get("tone") or ""),
-                  "speed": round(_clamp(voice.get("speed"), 0.5, 2.0, 1.0), 2)}
+                  "speed": round(_clamp(voice.get("speed"), 0.5, 2.0, 1.0), 2),
+                  "volume": round(_clamp(voice.get("volume"), 0.0, 2.0, 1.0), 2)}
+    tr = p.get("transitions") if isinstance(p.get("transitions"), dict) else {}
+    p["transitions"] = {
+        "style": tr.get("style") if tr.get("style") in TRANSITIONS else "cut",
+        "duration": round(_clamp(tr.get("duration"), 0.1, 1.5, 0.4), 2)}
     music = p.get("music") if isinstance(p.get("music"), dict) else {}
     p["music"] = {"track": music.get("track") or None,
                   "volume": _clamp(music.get("volume"), 0.0, 1.0, 0.25),
@@ -193,7 +202,7 @@ def migrate(data: dict) -> dict:
 
 _EDITABLE = ("title", "language", "tone", "style", "aspect_ratio", "resolution",
              "scenes", "voice", "music", "captions", "visuals", "budget_limit_usd",
-             "options")
+             "options", "transitions")
 
 
 def apply_patch(project: dict, patch: dict, project_dir: str) -> dict:
@@ -258,6 +267,10 @@ def apply_patch(project: dict, patch: dict, project_dir: str) -> dict:
                     raise StudioError("media_not_found", "Gameplay-Datei nicht gefunden.", 404)
                 value = {**value, "gameplay_media": gm}
             p["visuals"] = value
+        elif key == "transitions":
+            if not isinstance(value, dict) or value.get("style", "cut") not in TRANSITIONS:
+                raise StudioError("validation_error", "Unbekannter Übergang.")
+            p["transitions"] = value
         elif key == "options":
             from .options import ProductionOptions
             if not isinstance(value, dict):
