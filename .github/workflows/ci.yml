@@ -22,9 +22,6 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest]
-    # Windows-Lauf ist neu und wurde noch nie ausgeführt → Ergebnis sichtbar,
-    # blockiert aber nicht, bis er einmal grün war.
-    continue-on-error: ${{ matrix.os == 'windows-latest' }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
