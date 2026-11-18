@@ -849,7 +849,7 @@ class StudioService:
                 "auto_selection": select_voice(language, tone)}
 
     def voice_preview(self, language: str, provider_id: str, voice_id: str | None,
-                      text: str = "", confirm_cost: bool = False) -> str:
+                      text: str = "", confirm_cost: bool = False, speed: float = 1.0) -> str:
         """Kurze Hörprobe (gecacht). Kostenpflichtige Provider nur mit Bestätigung."""
         import hashlib
         from .providers import get_voice, require_ready, select_voice
@@ -868,12 +868,14 @@ class StudioService:
         from .storage import studio_dir
         pdir = os.path.join(studio_dir(), "previews")
         os.makedirs(pdir, exist_ok=True)
-        key = hashlib.sha256(f"{provider.id}|{choice['voice_id']}|{language}|{sample}".encode()).hexdigest()[:20]
+        speed = max(0.5, min(2.0, float(speed or 1.0)))
+        key = hashlib.sha256(
+            f"{provider.id}|{choice['voice_id']}|{language}|{sample}|{speed}".encode()).hexdigest()[:20]
         raw, out = os.path.join(pdir, key + ".raw"), os.path.join(pdir, key + ".mp3")
         if not os.path.isfile(out):
             from .errors import ProviderError
             try:
-                provider.synthesize(sample, language, choice["voice_id"], raw)
+                provider.synthesize(sample, language, choice["voice_id"], raw, speed=speed)
             except ProviderError as exc:
                 raise StudioError("provider_failed", f"Hörprobe fehlgeschlagen ({exc}).", 502) from exc
             try:

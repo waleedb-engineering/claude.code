@@ -112,6 +112,7 @@ class VoicePreviewRequest(BaseModel):
     voice_id: str | None = None
     text: str = ""
     confirm_cost: bool = False
+    speed: float = Field(default=1.0, ge=0.5, le=2.0)
 
 
 class AutomationPayload(BaseModel):
@@ -301,7 +302,7 @@ def init_studio(app: FastAPI, registry, youtube_status=None,
     @r.post("/voices/preview")
     def voice_preview(req: VoicePreviewRequest):
         path = svc.voice_preview(req.language, req.provider, req.voice_id, req.text,
-                                 req.confirm_cost)
+                                 req.confirm_cost, req.speed)
         return FileResponse(path, media_type="audio/mpeg")
 
     @r.get("/caption-styles")

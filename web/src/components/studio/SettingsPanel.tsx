@@ -66,7 +66,13 @@ export default function SettingsPanel({ project, media, estimate, onChange, onMe
       let confirmCost = false;
       if (provider?.paid) confirmCost = window.confirm(`${t("ed.voicePreview")}: ${provider.label} (${t("common.paid")})`);
       if (provider?.paid && !confirmCost) return;
-      const urlObj = await studio.voicePreview(language, project.voice.provider, project.voice.voice_id, confirmCost);
+      const urlObj = await studio.voicePreview(
+        language,
+        project.voice.provider,
+        project.voice.voice_id,
+        confirmCost,
+        project.voice.speed,
+      );
       setPreviewUrl(urlObj);
     } catch (e) {
       setError(errorMessage(e));
@@ -202,6 +208,19 @@ export default function SettingsPanel({ project, media, estimate, onChange, onMe
             </select>
           </>
         )}
+        <label htmlFor="s-speed" className={labelCls}>
+          {t("ed.speed")}: {project.voice.speed.toFixed(2)}×
+        </label>
+        <input
+          id="s-speed"
+          type="range"
+          min={0.5}
+          max={2}
+          step={0.05}
+          className="w-full accent-indigo-400"
+          value={project.voice.speed}
+          onChange={(e) => onChange({ voice: { ...project.voice, speed: Number(e.target.value) } })}
+        />
         {!usesSpeech && <p className="text-xs text-amber-300">{t("ed.noSpeech")}</p>}
         <button type="button" className={btnCls} onClick={playPreview}>
           ▶ {t("ed.voicePreview")}

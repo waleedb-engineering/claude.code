@@ -74,7 +74,8 @@ def _rewrite(name: str, value: str | None) -> bool:
     os.makedirs(directory, exist_ok=True)
     fd, tmp = tempfile.mkstemp(prefix=".env.", suffix=".tmp", dir=directory)
     try:
-        os.fchmod(fd, 0o600)
+        if hasattr(os, "fchmod"):  # Windows kennt fchmod erst ab Python 3.13
+            os.fchmod(fd, 0o600)
         with os.fdopen(fd, "w", encoding="utf-8") as fh:
             fh.write("\n".join(kept) + ("\n" if kept else ""))
             fh.flush()

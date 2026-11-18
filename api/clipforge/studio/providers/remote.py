@@ -98,14 +98,16 @@ class ElevenLabsVoice(VoiceProvider):
         from ..costs import price
         return chars / 1000.0 * price("elevenlabs_per_1k_chars")
 
-    def synthesize(self, text, language, voice_id, out_path, model=None):
+    def synthesize(self, text, language, voice_id, out_path, model=None, speed=1.0):
         ids = {v for v, _, _ in self._VOICES}
         voice = voice_id if voice_id in ids else self._VOICES[0][0]
         body = _post(self.id, f"https://api.elevenlabs.io/v1/text-to-speech/{voice}",
                      {"xi-api-key": os.environ.get("ELEVENLABS_API_KEY", ""),
                       "Accept": "audio/mpeg"},
                      {"text": text, "model_id": model or os.environ.get(
-                         "CLIPFORGE_ELEVENLABS_MODEL", "eleven_multilingual_v2")})
+                         "CLIPFORGE_ELEVENLABS_MODEL", "eleven_multilingual_v2"),
+                      # ElevenLabs erlaubt 0,7–1,2
+                      "voice_settings": {"speed": round(max(0.7, min(1.2, speed)), 2)}})
         if len(body) < 64 or not looks_like_audio(body):
             raise ProviderError(self.id, "Antwort ist kein Audio")
         with open(out_path, "wb") as fh:
@@ -130,12 +132,13 @@ class OpenAIVoice(VoiceProvider):
         from ..costs import price
         return chars / 1000.0 * price("openai_tts_per_1k_chars")
 
-    def synthesize(self, text, language, voice_id, out_path, model=None):
+    def synthesize(self, text, language, voice_id, out_path, model=None, speed=1.0):
         voice = voice_id if voice_id in {v for v, _ in self._VOICES} else "alloy"
         body = _post(self.id, "https://api.openai.com/v1/audio/speech",
                      {"Authorization": "Bearer " + os.environ.get("OPENAI_API_KEY", "")},
                      {"model": model or os.environ.get("CLIPFORGE_OPENAI_TTS_MODEL", "tts-1"),
-                      "voice": voice, "input": text, "response_format": "mp3"})
+                      "voice": voice, "input": text, "response_format": "mp3",
+                      "speed": round(max(0.25, min(4.0, speed)), 2)})
         if len(body) < 64 or not looks_like_audio(body):
             raise ProviderError(self.id, "Antwort ist kein Audio")
         with open(out_path, "wb") as fh:

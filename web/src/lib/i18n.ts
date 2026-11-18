@@ -197,6 +197,7 @@ const DICT = {
   "ed.voice": ["Stimme", "Voice"],
   "ed.voiceAuto": ["Automatisch", "Automatic"],
   "ed.voicePreview": ["Hörprobe", "Preview voice"],
+  "ed.speed": ["Sprechtempo", "Speaking rate"],
   "ed.noSpeech": [
     "Kein lokaler Sprach-Provider gefunden — das Video wird ohne Stimme gerendert.",
     "No local speech provider found — the video renders without a voice.",

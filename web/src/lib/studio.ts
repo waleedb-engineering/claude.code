@@ -60,7 +60,7 @@ export type Project = {
   source: Record<string, unknown>;
   script: { generator?: string; needs_review?: boolean; notes?: string[] };
   scenes: Scene[];
-  voice: { provider: string; voice_id: string | null; tone: string };
+  voice: { provider: string; voice_id: string | null; tone: string; speed: number };
   music: { track: string | null; volume: number; ducking: boolean; beat_sync: boolean };
   captions: { style: CaptionStyleId; use_brand: boolean };
   visuals: { image_provider: string; gameplay_media: string | null; headlines: boolean };
@@ -409,11 +409,17 @@ export const studio = {
     post<{ ok: boolean; reason: string; message: string }>(`/credentials/${provider}/test`),
   voices: (language: string, tone = "") =>
     get<VoiceOptions>(`/voices?language=${encodeURIComponent(language)}&tone=${encodeURIComponent(tone)}`),
-  async voicePreview(language: string, provider: string, voiceId: string | null, confirmCost = false): Promise<string> {
+  async voicePreview(
+    language: string,
+    provider: string,
+    voiceId: string | null,
+    confirmCost = false,
+    speed = 1,
+  ): Promise<string> {
     const res = await apiFetch(`${API_BASE}/api/studio/voices/preview`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ language, provider, voice_id: voiceId, confirm_cost: confirmCost }),
+      body: JSON.stringify({ language, provider, voice_id: voiceId, confirm_cost: confirmCost, speed }),
     });
     if (!res.ok) {
       const data = await res.json().catch(() => null);

@@ -30,7 +30,7 @@ from .options import options_of
 from .projects import IMAGE_EXT, VIDEO_EXT, resolve_music
 from .providers import get_image, get_voice, select_voice
 from .providers.local import speech_seconds
-from .storage import new_id, now_iso, safe_child, write_json_atomic
+from .storage import new_id, now_iso, read_json, safe_child, write_json_atomic
 
 ASPECT = {"9:16": (9, 16), "16:9": (16, 9), "1:1": (1, 1), "4:5": (4, 5)}
 SHORT_SIDE = {"720p": 720, "1080p": 1080, "4k": 2160}
@@ -91,6 +91,7 @@ class StudioRenderer:
         self.ledger = CostLedger(project_dir, project.get("budget_limit_usd") or 0.0)
         self.warnings: list[str] = []
         self._upscale_checked: set[str] = set()
+        self._tts_words: dict[str, list] = {}
         self.fallbacks: list[dict] = []
         self.voice_override = voice_override
         self.brand = load_brand_kit()
@@ -142,9 +143,11 @@ class StudioRenderer:
         if not text.strip():
             return self._silence(out, 1.0), 0.0, "none"
         provider = get_voice(voice["provider"])
+        speed = float(self.p["voice"].get("speed") or 1.0)
         key = _hash(provider.id, voice["voice_id"], self.p["language"], text,
-                    self.opt.voice_model)
+                    self.opt.voice_model, speed)
         cached = os.path.join(self.cache, "voice", key + ".audio")
+        words_file = cached + ".words.json"
         if not os.path.isfile(cached):
             # Reservieren VOR der Anfrage (wirft BudgetExceeded, ohne etwas zu senden)
             rid = self.ledger.reserve(
@@ -153,7 +156,9 @@ class StudioRenderer:
             try:
                 tmp = cached + ".tmp"
                 result = provider.synthesize(text, self.p["language"], voice["voice_id"], tmp,
-                                             model=self.opt.voice_model or None)
+                                             model=self.opt.voice_model or None, speed=speed)
+                if result.words:  # echte Wort-Zeitpunkte des TTS (z. B. eSpeak)
+                    write_json_atomic(words_file, result.words)
                 os.replace(tmp, cached)
                 self.ledger.commit(rid, result.cost_usd, provider.id, "voice")
             except ProviderError as exc:
@@ -163,13 +168,18 @@ class StudioRenderer:
                                        "reason": str(exc)})
                 self.warnings.append(
                     f"Voice-Provider '{provider.id}' ausgefallen — Szene ohne Stimme gerendert.")
-                seconds = speech_seconds(text)
+                seconds = speech_seconds(text, speed)
                 return self._silence(out, seconds), seconds, "estimated"
             except BaseException:
                 self.ledger.release(rid)
                 raise
         run_ffmpeg(["ffmpeg", "-y", "-i", cached, "-vn", "-ac", "1", "-ar", "44100",
                     "-c:a", "pcm_s16le", out], "Voice-Normalisierung")
+        words = read_json(words_file, None)
+        # Wort-Timings passen nur, wenn die Caption genau den gesprochenen Text zeigt
+        if isinstance(words, list) and words and not scene.get("voice_text"):
+            self._tts_words[scene["id"]] = words
+            return out, media_duration(out), "tts"
         return out, media_duration(out), "estimated"
 
     @staticmethod
@@ -321,9 +331,10 @@ class StudioRenderer:
 
     # ------------------------------------------------------------ Captions
     def _scene_words(self, scene: dict, start: float, speech: float) -> list[Word]:
-        if scene.get("words"):
+        timed = scene.get("words") or self._tts_words.get(scene["id"])
+        if timed:
             return [Word(text=w["text"], start=start + w["start"], end=start + w["end"])
-                    for w in scene["words"]]
+                    for w in timed]
         tokens = scene["text"].split()
         if not tokens or speech <= 0:
             return []

@@ -66,7 +66,7 @@ class VoiceProvider(Provider):
         return 0.0
 
     def synthesize(self, text: str, language: str, voice_id: str, out_path: str,
-                   model: str | None = None) -> VoiceResult:
+                   model: str | None = None, speed: float = 1.0) -> VoiceResult:
         raise NotImplementedError
 
 

@@ -154,7 +154,8 @@ def migrate(data: dict) -> dict:
     voice = p.get("voice") if isinstance(p.get("voice"), dict) else {}
     p["voice"] = {"provider": str(voice.get("provider") or "auto"),
                   "voice_id": voice.get("voice_id") or None,
-                  "tone": str(voice.get("tone") or "")}
+                  "tone": str(voice.get("tone") or ""),
+                  "speed": round(_clamp(voice.get("speed"), 0.5, 2.0, 1.0), 2)}
     music = p.get("music") if isinstance(p.get("music"), dict) else {}
     p["music"] = {"track": music.get("track") or None,
                   "volume": _clamp(music.get("volume"), 0.0, 1.0, 0.25),

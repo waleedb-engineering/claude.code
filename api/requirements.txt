@@ -28,3 +28,9 @@ google-api-python-client>=2.0.0
 pypdf>=4.0.0
 # Creator Studio: Beat-Erkennung für Musikvideos (kommt auch über OpenCV mit).
 numpy>=1.24.0
+# Creator Studio: lokale, kostenlose Stimme auf Windows/macOS/Linux ohne
+# Systeminstallation (bringt libespeak-ng + Sprachdaten mit).
+espeakng-loader>=0.2.4
+# OPTIONAL: Piper — lokale neuronale Stimmen in besserer Qualität (zieht
+# onnxruntime nach, ~60 MB). Stimmmodelle separat laden, siehe docs/STUDIO.md.
+# piper-tts>=1.8.0

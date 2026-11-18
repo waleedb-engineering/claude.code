@@ -4,12 +4,15 @@ from __future__ import annotations
 
 from ..errors import StudioError
 from .base import ImageProvider, PlaceholderProvider, Provider, VoiceProvider, VoiceResult
-from .local import EspeakVoice, MacSayVoice, MockImage, MockVoice, SilentVoice
+from .local import (
+    EspeakVoice, MacSayVoice, MockImage, MockVoice, PiperVoice, SilentVoice, WindowsSapiVoice,
+)
 from .remote import ElevenLabsVoice, OpenAIImage, OpenAIVoice
 
 # Reihenfolge = Priorität der automatischen Auswahl (lokal vor Cloud).
 _VOICES: list[VoiceProvider] = [
-    MacSayVoice(), EspeakVoice(), ElevenLabsVoice(), OpenAIVoice(), MockVoice(), SilentVoice(),
+    MacSayVoice(), WindowsSapiVoice(), PiperVoice(), EspeakVoice(),
+    ElevenLabsVoice(), OpenAIVoice(), MockVoice(), SilentVoice(),
 ]
 _IMAGES: list[ImageProvider] = [OpenAIImage(), MockImage()]
 _PLACEHOLDERS: list[Provider] = [
