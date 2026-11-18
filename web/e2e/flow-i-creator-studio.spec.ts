@@ -92,9 +92,9 @@ test("Studio: Skript → Editor (Autosave, Undo, Reihenfolge) → Render → Pub
 
 test("Studio: nicht verfügbare Workflows sind deaktiviert und begründet", async ({ page }) => {
   await page.goto("/studio/create");
-  await expect(page.getByRole("radio", { name: "YouTube → Shorts" })).toBeDisabled();
+  await expect(page.getByRole("radio", { name: "YouTube → Shorts" })).toBeEnabled();
   await expect(page.getByRole("radio", { name: "Talking Avatar" })).toBeDisabled();
-  await expect(page.getByText(/YouTube-Import ist nicht verfügbar/)).toBeVisible();
+  await expect(page.getByText(/Talking Avatar ist nicht verfügbar/)).toBeVisible();
   await expect(page.getByRole("radio", { name: "PDF → Video" })).toBeEnabled();
 });
 

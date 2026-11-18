@@ -55,7 +55,8 @@ def test_overview_workflows_and_readiness_have_no_secrets():
                     "audio", "music", "podcast", "longform", "media", "job", "product_ad",
                     "cinematic"):
             assert wf[wid]["available"], wid
-        assert not wf["youtube"]["available"] and not wf["avatar"]["available"]
+        assert wf["youtube"]["available"] and wf["youtube"]["needs"] == "youtube"
+        assert not wf["avatar"]["available"]
         prov = client.get("/api/studio/providers")
         assert secret not in prov.text and "ELEVENLABS_API_KEY" in prov.text
         states = {p["id"]: p["status"] for p in prov.json()["providers"]}
@@ -101,8 +102,8 @@ def test_create_validation_and_stable_error_codes():
         assert _err(post({"workflow": "script", "script": "zu kurz"})) == "validation_error"
         assert _err(post({"workflow": "product_ad", "product": {}})) == "validation_error"
         assert _err(post({"workflow": "job", "job_id": "gibtsnicht"})) == "job_not_found"
-        r = post({"workflow": "youtube", "url": "https://youtube.com/watch?v=x"})
-        assert r.status_code == 409 and _err(r) == "workflow_unavailable"
+        assert _err(post({"workflow": "youtube", "url": "https://youtube.com/watch?v=x"})) == "youtube_url_invalid"
+        assert _err(post({"workflow": "youtube", "url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ"})) == "rights_confirmation_required"
         assert _err(post({"workflow": "avatar", "prompt": "Hallo"})) == "workflow_unavailable"
         for url, code in (("http://127.0.0.1/admin", "url_blocked"),
                           ("http://localhost:8000/health", "url_blocked"),

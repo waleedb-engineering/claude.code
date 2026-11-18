@@ -17,8 +17,8 @@ DEFAULT_FLAGS: dict[str, bool] = {
     "studio_automation": True,
     "studio_analytics": True,
     "studio_ideas": True,
-    # Bewusst AUS: kein Adapter vorhanden / rechtlich heikel.
-    "studio_youtube_import": False,
+    # YouTube-Import nur für eigene/berechtigte Videos, Video-Datei lädt der Nutzer hoch.
+    "studio_youtube_import": True,
     "studio_voice_cloning": False,
     "studio_face_swap": False,
 }

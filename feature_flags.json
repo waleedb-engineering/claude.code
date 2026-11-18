@@ -8,7 +8,7 @@
     "studio_automation": true,
     "studio_analytics": true,
     "studio_ideas": true,
-    "studio_youtube_import": false,
+    "studio_youtube_import": true,
     "studio_voice_cloning": false,
     "studio_face_swap": false
   }

@@ -62,6 +62,7 @@ class ProjectCreate(BaseModel):
     music: dict[str, Any] | None = None
     budget_limit_usd: float | None = Field(default=None, ge=0, le=10000)
     options: dict[str, Any] | None = None
+    rights_confirmed: bool | None = None
     auto_ingest: bool = True
 
 
@@ -371,7 +372,7 @@ def init_studio(app: FastAPI, registry, youtube_status=None,
             project = svc.create_project(req.model_dump(exclude_none=True))
             task_id = None
             needs_file = project["workflow"] in (
-                "pdf", "audio", "music", "podcast", "longform", "media")
+                "pdf", "audio", "music", "podcast", "longform", "media", "youtube")
             if req.auto_ingest and not needs_file:
                 task_id = svc.start_ingest(project["id"])["id"]
             return {"project_id": project["id"], "task_id": task_id}
@@ -382,7 +383,7 @@ def init_studio(app: FastAPI, registry, youtube_status=None,
         project = svc.store.load(result["project_id"])
         return {"project": project, "task_id": result["task_id"], "replayed": replayed,
                 "needs_upload": project["workflow"] in (
-                    "pdf", "audio", "music", "podcast", "longform", "media")
+                    "pdf", "audio", "music", "podcast", "longform", "media", "youtube")
                 and not project["source"].get("file")}
 
     @r.get("/projects/{pid}")

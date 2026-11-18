@@ -139,7 +139,7 @@ export type ProjectView = {
 
 export type Workflow = {
   id: string;
-  needs: "text" | "url" | "file" | "job" | "product";
+  needs: "text" | "url" | "file" | "job" | "product" | "youtube";
   available: boolean;
   reason: string;
   local: boolean;

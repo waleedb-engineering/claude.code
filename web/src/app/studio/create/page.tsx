@@ -14,6 +14,7 @@ const ACCEPT: Record<string, string> = {
   music: "audio/*",
   podcast: "audio/*,video/*",
   longform: "video/*",
+  youtube: "video/*",
   media: "image/png,image/jpeg,image/webp,video/*",
 };
 
@@ -51,6 +52,7 @@ export default function CreatePage() {
     visual_style: "",
     media_type: "motion",
   });
+  const [rights, setRights] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   const [upload, setUpload] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -71,7 +73,8 @@ export default function CreatePage() {
 
   const wf = workflows?.find((w) => w.id === selected);
   const needs = wf?.needs ?? "text";
-  const isShorts = selected === "podcast" || selected === "longform";
+  const isShorts = selected === "podcast" || selected === "longform" || selected === "youtube";
+  const takesFile = needs === "file" || needs === "youtube";
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -97,15 +100,16 @@ export default function CreatePage() {
       if (!aspectTouched) delete body.aspect_ratio;
       if (selected === "script") body.script = text;
       else if (needs === "text" || needs === "file") body.prompt = text;
-      if (needs === "url") body.url = url;
+      if (needs === "url" || needs === "youtube") body.url = url;
+      if (needs === "youtube") body.rights_confirmed = rights;
       if (needs === "job") body.job_id = jobId;
       if (needs === "product")
         body.product = { ...product, benefits: product.benefits.split("\n").filter((b) => b.trim()) };
-      if (needs === "file" && files.length === 0) throw new Error(t("create.file"));
+      if (takesFile && files.length === 0) throw new Error(t("create.file"));
       const created = await studio.createProject(body, idemKey.current);
       const pid = created.project.id;
       let taskId = created.task_id;
-      if (needs === "file") {
+      if (takesFile) {
         for (let i = 0; i < files.length; i++) {
           setBusy(`${t("create.uploading")} ${i + 1}/${files.length}`);
           setUpload(0);
@@ -208,6 +212,36 @@ export default function CreatePage() {
           </div>
         )}
 
+        {needs === "youtube" && (
+          <div className="space-y-3">
+            <div>
+              <label htmlFor="c-yt" className={labelCls}>
+                {t("create.youtubeUrl")}
+              </label>
+              <input
+                id="c-yt"
+                type="url"
+                required
+                placeholder="https://www.youtube.com/watch?v=…"
+                className={inputCls}
+                value={url}
+                onChange={(e) => setUrl(e.target.value)}
+              />
+            </div>
+            <p className="text-xs text-neutral-300">{t("create.youtubeHint")}</p>
+            <label className="flex items-start gap-2 text-sm text-neutral-200">
+              <input
+                type="checkbox"
+                required
+                className="mt-1 accent-indigo-400"
+                checked={rights}
+                onChange={(e) => setRights(e.target.checked)}
+              />
+              {t("create.youtubeRights")}
+            </label>
+          </div>
+        )}
+
         {needs === "url" && (
           <div>
             <label htmlFor="c-url" className={labelCls}>
@@ -225,7 +259,7 @@ export default function CreatePage() {
           </div>
         )}
 
-        {needs === "file" && (
+        {takesFile && (
           <div className="space-y-3">
             <div>
               <label htmlFor="c-file" className={labelCls}>
@@ -249,7 +283,7 @@ export default function CreatePage() {
                 <input
                   id="c-transcript"
                   type="file"
-                  accept=".json,application/json"
+                  accept=".json,.srt,.vtt,application/json,text/vtt"
                   className={inputCls}
                   onChange={(e) => setTranscript(e.target.files?.[0] ?? null)}
                 />

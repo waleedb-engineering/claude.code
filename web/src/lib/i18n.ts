@@ -114,10 +114,19 @@ const DICT = {
   "create.file": ["Datei auswählen", "Choose file"],
   "create.files": ["Bilder/Videos auswählen", "Choose images/videos"],
   "create.transcript": [
-    "Transkript-JSON (optional, überspringt Whisper)",
-    "Transcript JSON (optional, skips Whisper)",
+    "Transkript oder Untertitel (.json/.srt/.vtt, optional, überspringt Whisper)",
+    "Transcript or subtitles (.json/.srt/.vtt, optional, skips Whisper)",
   ],
   "create.job": ["Bestehender Job", "Existing job"],
+  "create.youtubeUrl": ["YouTube-Link", "YouTube link"],
+  "create.youtubeHint": [
+    "ClipForge lädt nichts von YouTube herunter. Lade das Video selbst hoch (bei eigenen Videos: YouTube Studio → Herunterladen). Untertitel aus YouTube Studio (.srt/.vtt) sparen die Transkription.",
+    "ClipForge never downloads from YouTube. Upload the video yourself (own videos: YouTube Studio → Download). Subtitles from YouTube Studio (.srt/.vtt) skip transcription.",
+  ],
+  "create.youtubeRights": [
+    "Ich bin Rechteinhaber dieses Videos oder habe die Erlaubnis, es zu bearbeiten.",
+    "I own this video or have permission to edit it.",
+  ],
   "create.noJobs": ["Keine fertigen Jobs vorhanden.", "No completed jobs available."],
   "create.seconds": ["Ziel-Länge (Sekunden)", "Target length (seconds)"],
   "create.aspect": ["Seitenverhältnis", "Aspect ratio"],

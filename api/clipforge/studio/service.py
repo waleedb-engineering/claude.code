@@ -33,10 +33,6 @@ TEXT_WORKFLOWS = ("prompt", "script", "cinematic", "idea", "product_ad")
 URL_WORKFLOWS = ("article_url", "website_review", "social_url")
 FILE_WORKFLOWS = ("pdf", "audio", "music", "podcast", "longform", "media")
 UNAVAILABLE = {
-    "youtube": ("studio_youtube_import",
-                "YouTube-Import ist nicht verfügbar: Das Herunterladen fremder Videos ist "
-                "rechtlich heikel und technisch nicht implementiert. Lade ein eigenes Video "
-                "über „Longform → Shorts“ hoch."),
     "avatar": (None,
                "Talking Avatar ist nicht verfügbar: Es ist noch kein Avatar-Provider "
                "angebunden."),
@@ -47,6 +43,7 @@ SOURCE_EXT = {
     "music": AUDIO_EXT,
     "podcast": AUDIO_EXT | VIDEO_EXT,
     "longform": VIDEO_EXT,
+    "youtube": VIDEO_EXT,
 }
 WORKFLOW_INFO = [
     # id, braucht, lokal lauffähig
@@ -55,7 +52,7 @@ WORKFLOW_INFO = [
     ("audio", "file", True), ("music", "file", True), ("podcast", "file", True),
     ("longform", "file", True), ("media", "file", True), ("job", "job", True),
     ("product_ad", "product", True), ("cinematic", "text", True),
-    ("youtube", "url", False), ("avatar", "text", False),
+    ("youtube", "youtube", True), ("avatar", "text", False),
 ]
 
 
@@ -208,6 +205,21 @@ class StudioService:
                 "benefits": [str(b)[:200] for b in benefits if str(b).strip()][:5],
                 "price": str(product.get("price") or "")[:40],
                 "cta": str(product.get("cta") or "")[:120]}
+        elif workflow == "youtube":
+            if not is_enabled("studio_youtube_import"):
+                raise StudioError("feature_disabled", "YouTube-Import ist deaktiviert.", 403)
+            from .youtube_import import canonical_url, video_id
+            vid = video_id(str(req.get("url") or ""))
+            if req.get("rights_confirmed") is not True:
+                raise StudioError(
+                    "rights_confirmation_required",
+                    "Bitte bestätigen, dass du Rechteinhaber des Videos bist oder die "
+                    "Erlaubnis zur Bearbeitung hast.")
+            source["url"] = canonical_url(vid)
+            source["video_id"] = vid
+            source["rights"] = {"confirmed": True, "confirmed_at": now_iso(),
+                                "statement": "Rechteinhaber oder Erlaubnis zur Bearbeitung",
+                                "verified": False}
         elif workflow == "job":
             job_id = str(req.get("job_id") or "")
             if self.registry is None or self.registry.get(job_id) is None:
@@ -251,16 +263,29 @@ class StudioService:
         pdir = self.store.dir(pid)
         ext = os.path.splitext(filename or "")[1].lower()
         if kind == "transcript":
-            if ext != ".json":
-                raise StudioError("file_type_not_allowed", "Das Transkript muss eine .json-Datei sein.", 415)
+            if ext not in (".json", ".srt", ".vtt"):
+                raise StudioError("file_type_not_allowed",
+                                  "Transkript: .json, .srt oder .vtt erwartet.", 415)
             dest = os.path.join(pdir, "source", "transcript.json")
-            save_upload(fileobj, dest, 20 * 1024 * 1024)
+            raw = dest + ".upload" + ext
+            save_upload(fileobj, raw, 20 * 1024 * 1024)
             try:
-                from ..transcribe import load_transcript_json
-                load_transcript_json(dest)
+                if ext == ".json":
+                    from ..transcribe import load_transcript_json
+                    load_transcript_json(raw)
+                    os.replace(raw, dest)
+                else:
+                    from .youtube_import import subtitles_to_transcript
+                    with open(raw, "r", encoding="utf-8", errors="replace") as fh:
+                        data = subtitles_to_transcript(fh.read(), project["language"])
+                    write_json_atomic(dest, data)
+            except StudioError:
+                raise
             except Exception as exc:  # noqa: BLE001
-                os.remove(dest)
-                raise StudioError("file_unreadable", "Das Transkript-JSON ist ungültig.", 415) from exc
+                raise StudioError("file_unreadable", "Das Transkript ist ungültig.", 415) from exc
+            finally:
+                if os.path.exists(raw):
+                    os.remove(raw)
             self.store.mutate(pid, lambda p: p["source"].update(transcript_file="transcript.json"))
             return {"file": "transcript.json", "kind": "transcript"}
         allowed = SOURCE_EXT.get(project["workflow"])
@@ -464,6 +489,18 @@ class StudioService:
                           for i in range(8)]
         elif wf in ("podcast", "longform"):
             return self._start_shorts_job(pid, project, progress)
+        elif wf == "youtube":
+            from .youtube_import import fetch_metadata
+            progress("Öffentliche YouTube-Metadaten werden abgerufen …")
+            meta = fetch_metadata(src["video_id"], self.fetch_kwargs)
+            self._artifact(pid, "youtube.json", {**meta, "rights": src.get("rights")})
+
+            def remember(p: dict) -> None:
+                p["source"]["meta"] = {k: meta[k] for k in ("title", "author", "thumbnail")}
+                if meta.get("title") and p["title"] in ("Neues Video", "New video"):
+                    p["title"] = meta["title"][:120]
+            self.store.mutate(pid, remember)
+            return self._start_shorts_job(pid, self.store.load(pid), progress)
         elif wf == "media":
             media = [m for m in self.list_media(pid) if m["kind"] in ("image", "video")]
             if not media:
