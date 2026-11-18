@@ -8,7 +8,24 @@ bzw. das echte Betriebssystem gelaufen.
 Viralität wird nirgends versprochen; der Score heißt durchgehend
 „Performance-Potenzial“ und ist eine Schätzung.
 
-## Härtungsrunde (Stand dieses Arbeitsbaums)
+## Funktionsrunde (Stand dieses Branches)
+
+| Bereich | Status | Getestet |
+|---|---|---|
+| Lokale Stimme auf allen Systemen (eSpeak NG über pip) | vollständig funktionsfähig | ja, echte Sprachausgabe |
+| Windows-Unterstützung (Pfade, `.env`, PowerShell-Skripte) | implementiert | Pfad-Logik mit echtem FFmpeg; **nicht auf echtem Windows** |
+| Benutzeranmeldung (Online-Modus) | vollständig funktionsfähig, ein gemeinsamer Arbeitsbereich | ja, auch über die Durchleitung |
+| Docker / Online-Betrieb | implementiert | Startablauf ohne Docker durchgespielt; **Image nie gebaut** |
+| YouTube-Import (eigene Videos) | vollständig funktionsfähig | ja (Metadaten-Abruf nachgebildet) |
+| KI-Video, Talking Avatar (fal.ai) | implementiert, benötigt API-Key | nur gegen nachgebildete Antworten |
+| Stimmklon (ElevenLabs) | implementiert, benötigt API-Key + Tarif | nur gegen nachgebildete Antworten |
+| TikTok-Upload in Entwürfe | implementiert, benötigt OAuth/App | nur gegen nachgebildete Antworten |
+| Instagram, X direkt | noch nicht implementiert | – |
+| Face Swap | noch nicht implementiert (Entscheidung offen) | – |
+
+Was du dafür bereitstellen oder entscheiden musst: [`WAS_ICH_BRAUCHE.md`](WAS_ICH_BRAUCHE.md).
+
+## Härtungsrunde
 
 | Bereich | Stand |
 |---|---|
@@ -40,7 +57,7 @@ Legende: **L** funktioniert lokal · **P** benötigt Provider/API-Key ·
 | Podcast / Longform → Shorts | L | nutzt die bestehende Shorts-Pipeline (eigener Job) |
 | Eigene Medien → Video | L | Bilder (Ken-Burns) und Videos |
 | Bestehender Job als Quelle | L | nutzt das Job-Transkript |
-| YouTube-Video → Shorts | – | bewusst nicht implementiert (rechtlich heikel, kein Downloader). Eigenes Video über „Longform → Shorts“ hochladen |
+| YouTube-Link → Shorts | L | für eigene/berechtigte Videos: Link + öffentliche Metadaten (oEmbed) + Rechtebestätigung; die Videodatei lädst du selbst hoch, Untertitel (.srt/.vtt) werden übernommen. **Kein Download von YouTube** (Nutzungsbedingungen). oEmbed nur gegen nachgebildete Antworten getestet |
 
 ### Videoerstellung
 
@@ -53,10 +70,10 @@ Legende: **L** funktioniert lokal · **P** benötigt Provider/API-Key ·
 | Cinematic-Look | L | Letterbox, Vignette, ruhigere Bewegung |
 | Produkt-Ad | L | Struktur aus den eigenen Produktangaben, keine erfundenen Aussagen |
 | KI-Bilder (mit Ken-Burns animiert) | P | OpenAI-Adapter; **nicht verifiziert** gegen die echte API |
-| KI-Video (Text→Video) | – | kein Adapter |
+| KI-Video (Text→Video, Bild→Video) | P | fal.ai-Adapter (Kling), Szenen-Modus im Editor, Kosten/Budget/Cache/Ersatz; **ungetestet** gegen die echte API (Doku war nicht erreichbar). Kein lokaler Modus (bräuchte GPU) |
 | Stock-Medien-Bibliothek | – | nur eigene Uploads |
-| Talking Avatar | – | Provider-Slot vorhanden, kein Adapter |
-| Face Swap | – | bewusst kein Adapter (Einwilligung nötig) |
+| Talking Avatar | P | fal.ai-Adapter (Standard: SadTalker), nutzt die Stimme der Szene und ein Avatar-Bild; **ungetestet** live. Ohne Schlüssel: Standbild, klar als Ersatz gemeldet |
+| Face Swap | – | nicht gebaut — Entscheidung offen, siehe `WAS_ICH_BRAUCHE.md` |
 | Storyboard-Ansicht | teilweise | Szenenliste mit Visual-Prompt; keine Thumbnail-Vorschau je Szene außer nach „Szene neu generieren“ |
 | 9:16, 16:9, 1:1, 4:5 | L | getestet |
 | 720p, 1080p | L | getestet |
@@ -67,16 +84,19 @@ Legende: **L** funktioniert lokal · **P** benötigt Provider/API-Key ·
 
 | Funktion | Stand | Anmerkung |
 |---|---|---|
-| Ohne Stimme (nur Captions/Musik) | L | Standard, wenn kein Sprach-Provider da ist |
+| Ohne Stimme (nur Captions/Musik) | L | wählbar; nur noch Ersatz, wenn keine Stimme verfügbar ist |
+| eSpeak NG über pip (Windows, macOS, Linux) | L | **getestet**, echte Wort-Zeitpunkte → wortgenaue Captions; klingt synthetisch |
+| Windows-Systemstimmen (SAPI) | L | nur mit nachgebildetem PowerShell-Aufruf getestet, **nicht auf echtem Windows** |
+| Piper (lokal, neuronal) | L | Modell muss geladen werden; ohne echtes Modell getestet |
+| Sprechtempo 0,5–2,0 | L | alle Provider, getestet |
 | macOS-Systemstimme (`say`), Deutsch + Englisch | L | **nicht verifiziert** (Entwicklung lief unter Linux) |
-| espeak-ng | L | **nicht verifiziert** (nicht installiert in der Testumgebung) |
 | ElevenLabs, OpenAI TTS | P | Adapter mit gemocktem HTTP getestet; **nicht verifiziert** gegen die echten APIs |
 | Automatische Stimmenauswahl, Hörprobe | L | |
-| Voice Cloning | – | bewusst kein Adapter |
+| Voice Cloning | P | ElevenLabs Instant Voice Cloning, nur mit festgehaltener Einwilligung; **ungetestet** live, braucht bezahlten ElevenLabs-Tarif |
 | Eigene Musikdateien, Lautstärke, Ducking | L | Ducking messbar getestet. Es wird **keine Musik mitgeliefert** |
 | Beat-Sync | L | siehe oben |
 | Caption-Stile minimal, bold, karaoke, dynamic, none + Vorschau | L | Brand-Kit-Farben und -Schrift werden angewendet |
-| Wortgenaue Captions | teilweise | wortgenau nur bei Audio→Video (Transkript). Bei TTS werden Wortzeiten **gleichmäßig geschätzt** |
+| Wortgenaue Captions | teilweise | wortgenau bei Audio→Video und bei eSpeak; bei anderen Stimmen geschätzt |
 | Weitere Sprachen | teilweise | Oberfläche und Skriptlogik: de/en. Cloud-Stimmen könnten mehr, sind aber nicht freigeschaltet |
 
 ### Editor
@@ -102,7 +122,8 @@ Legende: **L** funktioniert lokal · **P** benötigt Provider/API-Key ·
 | Zeitplanung | L | fällige Entwürfe werden als „fällig“ markiert — es wird **nicht** automatisch gepostet |
 | Export-Pack (ZIP) | L | Fallback für alle Plattformen |
 | Privater YouTube-Upload | O | unverändert abgesichert; weiterhin nicht mit echtem Konto verifiziert |
-| Upload zu TikTok, Instagram, X | – | keine Adapter |
+| Upload zu TikTok | O | in die TikTok-**Entwürfe** (du veröffentlichst in der App); OAuth+PKCE, Stück-Upload, Status; **ungetestet** live, braucht eigene TikTok-Entwickler-App |
+| Upload zu Instagram, X | – | keine Adapter (Gründe in `WAS_ICH_BRAUCHE.md`); Export-Pack |
 | „Als veröffentlicht markieren“ | L | nur mit ausdrücklicher Bestätigung |
 
 ### Automation, Analytics, Ideen, API

@@ -31,7 +31,12 @@ Semver mit Beta-Suffix (`MAJOR.MINOR.PATCH-beta.N`). Aktuelle Version: siehe
   Budgetreservierung je Projekt, API-Schlüssel setzen/löschen ohne Neustart,
   typisierte Produktionsoptionen bis in den Render, Cancel bleibt Cancel,
   unterbrochene Projekte werden nach Neustart erkannt
-- Nicht enthalten: KI-Video, Talking Avatar, Face Swap, Voice Cloning,
+- Funktionsrunde: lokale Stimme für Windows/macOS/Linux (eSpeak NG über pip,
+  Windows-SAPI, Piper), Sprechtempo, Windows-Startskripte, Benutzeranmeldung
+  für den Online-Betrieb, Docker, YouTube-Import für eigene Videos, KI-Video
+  und Talking Avatar (fal.ai), Stimmklon mit Einwilligung (ElevenLabs),
+  TikTok-Upload in die Entwürfe — Cloud-Adapter gegen echte APIs ungetestet
+- Ursprünglich nicht enthalten: KI-Video, Talking Avatar, Face Swap, Voice Cloning,
   YouTube-Import, Upload zu TikTok/Instagram/X — siehe
   `docs/REVID_PARITY_STATUS.md`
 

@@ -93,14 +93,14 @@ def main() -> int:
 
         print("\n1) Projekt aus Skript")
         created = cli(base, "create", "--workflow", "script", "--title", "Smoke", "--script", SCRIPT,
-                      "--voice", "mock", "--captions", "dynamic", "--resolution", "720p", "--wait")
+                      "--voice", "auto", "--captions", "dynamic", "--resolution", "720p", "--wait")
         pid = created["project_id"]
         check("Projekt angelegt + Szenen erzeugt", created["ingest"]["status"] == "succeeded", pid)
         status = cli(base, "status", pid)
         check("Status bereit", status["status"] == "ready" and status["scenes"] >= 2,
               f"{status['scenes']} Szenen")
 
-        print("\n2) Finaler Render (echtes FFmpeg, Mock-Stimme)")
+        print("\n2) Finaler Render (echtes FFmpeg, lokale Stimme)")
         render = cli(base, "render", pid, "--wait")
         check("Render erfolgreich", render["task"]["status"] == "succeeded")
         check("Qualitätsprüfung bestanden", render["task"]["result"]["quality_passed"] is True)

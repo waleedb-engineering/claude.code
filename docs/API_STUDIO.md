@@ -75,6 +75,23 @@ erst `POST /projects`, dann Upload über `/source` bzw. `/media`, dann
 | GET | `/caption-styles` | Caption-Stile |
 | GET | `/caption-preview?style=&aspect_ratio=&text=` | Vorschaubild (PNG) |
 
+### Stimmklon, Konten, TikTok
+
+| Methode | Pfad | Zweck |
+|---|---|---|
+| GET | `/voices/clones` | geklonte Stimmen + Einwilligungstexte |
+| POST | `/voices/clones` | multipart: `name`, `basis` (`own`/`permission`), `speaker`, `no_deception`, `files` (1–5) |
+| DELETE | `/voices/clones/{id}` | Klon beim Anbieter und lokal löschen |
+| GET | `/accounts` | Plattform-Konten und Zustand |
+| POST | `/accounts/{platform}/connect` | OAuth-Start → `auth_url` |
+| GET | `/accounts/{platform}/callback` | OAuth-Rückkehr (Weiterleitung zur Einrichtung) |
+| DELETE | `/accounts/{platform}` | Konto trennen |
+| POST | `/publishing/{job}/{pub}/tiktok` | `{"confirm": true}` → Upload in die TikTok-Entwürfe (Task) |
+| POST | `/publishing/{job}/{pub}/tiktok/status` | Status bei TikTok abfragen |
+
+Online-Betrieb zusätzlich: `POST /api/auth/login`, `POST /api/auth/logout`,
+`GET /api/auth/me`, `POST /api/auth/password` (siehe `ONLINE_BETRIEB.md`).
+
 ### Musik
 
 | Methode | Pfad | Zweck |
@@ -167,7 +184,8 @@ ist als `estimated` gekennzeichnet. Fehlende Werte sind `null`.
 | Extraktion | `extraction_empty`, `extraction_failed`, `pdf_invalid`, `pdf_encrypted`, `pdf_no_text`, `pdf_dependency_missing`, `transcription_unavailable`, `transcription_failed`, `transcription_empty`, `script_empty`, `job_not_found`, `job_no_transcript`, `jobs_unavailable` |
 | Render | `quality_blocked`, `budget_exceeded`, `render_missing`, `render_not_final`, `render_not_found`, `render_not_applicable`, `render_timeout`, `ffmpeg_failed`, `ffmpeg_missing`, `beat_detection_failed` |
 | Provider | `provider_unknown`, `provider_not_configured`, `provider_failed`, `confirmation_required`, `credential_not_set`, `credentials_store_failed` |
-| Sicherheit | `token_missing`, `token_invalid`, `origin_not_allowed`, `host_not_local` |
+| Sicherheit | `token_missing`, `token_invalid`, `origin_not_allowed`, `host_not_local`, `login_required`, `csrf_invalid`, `rate_limited`, `invalid_credentials`, `weak_password` |
+| Neue Funktionen | `youtube_url_invalid`, `youtube_unavailable`, `rights_confirmation_required`, `subtitles_empty`, `consent_required`, `clone_not_found`, `platform_unknown`, `platform_not_configured`, `platform_not_connected`, `platform_reauth`, `oauth_state_invalid`, `oauth_denied`, `oauth_failed`, `tiktok_error`, `tiktok_upload_failed`, `wrong_platform`, `video_missing`, `secret_key_missing`, `vault_unreadable` |
 | Aufgaben | `task_not_found`, `task_active`, `task_not_retryable`, `task_not_cancelable`, `task_kind_unknown`, `interrupted` |
 | Automation | `automation_not_found`, `automation_busy`, `automation_capacity`, `run_not_found`, `run_not_retryable` |
 | Publishing/Analytics | `draft_not_found`, `draft_not_published`, `metrics_unavailable`, `metrics_sync_failed`, `idea_not_found` |

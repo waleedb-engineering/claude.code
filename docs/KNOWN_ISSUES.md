@@ -141,3 +141,10 @@ wichtigsten Grenzen:
 - **Der Token-Schutz ist keine Benutzeranmeldung**; siehe
   [`LOCAL_API_SECURITY.md`](LOCAL_API_SECURITY.md).
 - **API-Schlüssel liegen in `.env`** (Rechte 0600), nicht im OS-Schlüsselbund.
+- **Cloud-Adapter ungetestet:** fal.ai (KI-Video, Avatar), ElevenLabs-Stimmklon
+  und TikTok sind nur gegen nachgebildete Antworten getestet; die
+  Anbieter-Dokumentation war während der Entwicklung nicht erreichbar.
+- **Windows nicht auf echtem Windows getestet** (Skripte, SAPI-Stimmen).
+- **Docker-Image nie gebaut** (kein Docker-Dienst in der Entwicklungsumgebung).
+- **Online-Betrieb:** alle Konten teilen einen Arbeitsbereich; nur eine Instanz.
+- **eSpeak klingt synthetisch**; für natürliche lokale Stimmen Piper verwenden.

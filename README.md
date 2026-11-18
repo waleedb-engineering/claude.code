@@ -30,6 +30,8 @@ kein Public/Unlisted, kein TikTok/Instagram-Auto-Upload.
 - 🎬 **Bedienung & Einrichtung:** [`docs/STUDIO.md`](docs/STUDIO.md) — Provider, Plattformen, Automationen, CLI.
 - 📊 **Ehrlicher Funktionsstand:** [`docs/REVID_PARITY_STATUS.md`](docs/REVID_PARITY_STATUS.md) — was lokal läuft, was Zugangsdaten braucht, was fehlt.
 - 🔌 **Studio-API:** [`docs/API_STUDIO.md`](docs/API_STUDIO.md)
+- 🧾 **Was noch fehlt / was du bereitstellen musst:** [`docs/WAS_ICH_BRAUCHE.md`](docs/WAS_ICH_BRAUCHE.md)
+- ☁️ **Online-Betrieb (Docker, Anmeldung):** [`docs/ONLINE_BETRIEB.md`](docs/ONLINE_BETRIEB.md)
 - 🔐 **Schutz der lokalen API:** [`docs/LOCAL_API_SECURITY.md`](docs/LOCAL_API_SECURITY.md) — Token für Mutationen, CORS nur lokal.
 
 ### Technische Dokumentation

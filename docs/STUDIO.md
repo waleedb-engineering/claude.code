@@ -65,6 +65,63 @@ wirken **sofort im laufenden Backend**, ohne Neustart. „Schlüssel prüfen“ 
 eine ausdrückliche Aktion und der einzige Moment, in dem dafür ein Netzaufruf
 passiert. Werte werden nie angezeigt oder zurückgegeben.
 
+## KI-Video und Talking Avatar
+
+Im Editor hat jede Szene zwei zusätzliche Visual-Modi:
+
+- **KI-Video** — erzeugt einen 5- oder 10-Sekunden-Clip aus dem Visual-Prompt
+  (Text→Video). Ist als Medium ein Bild gewählt, wird daraus ein Video
+  (Bild→Video).
+- **Sprechender Avatar** — nimmt das unter „Avatar-Bild“ gewählte Foto und
+  die Stimme der Szene und erzeugt ein Video mit Lippenbewegungen.
+
+Beides läuft über fal.ai (`FAL_KEY`) und kostet Geld: Die Schätzung steht vor
+dem Render im Editor, das Projektbudget gilt hart. Fällt der Dienst aus,
+wird die Szene kostenlos mit einem Ersatz gerendert (KI-Bild oder
+Motion-Hintergrund bzw. Standbild) und das im Render-Bericht vermerkt.
+Modelle und Preise: `CLIPFORGE_FAL_T2V_MODEL`, `CLIPFORGE_FAL_I2V_MODEL`,
+`CLIPFORGE_FAL_AVATAR_MODEL`, `CLIPFORGE_PROVIDER_PRICES`
+(`fal_video_per_second`, `fal_avatar_per_second`).
+**Gegen den echten Dienst noch ungetestet.**
+
+## Stimmklon
+
+Unter **Studio → Einrichtung → Eigene Stimme klonen**: 1–5 Sprachproben,
+Erklärung „eigene Stimme“ oder „Erlaubnis der Person (Name)“ und die
+Nicht-Täuschungs-Erklärung sind Pflicht. Die Erklärung wird mit Zeitpunkt,
+Konto und Prüfsummen der Proben gespeichert. Die Stimme erscheint danach in
+der ElevenLabs-Stimmauswahl. Braucht `ELEVENLABS_API_KEY` und einen
+ElevenLabs-Tarif mit Stimmklon. **Ungetestet gegen den echten Dienst.**
+
+## YouTube-Import
+
+Workflow „YouTube → Shorts“: Link einfügen, bestätigen, dass du Rechteinhaber
+bist (oder die Erlaubnis hast), Videodatei hochladen (eigene Videos: YouTube
+Studio → Herunterladen), optional Untertitel aus YouTube Studio
+(`.srt`/`.vtt`). ClipForge holt nur Titel und Kanal über YouTubes öffentliche
+oEmbed-Schnittstelle und lädt **nichts** von YouTube herunter.
+
+## TikTok
+
+Unter **Studio → Einrichtung → Plattform-Konten** das TikTok-Konto verbinden
+(braucht eine eigene TikTok-Entwickler-App: `TIKTOK_CLIENT_KEY`,
+`TIKTOK_CLIENT_SECRET`, Redirect-URI
+`http://127.0.0.1:8000/api/studio/accounts/tiktok/callback`). Danach in
+**Analytics → Entwürfe** „In TikTok-Entwürfe hochladen“. Das Video landet in
+den Entwürfen deines Kontos; veröffentlichen tust du es in der TikTok-App.
+**Ungetestet gegen die echte API.**
+
+## Lokale Stimmen
+
+| Stimme | System | Einrichtung |
+|---|---|---|
+| eSpeak NG | Windows, macOS, Linux | automatisch (pip-Paket `espeakng-loader`) |
+| Windows-Systemstimmen | Windows | automatisch; weitere Sprachen über Windows-Sprachpakete |
+| macOS `say` | macOS | automatisch |
+| Piper | alle | `pip install piper-tts` und Stimmmodell laden, siehe `INSTALL.md` |
+
+Das Sprechtempo (0,5–2,0) steht im Editor unter „Stimme“.
+
 ## Provider
 
 Die Seite **Studio → Einrichtung** zeigt den Zustand jedes Providers. Schlüssel
