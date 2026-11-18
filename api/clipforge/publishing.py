@@ -334,7 +334,7 @@ def delete_draft(job_dir: str, publishing_id: str) -> bool:
 # darf. Der nutzerseitige update_draft() fasst diese NIE an.
 _PUBLISHER_FIELDS = frozenset({
     "status", "external_post_id", "published_at", "error",
-    "publish_attempt_id", "publish_started_at", "publish_completed_at",
+    "publish_attempt_id", "external_video_id", "publish_started_at", "publish_completed_at",
     "publish_platform", "publish_attempt_count", "last_publish_error",
     "idempotency_state", "publish_attempts", "upload_progress",
     # Phase 3c — persistente State-Machine + Recovery/Reconciliation.
@@ -345,6 +345,9 @@ _PUBLISHER_FIELDS = frozenset({
     "state_transition_history",
     # Creator Studio — Planung + manuell bestätigte Veröffentlichung.
     "schedule_state", "schedule_due_at", "publish_source", "external_url",
+    # Direktveröffentlichung (TikTok/Instagram/X) + Planung mit Freigabe.
+    "publish_mode", "publish_options", "publish_approval", "auto_publish", "scheduled_at",
+    "publish_attempt_id", "external_video_id",
 })
 
 

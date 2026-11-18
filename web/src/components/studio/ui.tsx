@@ -20,6 +20,7 @@ const TABS: { href: string; key: TKey }[] = [
   { href: "/studio/automations", key: "nav.automations" },
   { href: "/studio/analytics", key: "nav.analytics" },
   { href: "/studio/ideas", key: "nav.ideas" },
+  { href: "/studio/trends", key: "nav.trends" },
   { href: "/studio/setup", key: "nav.setup" },
 ];
 

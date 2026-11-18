@@ -18,6 +18,7 @@ import {
 } from "@/lib/studio";
 import SceneCard from "@/components/studio/SceneCard";
 import SettingsPanel from "@/components/studio/SettingsPanel";
+import SocialCopyPanel from "@/components/studio/SocialCopyPanel";
 import { ErrorBox, Loading, Notice, Pill, btnCls, cardCls, fmtDate, inputCls, primaryCls } from "@/components/studio/ui";
 
 const AUTOSAVE_MS = 1200;
@@ -550,6 +551,8 @@ export default function EditorPage() {
                 </button>
               </>
             )}
+
+            <SocialCopyPanel projectId={id} />
 
             <section className={`${cardCls} space-y-3`} aria-labelledby="ed-render-h">
               <h2 id="ed-render-h" className="text-sm font-semibold text-white">

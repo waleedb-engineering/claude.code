@@ -34,6 +34,9 @@ KNOWN = {
     # Stock-Medien (kostenlose Schlüssel; Lizenzen erlauben kommerzielle Nutzung)
     "pexels": ("PEXELS_API_KEY", "Pexels (Stock-Videos/-Fotos, kostenlos)",
                "https://api.pexels.com/v1/curated?per_page=1", lambda k: {"Authorization": k}),
+    "youtube_data": ("YOUTUBE_API_KEY", "YouTube Data API (Trends, kostenlos)",
+                     lambda k: "https://www.googleapis.com/youtube/v3/videos?part=id&chart=mostPopular"
+                               "&maxResults=1&regionCode=DE&key=" + k, lambda k: {}),
     "pixabay": ("PIXABAY_API_KEY", "Pixabay (Stock-Videos/-Fotos, kostenlos)",
                 lambda k: "https://pixabay.com/api/?per_page=3&q=test&key=" + k, lambda k: {}),
 }

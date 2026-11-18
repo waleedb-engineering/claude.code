@@ -15,7 +15,9 @@ from ..publishing import list_drafts, load_draft
 from .errors import StudioError
 from .storage import now_iso, read_json, require_id, studio_dir, write_json_atomic
 
-FIELDS = ("views", "likes", "comments")
+FIELDS = ("views", "likes", "comments", "shares", "reach", "saves")
+# Pflicht: mindestens einer der Basiswerte; der Rest ist optional (nicht jede
+# Plattform liefert ihn — es werden nur gelieferte Werte gespeichert)
 
 
 def _path(job_id: str, publishing_id: str) -> str:
@@ -69,6 +71,15 @@ def record(job_id: str, job_dir: str, publishing_id: str, values: dict, source: 
     return entry
 
 
+def engagement(entry: dict) -> float | None:
+    """(Likes + Kommentare + Shares) / Aufrufe — nur wenn Aufrufe bekannt sind."""
+    views = entry.get("views")
+    if not views:
+        return None
+    acts = sum(entry.get(k) or 0 for k in ("likes", "comments", "shares"))
+    return round(acts / views, 4)
+
+
 def history(job_id: str, publishing_id: str) -> list[dict]:
     data = read_json(_path(job_id, publishing_id), None) or {}
     return data.get("entries") or []
@@ -102,6 +113,8 @@ def sync(job_id: str, job_dir: str, publishing_id: str, fetchers: dict) -> dict:
     platform = draft.get("platform")
     fetcher = fetchers.get(platform)
     post_id = draft.get("external_post_id")
+    if platform == "tiktok":  # Direct Post: publish_id ≠ Video-ID
+        post_id = draft.get("external_video_id")
     if fetcher is None or not post_id:
         raise StudioError(
             "metrics_unavailable",
@@ -150,6 +163,7 @@ def overview(registry) -> dict:
                 "performance_potential": (
                     {"value": score, "source": "estimated"} if score is not None else None),
                 "metrics": ({**{k: latest.get(k) for k in FIELDS},
+                             "engagement_rate": engagement(latest),
                              "source": latest["source"], "captured_at": latest["captured_at"]}
                             if latest else None),
                 "metric_entries": len(entries),

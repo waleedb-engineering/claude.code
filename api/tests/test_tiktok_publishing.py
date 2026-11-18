@@ -84,7 +84,7 @@ def test_oauth_uses_pkce_and_stores_tokens_safely():
         client, _ = make_client(tmp)
         st = client.get("/api/studio/accounts").json()
         assert st["accounts"][0]["state"] == "not_configured"
-        assert "instagram_reels" in st["not_supported"] and "x" in st["not_supported"]
+        assert {a["platform"] for a in st["accounts"]} == {"tiktok", "instagram", "x"}
         r = client.post("/api/studio/accounts/tiktok/connect")
         assert r.status_code == 409 and r.json()["detail"]["code"] == "platform_not_configured"
         os.environ.update(TIKTOK_CLIENT_KEY="ck-test", TIKTOK_CLIENT_SECRET="sentinel-secret")

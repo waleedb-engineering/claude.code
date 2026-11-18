@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
+import PublishControls from "@/components/studio/PublishControls";
 import { useLocale, useT } from "@/lib/i18n";
 import { errorMessage, studio, type AnalyticsOverview, type AnalyticsRow, type DraftState } from "@/lib/studio";
 import { ErrorBox, Loading, Notice, Pill, btnCls, cardCls, fmtDate, inputCls, labelCls } from "@/components/studio/ui";
@@ -14,7 +15,7 @@ function num(v: string): number | null {
 
 function MetricsForm({ row, onDone, onError }: { row: AnalyticsRow; onDone: () => void; onError: (m: string) => void }) {
   const t = useT();
-  const [v, setV] = useState({ views: "", likes: "", comments: "" });
+  const [v, setV] = useState({ views: "", likes: "", comments: "", shares: "", reach: "", saves: "" });
   const pid = row.publishing_id;
   return (
     <form
@@ -22,15 +23,22 @@ function MetricsForm({ row, onDone, onError }: { row: AnalyticsRow; onDone: () =
       onSubmit={async (e) => {
         e.preventDefault();
         try {
-          await studio.addMetrics(row.job_id, pid, { views: num(v.views), likes: num(v.likes), comments: num(v.comments) });
-          setV({ views: "", likes: "", comments: "" });
+          await studio.addMetrics(row.job_id, pid, {
+            views: num(v.views),
+            likes: num(v.likes),
+            comments: num(v.comments),
+            shares: num(v.shares),
+            reach: num(v.reach),
+            saves: num(v.saves),
+          });
+          setV({ views: "", likes: "", comments: "", shares: "", reach: "", saves: "" });
           onDone();
         } catch (err) {
           onError(errorMessage(err));
         }
       }}
     >
-      {(["views", "likes", "comments"] as const).map((f) => (
+      {(["views", "likes", "comments", "shares", "reach", "saves"] as const).map((f) => (
         <div key={f} className="w-24">
           <label htmlFor={`m-${pid}-${f}`} className={labelCls}>
             {t(`an.${f}`)}
@@ -141,7 +149,7 @@ export default function AnalyticsPage() {
                 </dt>
                 <dd className="text-white">{row.performance_potential ? row.performance_potential.value : t("an.noData")}</dd>
               </div>
-              {(["views", "likes", "comments"] as const).map((f) => (
+              {(["views", "likes", "comments", "shares", "reach", "saves"] as const).map((f) => (
                 <div key={f}>
                   <dt className="text-xs text-neutral-400">
                     {t(`an.${f}`)}
@@ -150,6 +158,12 @@ export default function AnalyticsPage() {
                   <dd className="text-white">{value(row.metrics?.[f])}</dd>
                 </div>
               ))}
+              <div>
+                <dt className="text-xs text-neutral-400">{t("an.engagement")}</dt>
+                <dd className="text-white">
+                  {row.metrics?.engagement_rate != null ? `${(row.metrics.engagement_rate * 100).toFixed(1)} %` : t("an.noData")}
+                </dd>
+              </div>
             </dl>
             <MetricsForm row={row} onDone={load} onError={setError} />
           </li>
@@ -257,6 +271,7 @@ export default function AnalyticsPage() {
                     {t("an.refresh")}
                   </button>
                 )}
+                <PublishControls d={d} onChanged={load} onError={setError} />
                 <button
                   type="button"
                   className={btnCls}

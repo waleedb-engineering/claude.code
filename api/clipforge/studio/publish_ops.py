@@ -1,11 +1,11 @@
-"""Publishing-Ergänzungen des Studios: Plattform-Readiness, Planung, manuell
-bestätigte Veröffentlichung.
+"""Publishing-Ergänzungen des Studios: Plattform-Readiness, Planung,
+Direktveröffentlichung und manuell bestätigte Veröffentlichung.
 
-Sicherheitsprinzip: Hier wird NIE etwas hochgeladen. Der einzige echte Upload
-bleibt der bestehende, mehrfach abgesicherte PRIVATE-YouTube-Pfad. Für alle
-anderen Plattformen gibt es bewusst keinen Upload-Adapter — der Fallback ist
-das Export-Pack. „Veröffentlicht“ wird nur gesetzt, wenn der Nutzer das
-ausdrücklich bestätigt (oder der YouTube-Pfad es belegt).
+Sicherheitsprinzip: Nichts wird ohne ausdrückliche Bestätigung des Nutzers
+veröffentlicht. Sofort-Posts brauchen `confirm=true` im Aufruf; geplante
+Posts eine je Entwurf gespeicherte Freigabe (Zeitpunkt + Einstellungen).
+Fehlgeschlagene Posts werden NICHT automatisch wiederholt (Doppel-Post-Gefahr).
+Fallback bleibt das Export-Pack.
 """
 
 from __future__ import annotations
@@ -13,14 +13,23 @@ from __future__ import annotations
 import datetime
 import os
 
-from ..publishing import PLATFORMS, apply_publish_state, list_drafts, load_draft
-from .storage import now_iso
+from ..publishing import apply_publish_state, list_drafts, load_draft
+from .storage import new_id, now_iso
 from .errors import StudioError
 from .safe_fetch import validate_url
+from .social import X_COST_PER_VIDEO_POST
 
-_NO_ADAPTER = {
-    "instagram_reels": "Instagram Graph API braucht öffentlich gehostete Videos; kein Adapter vorhanden.",
-    "x": "X-API für Medien-Uploads ist kostenpflichtig; kein Adapter vorhanden.",
+# Entwurfs-Plattform → Konto-Plattform für die Direktveröffentlichung
+DIRECT = {"tiktok": "tiktok", "instagram_reels": "instagram", "x": "x"}
+_SETUP = {
+    "instagram": ["Instagram-Business- oder Creator-Konto", "Meta-App mit „Instagram API mit "
+                  "Instagram-Login“ anlegen (developers.facebook.com), Berechtigung "
+                  "instagram_business_content_publish (für fremde Konten: App-Review)",
+                  "INSTAGRAM_APP_ID und INSTAGRAM_APP_SECRET setzen, HTTPS-Weiterleitung eintragen",
+                  "Konto unter Studio → Einrichtung verbinden"],
+    "x": ["X-Entwicklerkonto mit Nutzungsabrechnung (kostenpflichtig je Post)",
+          "OAuth-2.0-App mit Schreibrechten, Scopes tweet.write media.write offline.access",
+          "X_CLIENT_ID und X_CLIENT_SECRET setzen", "Konto unter Studio → Einrichtung verbinden"],
 }
 
 
@@ -64,14 +73,19 @@ def platform_readiness(settings, youtube: dict | None) -> list[dict]:
         "fallback": "export_pack", "live_verified": False,
         "note": ("Upload in deine TikTok-Entwürfe; veröffentlichen tust du selbst in der "
                  "TikTok-App. Gegen die echte API noch ungetestet.")})
-    for platform in PLATFORMS:
-        if platform in ("youtube_shorts", "tiktok"):
-            continue
+    for platform, acct in (("instagram_reels", "instagram"), ("x", "x")):
+        st = accounts.status(acct)
+        steps = {"not_configured": _SETUP[acct],
+                 "not_connected": ["Konto unter Studio → Einrichtung verbinden"],
+                 "expired": ["Konto neu verbinden"], "connected": []}[st["state"]]
         out.append({
-            "platform": platform, "state": "not_connected", "adapter": None,
-            "upload_visibility": None, "oauth_ready": False,
-            "setup_steps": ["Export-Pack herunterladen und manuell hochladen"],
-            "fallback": "export_pack", "note": _NO_ADAPTER[platform]})
+            "platform": platform, "state": "ready" if st["state"] == "connected" else "not_connected",
+            "adapter": f"{acct}_direct_post", "upload_visibility": "public",
+            "oauth_ready": st["state"] != "not_configured", "setup_steps": steps,
+            "fallback": "export_pack", "live_verified": False,
+            "cost_per_post_usd": X_COST_PER_VIDEO_POST if acct == "x" else 0.0,
+            "note": ("Öffentliche Veröffentlichung nur nach deiner Bestätigung. "
+                     "Gegen die echte API noch ungetestet.")})
     return out
 
 
@@ -84,7 +98,7 @@ def draft_state(draft: dict, readiness: list[dict]) -> str:
         return "failed"
     if draft.get("upload_state") == "in_tiktok_drafts":
         return "in_platform_drafts"
-    if draft.get("upload_state") == "uploading" and draft.get("publish_platform") == "tiktok":
+    if draft.get("upload_state") == "uploading" and draft.get("publish_platform") in DIRECT:
         return "uploading"
     if status == "scheduled":
         return "due" if draft.get("schedule_state") == "due" else "scheduled"
@@ -104,7 +118,9 @@ def _parse(ts: str) -> datetime.datetime | None:
 
 
 def scheduler_tick(registry, now: datetime.datetime) -> list[dict]:
-    """Markiert fällige geplante Drafts als `due`. Lädt NIE etwas hoch."""
+    """Markiert fällige geplante Drafts als `due`. Lädt selbst nichts hoch;
+    Einträge mit gespeicherter Freigabe (`auto_publish`) bekommen `auto=True`,
+    der Aufrufer startet dann den Post."""
     due = []
     for job in registry.list():
         if not os.path.isdir(job.job_dir):
@@ -119,7 +135,8 @@ def scheduler_tick(registry, now: datetime.datetime) -> list[dict]:
                 "schedule_state": "due",
                 "schedule_due_at": now.isoformat(timespec="seconds")})
             due.append({"job_id": job.id, "publishing_id": draft["publishing_id"],
-                        "platform": draft.get("platform")})
+                        "platform": draft.get("platform"),
+                        "auto": bool((draft.get("auto_publish") or {}).get("approved_at"))})
     return due
 
 
@@ -174,7 +191,7 @@ def tiktok_prepare(job_dir: str, publishing_id: str, confirm: bool) -> dict:
         raise StudioError("video_missing", "Die Videodatei dieses Entwurfs fehlt.", 409)
     draft = apply_publish_state(job_dir, publishing_id, {
         "status": "publishing", "publish_platform": "tiktok", "upload_state": "uploading",
-        "publish_started_at": now_iso(), "error": None})
+        "publish_started_at": now_iso(), "error": None, "publish_attempt_id": new_id()})
     return {"already": False, "draft": draft}
 
 
@@ -208,9 +225,147 @@ def tiktok_refresh(job_dir: str, publishing_id: str) -> dict:
     if st["state"] == "published":
         updates.update(status="published", upload_state="published", publish_source="tiktok",
                        published_at=draft.get("published_at") or now_iso())
+        if st.get("post_id"):
+            updates["external_video_id"] = st["post_id"]
     elif st["state"] == "in_tiktok_drafts":
         updates.update(status="publishing", upload_state="in_tiktok_drafts")
     elif st["state"] == "failed":
         updates.update(status="failed", upload_state="failed",
                        error=f"TikTok: {str(st.get('fail_reason') or 'fehlgeschlagen')[:160]}")
     return {"draft": apply_publish_state(job_dir, publishing_id, updates), "tiktok": st}
+
+
+# ------------------------------------------------------- Direktveröffentlichung
+
+def _caption(draft: dict, limit: int) -> str:
+    from .social import caption
+    return caption(draft.get("title") or "", draft.get("description") or draft.get("caption") or "",
+                   list(draft.get("hashtags") or []), limit)
+
+
+def _check_options(platform: str, options: dict, confirm_cost: bool) -> dict:
+    from .social import TT_PRIVACY
+    opts = {}
+    if platform == "tiktok":
+        privacy = options.get("privacy_level")
+        if privacy not in TT_PRIVACY:
+            raise StudioError("validation_error",
+                              "Bitte die TikTok-Sichtbarkeit wählen (privacy_level).")
+        opts = {"privacy_level": privacy,
+                **{k: bool(options.get(k)) for k in ("disable_comment", "disable_duet",
+                                                     "disable_stitch")}}
+    elif platform == "instagram_reels":
+        opts = {"share_to_feed": bool(options.get("share_to_feed", True))}
+    elif platform == "x" and not confirm_cost:
+        from .social import X_COST_PER_VIDEO_POST
+        raise StudioError("cost_confirmation_required",
+                          f"Ein Video-Post auf X kostet laut Nutzungsabrechnung ca. "
+                          f"{X_COST_PER_VIDEO_POST:.3f} USD. Bitte bestätigen (confirm_cost=true).",
+                          402, {"estimated_usd": X_COST_PER_VIDEO_POST})
+    return opts
+
+
+def _ready_draft(job_dir: str, publishing_id: str) -> tuple[dict, str]:
+    from . import accounts
+    draft = load_draft(job_dir, publishing_id)
+    if draft is None:
+        raise StudioError("draft_not_found", "Publishing-Draft nicht gefunden.", 404)
+    platform = draft.get("platform")
+    if platform not in DIRECT:
+        raise StudioError("wrong_platform", "Für diese Plattform gibt es keine Direktveröffentlichung.", 409)
+    if accounts.status(DIRECT[platform])["state"] != "connected":
+        raise StudioError("platform_not_connected", f"{platform} ist nicht verbunden.", 409)
+    mp4 = draft.get("mp4_path") or ""
+    if not mp4 or not os.path.isfile(mp4):
+        raise StudioError("video_missing", "Die Videodatei dieses Entwurfs fehlt.", 409)
+    return draft, platform
+
+
+def direct_prepare(job_dir: str, publishing_id: str, *, confirm: bool, options: dict | None = None,
+                   confirm_cost: bool = False, approval: dict | None = None) -> dict:
+    """Prüft alles VOR dem Post. Idempotent (kein zweiter Post für denselben Entwurf)."""
+    if not confirm:
+        raise StudioError("confirmation_required",
+                          "Bitte ausdrücklich bestätigen (confirm=true), dass das Video "
+                          "veröffentlicht werden soll.", 400)
+    draft = load_draft(job_dir, publishing_id)
+    if draft and (draft.get("status") == "published" or (
+            draft.get("publish_mode") == "direct" and draft.get("upload_state") == "uploading")):
+        return {"already": True, "draft": draft}
+    draft, platform = _ready_draft(job_dir, publishing_id)
+    opts = _check_options(platform, options or {}, confirm_cost)
+    draft = apply_publish_state(job_dir, publishing_id, {
+        "status": "publishing", "publish_platform": platform, "publish_mode": "direct",
+        "publish_attempt_id": new_id(),
+        "upload_state": "uploading", "publish_started_at": now_iso(), "error": None,
+        "publish_options": opts,
+        "publish_approval": approval or {"source": "sofort", "approved_at": now_iso()}})
+    return {"already": False, "draft": draft}
+
+
+def direct_publish(job_dir: str, publishing_id: str, progress=None) -> dict:
+    """Führt den Post aus. Bei Fehler: Status failed, KEIN automatischer neuer Versuch."""
+    from . import social
+    draft = load_draft(job_dir, publishing_id)
+    platform, opts = draft.get("publish_platform"), draft.get("publish_options") or {}
+    try:
+        if platform == "tiktok":
+            pid = social.tiktok_direct_post(draft["mp4_path"], title=_caption(draft, 2200),
+                                            progress=progress, **opts)
+            apply_publish_state(job_dir, publishing_id, {"external_post_id": pid,
+                                                         "upload_state": "uploaded"})
+            return tiktok_refresh(job_dir, publishing_id)["draft"]
+        if platform == "instagram_reels":
+            media_id = social.instagram_publish(draft["mp4_path"], text=_caption(draft, 2200),
+                                                progress=progress, **opts)
+            url = None
+            try:
+                url = social.instagram_metrics(media_id).get("url")
+            except StudioError:
+                pass
+        elif platform == "x":
+            media_id = social.x_post(draft["mp4_path"], text=_caption(draft, 280), progress=progress)
+            url = f"https://x.com/i/status/{media_id}"
+        else:
+            raise StudioError("wrong_platform", "Unbekannte Plattform.", 409)
+    except StudioError as exc:
+        apply_publish_state(job_dir, publishing_id, {
+            "status": "failed", "upload_state": "failed", "error": exc.message,
+            "last_error_code": exc.code})
+        raise
+    return apply_publish_state(job_dir, publishing_id, {
+        "status": "published", "upload_state": "published", "publish_source": platform,
+        "external_post_id": media_id, "external_url": url, "published_at": now_iso(),
+        "schedule_state": None})
+
+
+def schedule_direct(job_dir: str, publishing_id: str, *, at: str, approve: bool,
+                    options: dict | None = None, confirm_cost: bool = False) -> dict:
+    """Plant eine automatische Veröffentlichung — nur mit ausdrücklicher Freigabe."""
+    if not approve:
+        raise StudioError("confirmation_required",
+                          "Bitte ausdrücklich freigeben (approve=true), dass ClipForge zum "
+                          "geplanten Zeitpunkt automatisch veröffentlicht.", 400)
+    when = _parse(at)
+    now = datetime.datetime.now(datetime.timezone.utc)
+    if when is None or when <= now + datetime.timedelta(minutes=1):
+        raise StudioError("validation_error", "Der Zeitpunkt muss in der Zukunft liegen.")
+    draft, platform = _ready_draft(job_dir, publishing_id)
+    if draft.get("status") == "published":
+        raise StudioError("already_published", "Bereits veröffentlicht.", 409)
+    opts = _check_options(platform, options or {}, confirm_cost)
+    return apply_publish_state(job_dir, publishing_id, {
+        "status": "scheduled", "scheduled_at": when.isoformat(timespec="seconds"),
+        "schedule_state": None,
+        "auto_publish": {"approved_at": now_iso(), "options": opts, "confirm_cost": confirm_cost,
+                         "platform": platform}})
+
+
+def cancel_schedule(job_dir: str, publishing_id: str) -> dict:
+    draft = load_draft(job_dir, publishing_id)
+    if draft is None:
+        raise StudioError("draft_not_found", "Publishing-Draft nicht gefunden.", 404)
+    if draft.get("status") != "scheduled":
+        raise StudioError("not_scheduled", "Dieser Entwurf ist nicht geplant.", 409)
+    return apply_publish_state(job_dir, publishing_id, {
+        "status": "draft", "scheduled_at": None, "schedule_state": None, "auto_publish": None})

@@ -330,6 +330,10 @@ export type AnalyticsRow = {
     views: number | null;
     likes: number | null;
     comments: number | null;
+    shares?: number | null;
+    reach?: number | null;
+    saves?: number | null;
+    engagement_rate?: number | null;
     source: "manual" | "synced";
     captured_at: string;
   } | null;
@@ -363,6 +367,15 @@ export type DraftState = {
   published_at: string | null;
   publish_source: string | null;
   external_url: string | null;
+  auto_publish?: boolean;
+  error?: string | null;
+};
+
+export type SocialCopy = {
+  engine: string;
+  keywords: string[];
+  cost_usd: number;
+  platforms: Record<string, { title: string; description: string; hashtags: string[]; cta: string }>;
 };
 
 export type Idea = {
@@ -612,11 +625,35 @@ export const studio = {
   tiktokUpload: (jobId: string, pubId: string) =>
     post<{ task: Task | null; already: boolean }>(`/publishing/${jobId}/${pubId}/tiktok`, { confirm: true }),
   tiktokStatus: (jobId: string, pubId: string) => post<unknown>(`/publishing/${jobId}/${pubId}/tiktok/status`),
+  directPublish: (jobId: string, pubId: string, options: Record<string, unknown>, confirmCost = false) =>
+    post<{ task: Task | null; already: boolean }>(`/publishing/${jobId}/${pubId}/publish`, {
+      confirm: true,
+      confirm_cost: confirmCost,
+      options,
+    }),
+  schedulePublish: (jobId: string, pubId: string, at: string, options: Record<string, unknown>, confirmCost = false) =>
+    post<unknown>(`/publishing/${jobId}/${pubId}/schedule`, { at, approve: true, confirm_cost: confirmCost, options }),
+  unschedule: (jobId: string, pubId: string) => request<unknown>("DELETE", `/publishing/${jobId}/${pubId}/schedule`),
+  tiktokCreatorInfo: () =>
+    get<{ nickname: string; privacy_level_options: string[]; audited_app: boolean; max_video_post_duration_sec: number }>(
+      "/publishing/tiktok/creator-info",
+    ),
+  socialCopy: (id: string, engine: "local" | "anthropic", confirmCost = false) =>
+    post<SocialCopy>(`/projects/${id}/social-copy`, { engine, confirm_cost: confirmCost }),
+  trends: () =>
+    get<{ platforms: Record<string, { available: boolean; note: string }>; categories: Record<string, string> }>("/trends"),
+  trendsYoutube: (region: string, category: string) =>
+    get<{
+      source: string;
+      note: string;
+      videos: { id: string; title: string; channel: string; views: number | null; url: string }[];
+      keywords: { keyword: string; count: number }[];
+    }>(`/trends/youtube?region=${encodeURIComponent(region)}&category=${encodeURIComponent(category)}`),
   markPublished: (jobId: string, pubId: string, url: string) =>
     post<unknown>(`/publishing/${jobId}/${pubId}/mark-published`, { confirm: true, url: url || null }),
 
   analytics: () => get<AnalyticsOverview>("/analytics"),
-  addMetrics: (jobId: string, pubId: string, m: { views: number | null; likes: number | null; comments: number | null }) =>
+  addMetrics: (jobId: string, pubId: string, m: Record<string, number | null>) =>
     post<unknown>(`/analytics/${jobId}/${pubId}/metrics`, m),
   syncMetrics: (jobId: string, pubId: string) => post<unknown>(`/analytics/${jobId}/${pubId}/sync`),
 

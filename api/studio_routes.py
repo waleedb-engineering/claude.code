@@ -119,6 +119,24 @@ class ModelDownload(BaseModel):
     accept_license: bool = False
 
 
+class DirectPublish(BaseModel):
+    confirm: bool = False
+    confirm_cost: bool = False
+    options: dict[str, Any] = Field(default_factory=dict)
+
+
+class SchedulePublish(BaseModel):
+    at: str
+    approve: bool = False
+    confirm_cost: bool = False
+    options: dict[str, Any] = Field(default_factory=dict)
+
+
+class SocialCopyRequest(BaseModel):
+    engine: Literal["local", "anthropic"] = "local"
+    confirm_cost: bool = False
+
+
 class ApplyTemplate(BaseModel):
     expected_version: int
     template_id: str
@@ -189,6 +207,9 @@ class MetricsPayload(BaseModel):
     views: int | None = Field(default=None, ge=0)
     likes: int | None = Field(default=None, ge=0)
     comments: int | None = Field(default=None, ge=0)
+    shares: int | None = Field(default=None, ge=0)
+    reach: int | None = Field(default=None, ge=0)
+    saves: int | None = Field(default=None, ge=0)
 
 
 class IdeaPayload(BaseModel):
@@ -219,10 +240,53 @@ class Studio:
         self.youtube_status = youtube_status or (lambda: {})
         self.youtube_upload_service = youtube_upload_service
         self.worker = Worker(self.tick)
+        self.service.tasks.on_finish(self._publish_interrupted)
+
+    def _publish_interrupted(self, task: dict) -> None:
+        """Abgebrochener Post: ehrlich als „unklar/fehlgeschlagen“ markieren —
+        nicht automatisch neu posten (könnte doppelt veröffentlichen)."""
+        if task.get("kind") not in ("publish_direct", "publish_tiktok") or \
+                task["status"] not in ("interrupted", "canceled"):
+            return
+        from clipforge.publishing import apply_publish_state
+        job = self.registry.get((task.get("params") or {}).get("job_id"))
+        if job is not None:
+            apply_publish_state(job.job_dir, task["params"]["publishing_id"], {
+                "status": "failed", "upload_state": "unknown", "last_error_code": "interrupted",
+                "error": "Veröffentlichung wurde unterbrochen. Bitte auf der Plattform prüfen, "
+                         "ob der Beitrag erschienen ist, bevor du erneut veröffentlichst."})
 
     def tick(self) -> None:
         self.automations.tick()
-        publish_ops.scheduler_tick(self.registry, datetime.datetime.now(datetime.timezone.utc))
+        due = publish_ops.scheduler_tick(self.registry, datetime.datetime.now(datetime.timezone.utc))
+        for item in due:
+            if item.get("auto"):
+                self.start_scheduled_post(item)
+
+    def start_scheduled_post(self, item: dict) -> dict | None:
+        """Fälligen Post mit gespeicherter Freigabe starten (genau einmal)."""
+        from clipforge.publishing import apply_publish_state, load_draft
+        job = self.registry.get(item["job_id"])
+        if job is None:
+            return None
+        draft = load_draft(job.job_dir, item["publishing_id"]) or {}
+        auto = draft.get("auto_publish") or {}
+        try:
+            prep = publish_ops.direct_prepare(
+                job.job_dir, item["publishing_id"], confirm=True, options=auto.get("options"),
+                confirm_cost=bool(auto.get("confirm_cost")),
+                approval={"source": "zeitplan", "approved_at": auto.get("approved_at"),
+                          "scheduled_at": draft.get("scheduled_at")})
+        except StudioError as exc:
+            apply_publish_state(job.job_dir, item["publishing_id"], {
+                "status": "failed", "error": exc.message, "last_error_code": exc.code})
+            return None
+        if prep["already"]:
+            return None
+        return self.service.tasks.submit(
+            "publish_direct", None, {"job_id": job.id, "publishing_id": item["publishing_id"]},
+            idempotency_key=f"direct:{job.id}:{item['publishing_id']}:"
+                            f"{prep['draft'].get('publish_attempt_id')}")
 
     def startup(self) -> dict:
         tasks = self.service.tasks.recover()
@@ -611,6 +675,37 @@ def init_studio(app: FastAPI, registry, youtube_status=None,
     def media_tags(pid: str, name: str, req: MediaTags) -> dict:
         return svc.set_media_tags(pid, name, req.tags)
 
+    @r.post("/projects/{pid}/social-copy")
+    def social_copy(pid: str, req: SocialCopyRequest) -> dict:
+        from clipforge.studio import social_copy as sc
+        from clipforge.studio.costs import CostLedger
+        project = svc.store.load(pid)
+        if req.engine == "local":
+            return sc.local(project)
+        if not req.confirm_cost:
+            raise StudioError("cost_confirmation_required",
+                              f"Claude-Vorschläge kosten ca. {sc.USD_PER_CALL:.2f} USD. Bitte bestätigen.",
+                              402, {"estimated_usd": sc.USD_PER_CALL})
+        ledger = CostLedger(svc.store.dir(pid), project.get("budget_limit_usd") or 0.0)
+        rid = ledger.reserve(sc.USD_PER_CALL, "Social-Texte (Claude)")
+        try:
+            out = sc.with_llm(project)
+        except BaseException:
+            ledger.release(rid)
+            raise
+        ledger.commit(rid, sc.USD_PER_CALL, "anthropic", "social_copy")
+        return out
+
+    @r.get("/trends")
+    def trends_status() -> dict:
+        from clipforge.studio import trends
+        return trends.status()
+
+    @r.get("/trends/youtube")
+    def trends_youtube(region: str = "DE", category: str = "") -> dict:
+        from clipforge.studio import trends
+        return trends.youtube_trends(region.upper(), category)
+
     @r.get("/translation/engines")
     def translation_engines() -> dict:
         from clipforge.studio import translate as tr
@@ -703,6 +798,10 @@ def init_studio(app: FastAPI, registry, youtube_status=None,
     @r.post("/tasks/{task_id}/retry", status_code=202)
     def task_retry(task_id: str) -> dict:
         task = svc.tasks.get(task_id)
+        if task["kind"] in ("publish_direct", "publish_tiktok"):
+            raise StudioError("retry_not_allowed",
+                              "Veröffentlichungen werden nicht automatisch wiederholt. Bitte prüfen, "
+                              "ob der Beitrag erschienen ist, und bewusst neu veröffentlichen.", 409)
         if task["kind"] == "ingest" and task.get("project_id"):
             svc.store.mutate(task["project_id"],
                              lambda p: p.update(status="ingesting", status_error=None))
@@ -777,7 +876,9 @@ def init_studio(app: FastAPI, registry, youtube_status=None,
                     "scheduled_at": d.get("scheduled_at"),
                     "published_at": d.get("published_at"),
                     "publish_source": d.get("publish_source"),
-                    "external_url": d.get("external_url")})
+                    "external_url": d.get("external_url"),
+                    "auto_publish": bool((d.get("auto_publish") or {}).get("approved_at")),
+                    "error": d.get("error") if d.get("status") == "failed" else None})
         rows.sort(key=lambda x: x["scheduled_at"] or x["published_at"] or "", reverse=True)
         return {"drafts": rows}
 
@@ -786,11 +887,7 @@ def init_studio(app: FastAPI, registry, youtube_status=None,
 
     @r.get("/accounts")
     def account_list() -> dict:
-        return {"accounts": [accts.status(p) for p in accts.PLATFORMS],
-                "not_supported": {
-                    "instagram_reels": "Kein Adapter: braucht Business-Konto, geprüfte Meta-App "
-                                       "und öffentlich erreichbare Video-URL.",
-                    "x": "Kein Adapter: braucht kostenpflichtigen X-API-Zugang."}}
+        return {"accounts": [accts.status(p) for p in accts.PLATFORMS], "not_supported": {}}
 
     @r.post("/accounts/{platform}/connect")
     def account_connect(platform: str) -> dict:
@@ -810,7 +907,7 @@ def init_studio(app: FastAPI, registry, youtube_status=None,
         task = svc.tasks.submit("publish_tiktok", None,
                                 {"job_id": job.id, "publishing_id": publishing_id},
                                 idempotency_key=f"tiktok:{job.id}:{publishing_id}:"
-                                                f"{prep['draft'].get('publish_started_at')}")
+                                                f"{prep['draft'].get('publish_attempt_id')}")
         return {"task": task, "draft": prep["draft"], "already": False}
 
     @r.post("/publishing/{job_id}/{publishing_id}/tiktok/status")
@@ -824,6 +921,43 @@ def init_studio(app: FastAPI, registry, youtube_status=None,
         return {"state": res["tiktok"]["state"], "publish_id": res["draft"].get("external_post_id")}
     svc.tasks.register("publish_tiktok", _task_publish_tiktok)
 
+    @r.get("/publishing/tiktok/creator-info")
+    def tiktok_creator_info() -> dict:
+        from clipforge.studio import social
+        return social.tiktok_creator_info()
+
+    @r.post("/publishing/{job_id}/{publishing_id}/publish", status_code=202)
+    def direct_publish(job_id: str, publishing_id: str, req: DirectPublish) -> dict:
+        job = _job(job_id)
+        prep = publish_ops.direct_prepare(job.job_dir, publishing_id, confirm=req.confirm,
+                                          options=req.options, confirm_cost=req.confirm_cost)
+        if prep["already"]:
+            return {"task": None, "draft": prep["draft"], "already": True}
+        task = svc.tasks.submit("publish_direct", None,
+                                {"job_id": job.id, "publishing_id": publishing_id},
+                                idempotency_key=f"direct:{job.id}:{publishing_id}:"
+                                                f"{prep['draft'].get('publish_attempt_id')}")
+        return {"task": task, "draft": prep["draft"], "already": False}
+
+    def _task_publish_direct(task: dict, progress, should_cancel) -> dict:
+        job = _job(task["params"]["job_id"])
+        draft = publish_ops.direct_publish(job.job_dir, task["params"]["publishing_id"], progress)
+        return {"status": draft.get("status"), "external_url": draft.get("external_url"),
+                "external_post_id": draft.get("external_post_id")}
+    svc.tasks.register("publish_direct", _task_publish_direct)
+
+    @r.post("/publishing/{job_id}/{publishing_id}/schedule")
+    def direct_schedule(job_id: str, publishing_id: str, req: SchedulePublish) -> dict:
+        job = _job(job_id)
+        return {"draft": publish_ops.schedule_direct(
+            job.job_dir, publishing_id, at=req.at, approve=req.approve, options=req.options,
+            confirm_cost=req.confirm_cost)}
+
+    @r.delete("/publishing/{job_id}/{publishing_id}/schedule")
+    def direct_unschedule(job_id: str, publishing_id: str) -> dict:
+        job = _job(job_id)
+        return {"draft": publish_ops.cancel_schedule(job.job_dir, publishing_id)}
+
     @r.post("/publishing/{job_id}/{publishing_id}/mark-published")
     def publishing_mark(job_id: str, publishing_id: str, req: MarkPublished) -> dict:
         job = _job(job_id)
@@ -835,13 +969,21 @@ def init_studio(app: FastAPI, registry, youtube_status=None,
     ana_dep = [Depends(_require_flag("studio_analytics"))]
 
     def _fetchers() -> dict:
+        from clipforge.studio import social
+        out: dict = {}
+        if accts.status("instagram")["state"] == "connected":
+            out["instagram_reels"] = social.instagram_metrics
+        if accts.status("x")["state"] == "connected":
+            out["x"] = social.x_metrics
+        if accts.status("tiktok")["state"] == "connected" and accts.has_scope("tiktok", "video.list"):
+            out["tiktok"] = social.tiktok_metrics
         if studio.youtube_upload_service is None:
-            return {}
+            return out
         ready = next((p for p in studio.readiness() if p["platform"] == "youtube_shorts"), {})
         if ready.get("state") != "ready":
-            return {}
-        return {"youtube_shorts": analytics.default_youtube_fetcher(
-            studio.youtube_upload_service())}
+            return out
+        out["youtube_shorts"] = analytics.default_youtube_fetcher(studio.youtube_upload_service())
+        return out
 
     studio.metric_fetchers = _fetchers  # in Tests ersetzbar
 
