@@ -296,6 +296,51 @@ def init_studio(app: FastAPI, registry, youtube_status=None,
     def credential_test(provider: str) -> dict:
         return credentials.test_key(provider)
 
+    # ------------------------------------------------------- Stimmklon
+    @r.get("/voices/clones")
+    def clone_list() -> dict:
+        from clipforge.studio.voice_clone import CONSENT_TEXT, NO_DECEPTION, list_clones
+        return {"clones": list_clones(), "consent_text": CONSENT_TEXT, "no_deception": NO_DECEPTION,
+                "enabled": is_enabled("studio_voice_cloning")}
+
+    @r.post("/voices/clones", status_code=201)
+    def clone_create(request: Request, name: str = Form(...), basis: str = Form(...),
+                     speaker: str = Form(default=""), no_deception: bool = Form(default=False),
+                     files: list[UploadFile] = File(...)) -> dict:
+        from clipforge.studio.providers import _CLONES, require_ready
+        from clipforge.studio.voice_clone import MAX_SAMPLE_BYTES, MAX_SAMPLES, create_clone
+        if not is_enabled("studio_voice_cloning"):
+            raise StudioError("feature_disabled", "Stimmklon ist deaktiviert.", 403)
+        provider = _CLONES[0]
+        require_ready(provider)
+        if not files or len(files) > MAX_SAMPLES:
+            raise StudioError("validation_error", f"Bitte 1 bis {MAX_SAMPLES} Sprachproben hochladen.")
+        tmp = tempfile.mkdtemp(prefix="cf_clone_")
+        try:
+            paths = []
+            for i, up in enumerate(files):
+                ext = os.path.splitext(up.filename or "")[1].lower()
+                if ext not in audio.AUDIO_EXT:
+                    raise StudioError("file_type_not_allowed", "Sprachproben müssen Audiodateien sein.", 415)
+                dest = os.path.join(tmp, f"probe_{i}{ext}")
+                save_upload(up.file, dest, MAX_SAMPLE_BYTES)
+                if audio.media_duration(dest) <= 0:
+                    raise StudioError("file_unreadable", "Eine Probe ist kein lesbares Audio.", 415)
+                paths.append(dest)
+            return {"clone": create_clone(
+                name=name, speaker=speaker, basis=basis, no_deception=no_deception, samples=paths,
+                user=getattr(request.state, "user", None), provider=provider)}
+        finally:
+            import shutil
+            shutil.rmtree(tmp, ignore_errors=True)
+
+    @r.delete("/voices/clones/{clone_id}")
+    def clone_delete(clone_id: str) -> dict:
+        from clipforge.studio.providers import _CLONES
+        from clipforge.studio.voice_clone import delete_clone
+        delete_clone(clone_id, _CLONES[0])
+        return {"deleted": True}
+
     @r.get("/voices")
     def voices(language: str = "de", tone: str = "") -> dict:
         return svc.voice_options(language if language in ("de", "en") else "de", tone)

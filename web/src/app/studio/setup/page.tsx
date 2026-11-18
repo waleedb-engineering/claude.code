@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { tDyn, useT } from "@/lib/i18n";
 import { errorMessage, studio, type CredentialStatus, type PlatformReadiness, type ProviderInfo } from "@/lib/studio";
 import { ErrorBox, Loading, Notice, Pill, btnCls, cardCls, inputCls, labelCls } from "@/components/studio/ui";
+import VoiceCloneSection from "@/components/studio/VoiceCloneSection";
 
 export default function SetupPage() {
   const t = useT();
@@ -132,6 +133,8 @@ export default function SetupPage() {
         </section>
       )}
 
+      <VoiceCloneSection />
+
       {providers && (
         <section aria-labelledby="su-prov">
           <h2 id="su-prov" className="mb-3 text-lg font-semibold text-white">
@@ -142,7 +145,17 @@ export default function SetupPage() {
               <li key={p.id} className={cardCls}>
                 <div className="flex items-start justify-between gap-3">
                   <p className="font-medium text-white">{p.label}</p>
-                  <Pill status={p.status} />
+                  <div className="flex gap-1">
+                    {!p.live_verified && (
+                      <span
+                        title={t("su.untestedHint")}
+                        className="rounded-full border border-amber-500/40 px-2 py-0.5 text-[11px] text-amber-300"
+                      >
+                        {t("su.untested")}
+                      </span>
+                    )}
+                    <Pill status={p.status} />
+                  </div>
                 </div>
                 <p className="mt-1 text-xs text-neutral-400">
                   {p.kind} · {p.local ? t("common.local") : "Cloud"}

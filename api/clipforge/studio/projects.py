@@ -27,7 +27,7 @@ MAX_SNAPSHOTS = 25
 ASPECT_RATIOS = ("9:16", "16:9", "1:1", "4:5")
 RESOLUTIONS = ("720p", "1080p", "4k")
 CAPTION_STYLES = ("minimal", "bold", "karaoke", "dynamic", "none")
-VISUAL_MODES = ("motion", "static", "media", "ai_image", "split")
+VISUAL_MODES = ("motion", "static", "media", "ai_image", "split", "ai_video", "avatar")
 STYLES = ("clean", "cinematic")
 LANGUAGES = ("de", "en")
 WORKFLOWS = (
@@ -169,6 +169,9 @@ def migrate(data: dict) -> dict:
     p["visuals"] = {
         "image_provider": str(vis.get("image_provider") or "openai_image"),
         "gameplay_media": vis.get("gameplay_media") or None,
+        "avatar_image": vis.get("avatar_image") or None,
+        "video_provider": str(vis.get("video_provider") or "fal_video"),
+        "avatar_provider": str(vis.get("avatar_provider") or "fal_avatar"),
         "headlines": bool(vis.get("headlines", True))}
     from .options import ProductionOptions
     legacy = dict(p.get("options") or {}) if isinstance(p.get("options"), dict) else {}
@@ -241,6 +244,13 @@ def apply_patch(project: dict, patch: dict, project_dir: str) -> dict:
         elif key == "visuals":
             if not isinstance(value, dict):
                 raise StudioError("validation_error", "Ungültige Visual-Einstellungen.")
+            av = value.get("avatar_image")
+            if av:
+                av = safe_filename(str(av))
+                if os.path.splitext(av)[1].lower() not in IMAGE_EXT or not os.path.isfile(
+                        safe_child(os.path.join(project_dir, "media"), av)):
+                    raise StudioError("media_not_found", "Avatar-Bild nicht gefunden.", 404)
+                value = {**value, "avatar_image": av}
             gm = value.get("gameplay_media")
             if gm:
                 gm = safe_filename(str(gm))

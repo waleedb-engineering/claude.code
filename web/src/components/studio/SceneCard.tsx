@@ -18,7 +18,7 @@ type Props = {
   onRegenerate: () => void;
 };
 
-const MODES = ["motion", "static", "media", "ai_image", "split"] as const;
+const MODES = ["motion", "static", "media", "ai_image", "ai_video", "avatar", "split"] as const;
 
 export default function SceneCard(p: Props) {
   const t = useT();
@@ -153,7 +153,10 @@ export default function SceneCard(p: Props) {
               id={`${id}-media`}
               className={inputCls}
               value={s.visual.media ?? ""}
-              disabled={visuals.length === 0 || (s.visual.mode !== "media" && s.visual.mode !== "split")}
+              disabled={
+                visuals.length === 0 ||
+                (s.visual.mode !== "media" && s.visual.mode !== "split" && s.visual.mode !== "ai_video")
+              }
               onChange={(e) => setVisual({ media: e.target.value || null })}
             >
               <option value="">–</option>

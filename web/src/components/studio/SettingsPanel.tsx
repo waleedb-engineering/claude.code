@@ -325,6 +325,24 @@ export default function SettingsPanel({ project, media, estimate, onChange, onMe
             ))}
           </ul>
         )}
+        <label htmlFor="s-avatar" className={labelCls}>
+          {t("ed.avatarImage")}
+        </label>
+        <select
+          id="s-avatar"
+          className={inputCls}
+          value={project.visuals.avatar_image ?? ""}
+          onChange={(e) => onChange({ visuals: { ...project.visuals, avatar_image: e.target.value || null } })}
+        >
+          <option value="">{t("common.none")}</option>
+          {media
+            .filter((m) => m.kind === "image")
+            .map((m) => (
+              <option key={m.name} value={m.name}>
+                {m.name}
+              </option>
+            ))}
+        </select>
         <label htmlFor="s-gameplay" className={labelCls}>
           {t("ed.gameplay")}
         </label>

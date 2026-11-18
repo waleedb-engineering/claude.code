@@ -21,6 +21,9 @@ DEFAULT_PRICES = {
     "elevenlabs_per_1k_chars": 0.30,
     "openai_tts_per_1k_chars": 0.015,
     "openai_image_per_image": 0.05,
+    # Schätzwerte für fal.ai; je nach Modell deutlich verschieden → anpassen
+    "fal_video_per_second": 0.10,
+    "fal_avatar_per_second": 0.05,
 }
 _lock = threading.Lock()
 
@@ -169,6 +172,27 @@ def estimate_project(project: dict) -> dict:
             if ip.paid:
                 items.append({"provider": ip.id, "what": f"KI-Bilder ({len(ai_scenes)})",
                               "amount_usd": round(ip.estimate_cost(len(ai_scenes)), 4)})
+        except Exception:  # noqa: BLE001
+            pass
+    from .providers import get_avatar, get_video
+    vis = project.get("visuals") or {}
+    video_scenes = [s for s in scenes if (s.get("visual") or {}).get("mode") == "ai_video"]
+    if video_scenes:
+        try:
+            vp = get_video(vis.get("video_provider") or "fal_video")
+            secs = sum(vp.clip_seconds(float(s.get("duration") or 5)) for s in video_scenes)
+            items.append({"provider": vp.id, "what": f"KI-Video ({len(video_scenes)} Clips, {secs} s)",
+                          "amount_usd": round(vp.estimate_cost(secs), 4)})
+        except Exception:  # noqa: BLE001
+            pass
+    avatar_scenes = [s for s in scenes if (s.get("visual") or {}).get("mode") == "avatar"]
+    if avatar_scenes:
+        try:
+            ap = get_avatar(vis.get("avatar_provider") or "fal_avatar")
+            secs = sum(max(1.0, len((s.get("voice_text") or s.get("text") or "").split()) / 2.5)
+                       for s in avatar_scenes)
+            items.append({"provider": ap.id, "what": f"Talking Avatar (~{secs:.0f} s)",
+                          "amount_usd": round(ap.estimate_cost(secs), 4)})
         except Exception:  # noqa: BLE001
             pass
     total = round(sum(i["amount_usd"] for i in items), 4)

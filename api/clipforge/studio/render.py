@@ -67,6 +67,14 @@ def _hash(*parts) -> str:
     return hashlib.sha256("\x1f".join(str(p) for p in parts).encode("utf-8")).hexdigest()[:20]
 
 
+def _file_hash(path: str) -> str:
+    h = hashlib.sha256()
+    with open(path, "rb") as fh:
+        for chunk in iter(lambda: fh.read(1 << 20), b""):
+            h.update(chunk)
+    return h.hexdigest()[:20]
+
+
 def _cover(w: int, h: int) -> str:
     return f"scale={w}:{h}:force_original_aspect_ratio=increase,crop={w}:{h},setsar=1"
 
@@ -92,6 +100,8 @@ class StudioRenderer:
         self.warnings: list[str] = []
         self._upscale_checked: set[str] = set()
         self._tts_words: dict[str, list] = {}
+        self._scene_wav: dict[str, str] = {}
+        self._scene_speech: dict[str, float] = {}
         self.fallbacks: list[dict] = []
         self.voice_override = voice_override
         self.brand = load_brand_kit()
@@ -263,6 +273,101 @@ class StudioRenderer:
             self.ledger.release(rid)
             raise
 
+    def _can_fallback_to_image(self) -> bool:
+        from .providers import get_image
+        try:
+            prov = get_image(self.p["visuals"].get("image_provider") or "openai_image")
+        except StudioError:
+            return False
+        return prov.status()[0] == "ready"
+
+    def _ai_video(self, scene: dict, dur: float) -> str | None:
+        """KI-Clip (gecacht). Text→Video oder — mit Bild als Medium — Bild→Video."""
+        from .providers import get_video
+        pid = self.p["visuals"].get("video_provider") or "fal_video"
+        rid = None
+        try:
+            provider = get_video(pid)
+            state, _ = provider.status()
+            if state != "ready":
+                raise ProviderError(pid, f"nicht einsatzbereit ({state})")
+            seconds = provider.clip_seconds(dur)
+            image = None
+            media = scene["visual"].get("media")
+            if media and os.path.splitext(media)[1].lower() in IMAGE_EXT:
+                image = self._media(media)
+            prompt = scene.get("visual_prompt") or scene["text"]
+            key = _hash(pid, provider.models(), prompt, seconds, self.p["aspect_ratio"],
+                        scene["visual"].get("seed", 0), _file_hash(image) if image else "")
+            path = os.path.join(self.cache, "video", key + ".mp4")
+            if os.path.isfile(path):
+                return path
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            rid = self.ledger.reserve(provider.estimate_cost(seconds), f"KI-Video ({provider.label})")
+            tmp = path + ".part"
+            cost = provider.generate(prompt, image, seconds, self.p["aspect_ratio"], tmp,
+                                     should_cancel=self.should_cancel)
+            os.replace(tmp, path)
+            self.ledger.commit(rid, cost, provider.id, "video")
+            return path
+        except BudgetExceeded:
+            raise
+        except (ProviderError, StudioError) as exc:
+            self.ledger.release(rid)
+            if self.should_cancel():
+                raise RenderCanceled() from None
+            self.fallbacks.append({"scene_id": scene["id"], "kind": "video", "provider": pid,
+                                   "fallback": "ai_image/motion", "reason": str(exc)})
+            self.warnings.append(f"KI-Video '{pid}' nicht nutzbar — Szene mit Ersatz-Visual gerendert.")
+            return None
+        except BaseException:
+            self.ledger.release(rid)
+            raise
+
+    def _avatar(self, scene: dict) -> str | None:
+        """Sprechender Avatar aus Avatar-Bild + Stimme dieser Szene (gecacht)."""
+        from .providers import get_avatar
+        pid = self.p["visuals"].get("avatar_provider") or "fal_avatar"
+        image_name = self.p["visuals"].get("avatar_image")
+        wav = self._scene_wav.get(scene["id"])
+        rid = None
+        try:
+            if not image_name:
+                raise ProviderError(pid, "kein Avatar-Bild gewählt")
+            if not wav or self._scene_speech.get(scene["id"], 0) <= 0:
+                raise ProviderError(pid, "Szene hat keine Stimme")
+            provider = get_avatar(pid)
+            state, _ = provider.status()
+            if state != "ready":
+                raise ProviderError(pid, f"nicht einsatzbereit ({state})")
+            image = self._media(image_name)
+            key = _hash(pid, provider.model(), _file_hash(image), _file_hash(wav))
+            path = os.path.join(self.cache, "avatar", key + ".mp4")
+            if os.path.isfile(path):
+                return path
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            rid = self.ledger.reserve(provider.estimate_cost(self._scene_speech[scene["id"]]),
+                                      f"Talking Avatar ({provider.label})")
+            tmp = path + ".part"
+            cost = provider.generate(image, wav, tmp, should_cancel=self.should_cancel)
+            os.replace(tmp, path)
+            self.ledger.commit(rid, cost, provider.id, "avatar")
+            return path
+        except BudgetExceeded:
+            raise
+        except (ProviderError, StudioError) as exc:
+            self.ledger.release(rid)
+            if self.should_cancel():
+                raise RenderCanceled() from None
+            self.fallbacks.append({"scene_id": scene["id"], "kind": "avatar", "provider": pid,
+                                   "fallback": "image", "reason": str(exc)})
+            self.warnings.append(
+                f"Talking Avatar nicht nutzbar ({exc}) — Szene mit Standbild ohne Lippenbewegung.")
+            return None
+        except BaseException:
+            self.ledger.release(rid)
+            raise
+
     def _base_inputs(self, index: int, scene: dict, dur: float, w: int, h: int,
                      offset: float) -> tuple[list[str], str]:
         """→ (ffmpeg-Input-Argumente, Filterkette für diesen Input)."""
@@ -270,6 +375,23 @@ class StudioRenderer:
         if mode == "split":
             mode = "media" if scene["visual"].get("media") else "motion"
         image: str | None = None
+        if mode == "ai_video":
+            clip = self._ai_video(scene, dur)
+            if clip:
+                return (["-stream_loop", "-1", "-i", clip],
+                        f"{_cover(w, h)},fps={self.fps}{_grade(self.p['style'])}")
+            mode = "ai_image" if self._can_fallback_to_image() else "motion"
+        if mode == "avatar":
+            clip = self._avatar(scene)
+            if clip:
+                # letztes Bild halten, falls die Szene länger als die Sprechzeit ist
+                return (["-i", clip],
+                        f"{_cover(w, h)},fps={self.fps},tpad=stop_mode=clone:stop_duration=600")
+            avatar = self.p["visuals"].get("avatar_image")
+            if avatar:  # ehrlicher Ersatz: Standbild des Avatars (ohne Lippenbewegung)
+                image, mode = self._media(avatar), "image"
+            else:
+                mode = "motion"
         if mode == "ai_image":
             image = self._ai_image(scene)
             mode = "image" if image else "motion"
@@ -406,6 +528,8 @@ class StudioRenderer:
             dur = max(minimum, scene.get("duration") or 0.0, 0.8) + scene.get("pause_after", 0.0)
             entries.append({"scene": scene, "wav": wav, "speech": speech,
                             "min": minimum, "dur": dur})
+            self._scene_wav[scene["id"]] = wav
+            self._scene_speech[scene["id"]] = speech
         music_path = None
         beat_info = None
         track = self.p["music"].get("track")

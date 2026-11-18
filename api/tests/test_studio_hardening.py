@@ -130,7 +130,7 @@ def test_option_validation_and_unavailable_choices_are_explicit():
             assert r.status_code == 400 and r.json()["detail"]["code"] == "validation_error", bad
         r = post({"video_provider": "runway", "video_model": "gen-3"})
         assert r.status_code == 409 and r.json()["detail"]["code"] == "provider_unknown"
-        assert "noch nicht verfügbar" in r.json()["detail"]["message"]
+        assert "verfügbar: fal_video" in r.json()["detail"]["message"]
         assert client.get("/api/studio/projects").json()["projects"] == []
         r = client.post("/api/studio/projects", json={"workflow": "gibt_es_nicht", "prompt": "x y z"})
         assert r.json()["detail"]["code"] == "validation_error"  # kein stilles Prompt-to-Video

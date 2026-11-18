@@ -322,8 +322,10 @@ def test_unconfigured_providers_are_reported_not_used():
         from clipforge.studio.providers import readiness
         states = {r["id"]: r["status"] for r in readiness()}
         assert states["elevenlabs"] == "not_configured" and states["openai_tts"] == "not_configured"
-        assert states["ai_video"] == "unavailable" and states["talking_avatar"] == "unavailable"
-        assert states["face_swap"] == "unavailable" and states["voice_cloning"] == "unavailable"
+        # Adapter vorhanden, aber ohne FAL_KEY bzw. ELEVENLABS_API_KEY nicht nutzbar
+        assert states["fal_video"] == "not_configured" and states["fal_avatar"] == "not_configured"
+        assert states["elevenlabs_clone"] == "not_configured"
+        assert states["face_swap"] == "unavailable"
         assert states["none"] == "ready"
         # Auto-Auswahl nimmt nie einen bezahlten/Mock-Provider ungefragt
         auto = select_voice("de", "calm")

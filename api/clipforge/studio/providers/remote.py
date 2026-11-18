@@ -12,7 +12,7 @@ import urllib.error
 import urllib.request
 
 from ..errors import ProviderError
-from .base import ImageProvider, VoiceProvider, VoiceResult
+from .base import ImageProvider, Provider, VoiceProvider, VoiceResult
 
 
 class ResponseTooLarge(ValueError):
@@ -78,7 +78,7 @@ def _post(provider: str, url: str, headers: dict, payload: dict) -> bytes:
 
 class ElevenLabsVoice(VoiceProvider):
     id, label = "elevenlabs", "ElevenLabs (Cloud)"
-    local, paid = False, True
+    local, paid, live_verified = False, True, False
     env_keys = ("ELEVENLABS_API_KEY",)
     requires_flag = "studio_external_providers"
     languages = ("de", "en", "es", "fr", "it", "pt", "pl", "nl", "tr")
@@ -90,16 +90,23 @@ class ElevenLabsVoice(VoiceProvider):
         ("ErXwobaYiN019PkySvjV", "Antoni", "energetic"),
     ]
 
+    def _all(self) -> list[tuple[str, str, str]]:
+        """Standardstimmen + eigene, mit Einwilligung geklonte Stimmen."""
+        from ..voice_clone import list_clones
+        clones = [(c["voice_id"], f"{c['name']} (geklont)", "custom")
+                  for c in list_clones() if c.get("provider") == "elevenlabs"]
+        return [*self._VOICES, *clones]
+
     def voices(self, language):
         return [{"id": v, "label": n, "tone": t, "language": language}
-                for v, n, t in self._VOICES]
+                for v, n, t in self._all()]
 
     def estimate_cost(self, chars):
         from ..costs import price
         return chars / 1000.0 * price("elevenlabs_per_1k_chars")
 
     def synthesize(self, text, language, voice_id, out_path, model=None, speed=1.0):
-        ids = {v for v, _, _ in self._VOICES}
+        ids = {v for v, _, _ in self._all()}
         voice = voice_id if voice_id in ids else self._VOICES[0][0]
         body = _post(self.id, f"https://api.elevenlabs.io/v1/text-to-speech/{voice}",
                      {"xi-api-key": os.environ.get("ELEVENLABS_API_KEY", ""),
@@ -117,7 +124,7 @@ class ElevenLabsVoice(VoiceProvider):
 
 class OpenAIVoice(VoiceProvider):
     id, label = "openai_tts", "OpenAI TTS (Cloud)"
-    local, paid = False, True
+    local, paid, live_verified = False, True, False
     env_keys = ("OPENAI_API_KEY",)
     requires_flag = "studio_external_providers"
     languages = ("de", "en", "es", "fr", "it", "pt", "nl", "pl", "tr", "ja")
@@ -148,7 +155,7 @@ class OpenAIVoice(VoiceProvider):
 
 class OpenAIImage(ImageProvider):
     id, label = "openai_image", "OpenAI Bilder (Cloud)"
-    local, paid = False, True
+    local, paid, live_verified = False, True, False
     env_keys = ("OPENAI_API_KEY",)
     requires_flag = "studio_external_providers"
     setup_hint = "OPENAI_API_KEY in .env setzen (platform.openai.com → API keys)."
@@ -176,3 +183,76 @@ class OpenAIImage(ImageProvider):
         with open(out_path, "wb") as fh:
             fh.write(raw)
         return self.estimate_cost(1)
+
+
+# --------------------------------------------------------------- Stimmklon
+
+def _multipart(fields: dict, files: list[tuple[str, str, bytes]]) -> tuple[bytes, str]:
+    import uuid
+    boundary = "cf" + uuid.uuid4().hex
+    parts = []
+    for key, value in fields.items():
+        parts.append(f"--{boundary}\r\nContent-Disposition: form-data; name=\"{key}\"\r\n\r\n"
+                     f"{value}\r\n".encode("utf-8"))
+    for key, filename, data in files:
+        parts.append(f"--{boundary}\r\nContent-Disposition: form-data; name=\"{key}\"; "
+                     f"filename=\"{filename}\"\r\nContent-Type: application/octet-stream"
+                     f"\r\n\r\n".encode("utf-8") + data + b"\r\n")
+    parts.append(f"--{boundary}--\r\n".encode("utf-8"))
+    return b"".join(parts), f"multipart/form-data; boundary={boundary}"
+
+
+def _http_raw(method: str, url: str, headers: dict, body: bytes | None,
+              timeout: float = 120.0) -> tuple[int, bytes]:
+    req = urllib.request.Request(url, data=body, method=method, headers=headers)
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:  # noqa: S310 — fester Host
+            return resp.status, resp.read(1024 * 1024)
+    except urllib.error.HTTPError as exc:
+        return exc.code, exc.read(64 * 1024)
+
+
+HTTP_RAW = _http_raw  # in Tests ersetzbar
+
+
+class ElevenLabsCloneProvider(Provider):
+    """Instant Voice Cloning bei ElevenLabs — nur mit dokumentierter Einwilligung."""
+
+    id, kind, label = "elevenlabs_clone", "voice_clone", "ElevenLabs Voice Cloning"
+    local, paid, live_verified = False, True, False
+    env_keys = ("ELEVENLABS_API_KEY",)
+    requires_flag = "studio_voice_cloning"
+    setup_hint = ("ELEVENLABS_API_KEY setzen; Stimmklon braucht einen bezahlten "
+                  "ElevenLabs-Tarif (laut ElevenLabs ab „Starter“).")
+
+    def clone(self, name: str, samples: list[str], description: str) -> str:
+        files = []
+        for path in samples:
+            with open(path, "rb") as fh:
+                files.append(("files", os.path.basename(path), fh.read()))
+        body, ctype = _multipart({"name": name, "description": description,
+                                  "remove_background_noise": "false"}, files)
+        try:
+            code, raw = HTTP_RAW("POST", "https://api.elevenlabs.io/v1/voices/add",
+                                 {"xi-api-key": os.environ.get("ELEVENLABS_API_KEY", ""),
+                                  "Content-Type": ctype}, body)
+        except Exception as exc:  # noqa: BLE001
+            raise ProviderError(self.id, f"Anfrage fehlgeschlagen ({type(exc).__name__})") from None
+        if code in (401, 403):
+            raise ProviderError(self.id, "Schlüssel abgelehnt oder Tarif ohne Stimmklon")
+        try:
+            voice_id = json.loads(raw).get("voice_id")
+        except ValueError:
+            voice_id = None
+        if code >= 400 or not isinstance(voice_id, str) or not voice_id.isalnum():
+            raise ProviderError(self.id, f"Stimmklon fehlgeschlagen (HTTP {code})")
+        return voice_id
+
+    def delete(self, voice_id: str) -> None:
+        try:
+            code, _ = HTTP_RAW("DELETE", f"https://api.elevenlabs.io/v1/voices/{voice_id}",
+                               {"xi-api-key": os.environ.get("ELEVENLABS_API_KEY", "")}, None)
+        except Exception as exc:  # noqa: BLE001
+            raise ProviderError(self.id, f"Anfrage fehlgeschlagen ({type(exc).__name__})") from None
+        if code >= 400 and code != 404:
+            raise ProviderError(self.id, f"Löschen fehlgeschlagen (HTTP {code})")

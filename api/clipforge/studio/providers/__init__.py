@@ -3,11 +3,15 @@
 from __future__ import annotations
 
 from ..errors import StudioError
-from .base import ImageProvider, PlaceholderProvider, Provider, VoiceProvider, VoiceResult
+from .base import (
+    AvatarProvider, ImageProvider, PlaceholderProvider, Provider, VideoProvider, VoiceProvider,
+    VoiceResult,
+)
+from .fal import FalAvatar, FalVideo
 from .local import (
     EspeakVoice, MacSayVoice, MockImage, MockVoice, PiperVoice, SilentVoice, WindowsSapiVoice,
 )
-from .remote import ElevenLabsVoice, OpenAIImage, OpenAIVoice
+from .remote import ElevenLabsCloneProvider, ElevenLabsVoice, OpenAIImage, OpenAIVoice
 
 # Reihenfolge = Priorität der automatischen Auswahl (lokal vor Cloud).
 _VOICES: list[VoiceProvider] = [
@@ -15,26 +19,19 @@ _VOICES: list[VoiceProvider] = [
     ElevenLabsVoice(), OpenAIVoice(), MockVoice(), SilentVoice(),
 ]
 _IMAGES: list[ImageProvider] = [OpenAIImage(), MockImage()]
+_VIDEOS: list[VideoProvider] = [FalVideo()]
+_AVATARS: list[AvatarProvider] = [FalAvatar()]
+_CLONES: list[Provider] = [ElevenLabsCloneProvider()]
 _PLACEHOLDERS: list[Provider] = [
     PlaceholderProvider(
-        "ai_video", "video", "KI-Video (Text→Video)",
-        "Noch kein Adapter vorhanden. Alternative: KI-Bilder mit Ken-Burns-Animation."),
-    PlaceholderProvider(
-        "talking_avatar", "avatar", "Talking Avatar",
-        "Noch kein Adapter vorhanden. Die Schnittstelle (Provider-Slot) ist vorbereitet."),
-    PlaceholderProvider(
         "face_swap", "face_swap", "Face Swap",
-        "Nicht verfügbar. Würde ausdrückliche Einwilligung der abgebildeten Person "
-        "erfordern; es gibt bewusst keinen Adapter.", "studio_face_swap"),
-    PlaceholderProvider(
-        "voice_cloning", "voice_clone", "Voice Cloning",
-        "Nicht verfügbar. Würde ausdrückliche Zustimmung des Stimminhabers erfordern; "
-        "es gibt bewusst keinen Adapter.", "studio_voice_cloning"),
+        "Nicht verfügbar — Entscheidung offen (Identitätsprüfung und Kennzeichnung nötig), "
+        "siehe docs/WAS_ICH_BRAUCHE.md.", "studio_face_swap"),
 ]
 
 
 def all_providers() -> list[Provider]:
-    return [*_VOICES, *_IMAGES, *_PLACEHOLDERS]
+    return [*_VOICES, *_IMAGES, *_VIDEOS, *_AVATARS, *_CLONES, *_PLACEHOLDERS]
 
 
 def readiness() -> list[dict]:
@@ -46,6 +43,20 @@ def get_voice(provider_id: str) -> VoiceProvider:
         if p.id == provider_id:
             return p
     raise StudioError("provider_unknown", f"Unbekannter Voice-Provider '{provider_id}'.", 400)
+
+
+def get_video(provider_id: str) -> VideoProvider:
+    for p in _VIDEOS:
+        if p.id == provider_id:
+            return p
+    raise StudioError("provider_unknown", f"Unbekannter Video-Provider '{provider_id}'.", 400)
+
+
+def get_avatar(provider_id: str) -> AvatarProvider:
+    for p in _AVATARS:
+        if p.id == provider_id:
+            return p
+    raise StudioError("provider_unknown", f"Unbekannter Avatar-Provider '{provider_id}'.", 400)
 
 
 def get_image(provider_id: str) -> ImageProvider:
@@ -99,6 +110,6 @@ def select_voice(language: str, tone: str = "", provider_id: str | None = None,
 
 
 __all__ = [
-    "ImageProvider", "Provider", "VoiceProvider", "VoiceResult", "all_providers",
-    "get_image", "get_voice", "readiness", "require_ready", "select_voice",
+    "AvatarProvider", "ImageProvider", "Provider", "VideoProvider", "VoiceProvider",
+    "VoiceResult", "all_providers", "get_avatar", "get_image", "get_video", "get_voice", "readiness", "require_ready", "select_voice",
 ]

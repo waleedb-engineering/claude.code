@@ -21,7 +21,7 @@ PLATFORM_PROFILES = {
     "instagram_reels": ("9:16", 90),
     "x": ("16:9", 140),
 }
-MEDIA_TYPES = ("motion", "static", "ai_image")
+MEDIA_TYPES = ("motion", "static", "ai_image", "ai_video", "avatar")
 MUSIC_MODES = ("track", "none")
 
 
@@ -78,11 +78,10 @@ class ProductionOptions:
             topics = topics.replace("\n", ",").split(",")
         topics = list(dict.fromkeys(_text(t, 60).lower() for t in topics if _text(t, 60)))[:30]
         video_provider = _text(d.get("video_provider"), 40)
-        if strict and video_provider not in ("", "none"):
-            raise StudioError(
-                "provider_unknown",
-                "KI-Video-Provider sind noch nicht verfügbar (kein Adapter). "
-                "Nutze KI-Bilder (media_type=ai_image) oder eigene Medien.", 409)
+        if strict and video_provider not in ("", "none", "fal_video"):
+            raise StudioError("provider_unknown",
+                              f"Unbekannter KI-Video-Provider '{video_provider}' (verfügbar: fal_video).",
+                              409)
         return cls(
             platform=choice("platform", PLATFORMS, "generic"),
             duration_target=max(10, min(duration, 600)),

@@ -83,6 +83,7 @@ class MacSayVoice(VoiceProvider):
     """macOS `say` — echte lokale Sprachausgabe (Deutsch + Englisch)."""
 
     id, label = "macos_say", "macOS Systemstimme (lokal)"
+    live_verified = False  # in der Entwicklungsumgebung (Linux) nicht ausführbar
     setup_hint = "Nur auf macOS verfügbar (Programm `say`)."
     _VOICES = {
         "de": [("Anna", "neutral"), ("Markus", "calm"), ("Petra", "friendly")],
@@ -189,6 +190,7 @@ class WindowsSapiVoice(VoiceProvider):
     """
 
     id, label = "windows_sapi", "Windows-Systemstimme (lokal)"
+    live_verified = False  # nur mit nachgebildetem PowerShell-Aufruf getestet
     setup_hint = "Nur unter Windows. Weitere Stimmen über Windows-Sprachpakete."
     _cache: list | None = None
 
@@ -252,6 +254,7 @@ class PiperVoice(VoiceProvider):
     """
 
     id, label = "piper", "Piper (lokal, neuronal)"
+    live_verified = False  # ohne echtes Stimmmodell getestet
     setup_hint = ("Stimmmodell laden: `python -m piper.download_voices de_DE-thorsten-medium "
                   "--data-dir api/studio_data/piper` (bzw. en_US-lessac-medium).")
     _loaded: dict = {}

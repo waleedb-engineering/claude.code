@@ -31,6 +31,9 @@ class Provider:
     env_keys: tuple[str, ...] = ()
     setup_hint = ""
     requires_flag: str | None = None
+    # False = Adapter nur gegen nachgebildete Antworten getestet, nie gegen den
+    # echten Dienst. Die Oberfläche zeigt das als „ungetestet“ an.
+    live_verified = True
 
     def configured(self) -> bool:
         return all(os.environ.get(k) for k in self.env_keys)
@@ -51,6 +54,7 @@ class Provider:
             "hint": hint,
             # nur die NAMEN der benötigten Variablen — niemals Werte
             "requires_env": list(self.env_keys),
+            "live_verified": self.live_verified,
         }
 
 
@@ -78,6 +82,36 @@ class ImageProvider(Provider):
 
     def generate(self, prompt: str, width: int, height: int, out_path: str) -> float:
         """Erzeugt ein Bild nach out_path, liefert die Kosten in USD."""
+        raise NotImplementedError
+
+
+class VideoProvider(Provider):
+    """Text→Video und Bild→Video. Liefert Clips fester Länge (z. B. 5 oder 10 s)."""
+
+    kind = "video"
+    durations: tuple[int, ...] = (5, 10)
+
+    def clip_seconds(self, wanted: float) -> int:
+        return next((d for d in self.durations if d >= wanted - 0.5), self.durations[-1])
+
+    def estimate_cost(self, seconds: float) -> float:
+        return 0.0
+
+    def generate(self, prompt: str, image_path: str | None, seconds: int, aspect_ratio: str,
+                 out_path: str, should_cancel=None) -> float:
+        raise NotImplementedError
+
+
+class AvatarProvider(Provider):
+    """Sprechender Avatar: Bild + Audio → Video mit passenden Lippenbewegungen."""
+
+    kind = "avatar"
+
+    def estimate_cost(self, seconds: float) -> float:
+        return 0.0
+
+    def generate(self, image_path: str, audio_path: str, out_path: str,
+                 should_cancel=None) -> float:
         raise NotImplementedError
 
 

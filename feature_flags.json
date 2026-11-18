@@ -9,7 +9,7 @@
     "studio_analytics": true,
     "studio_ideas": true,
     "studio_youtube_import": true,
-    "studio_voice_cloning": false,
+    "studio_voice_cloning": true,
     "studio_face_swap": false
   }
 }

@@ -24,7 +24,7 @@ export class StudioApiError extends Error {
 }
 
 export type SceneVisual = {
-  mode: "motion" | "static" | "media" | "ai_image" | "split";
+  mode: "motion" | "static" | "media" | "ai_image" | "split" | "ai_video" | "avatar";
   media: string | null;
   color: string | null;
   seed: number;
@@ -63,7 +63,14 @@ export type Project = {
   voice: { provider: string; voice_id: string | null; tone: string; speed: number };
   music: { track: string | null; volume: number; ducking: boolean; beat_sync: boolean };
   captions: { style: CaptionStyleId; use_brand: boolean };
-  visuals: { image_provider: string; gameplay_media: string | null; headlines: boolean };
+  visuals: {
+    image_provider: string;
+    gameplay_media: string | null;
+    avatar_image: string | null;
+    video_provider: string;
+    avatar_provider: string;
+    headlines: boolean;
+  };
   budget_limit_usd: number;
   options: ProductionOptions;
   lineage: Record<string, unknown>;
@@ -165,6 +172,7 @@ export type ProviderInfo = {
   status: "ready" | "not_configured" | "disabled" | "unavailable";
   hint: string;
   requires_env: string[];
+  live_verified: boolean;
 };
 
 export type CredentialStatus = { provider: string; label: string; env: string; configured: boolean };
@@ -405,6 +413,18 @@ export const studio = {
   setCredential: (provider: string, apiKey: string) =>
     request<CredentialStatus>("PUT", `/credentials/${provider}`, { api_key: apiKey }),
   deleteCredential: (provider: string) => request<CredentialStatus>("DELETE", `/credentials/${provider}`),
+  clones: () =>
+    get<{ clones: { id: string; name: string; created_at: string; consent: { basis: string; speaker: string } }[]; enabled: boolean }>(
+      "/voices/clones",
+    ),
+  async createClone(form: FormData) {
+    // apiFetch hängt das Sicherheits-Token bei Änderungen selbst an
+    const res = await apiFetch(`${API_BASE}/api/studio/voices/clones`, { method: "POST", body: form });
+    const data = await res.json().catch(() => null);
+    if (!res.ok) throw new StudioApiError(res.status, data?.detail?.code ? data.detail : { code: "http_error", message: "Stimmklon fehlgeschlagen." });
+    return data;
+  },
+  deleteClone: (id: string) => request<{ deleted: boolean }>("DELETE", `/voices/clones/${id}`),
   testCredential: (provider: string) =>
     post<{ ok: boolean; reason: string; message: string }>(`/credentials/${provider}/test`),
   voices: (language: string, tone = "") =>

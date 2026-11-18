@@ -19,7 +19,7 @@ DEFAULT_FLAGS: dict[str, bool] = {
     "studio_ideas": True,
     # YouTube-Import nur für eigene/berechtigte Videos, Video-Datei lädt der Nutzer hoch.
     "studio_youtube_import": True,
-    "studio_voice_cloning": False,
+    "studio_voice_cloning": True,
     "studio_face_swap": False,
 }
 
