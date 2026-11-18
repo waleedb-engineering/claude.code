@@ -171,6 +171,12 @@ def normalize(data: dict, existing: dict | None = None) -> dict:
 
 
 class AutomationService:
+    @property
+    def dir(self) -> str:
+        path = os.path.join(studio_dir(), "automations")  # je Benutzerbereich
+        os.makedirs(path, exist_ok=True)
+        return path
+
     def __init__(self, studio, registry=None, clock=utc_now, max_concurrent: int | None = None,
                  inline: bool = False) -> None:
         self.studio = studio
@@ -183,7 +189,6 @@ class AutomationService:
             except ValueError:
                 max_concurrent = 1
         self.max_concurrent = max_concurrent
-        self.dir = os.path.join(studio_dir(), "automations")
         os.makedirs(self.dir, exist_ok=True)
         self._lock = threading.RLock()
         studio.tasks.register("automation_run", self._task_run)

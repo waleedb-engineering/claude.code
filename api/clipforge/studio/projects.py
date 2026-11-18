@@ -330,8 +330,14 @@ def resolve_music(project_dir: str, track: str) -> str:
 
 class ProjectStore:
     def __init__(self, base: str | None = None) -> None:
-        self.base = os.path.join(base or studio_dir(), "projects")
+        self._base = base  # None → je Anfrage aus dem (Benutzer-)Studio-Ordner
         os.makedirs(self.base, exist_ok=True)
+
+    @property
+    def base(self) -> str:
+        path = os.path.join(self._base or studio_dir(), "projects")
+        os.makedirs(path, exist_ok=True)
+        return path
 
     def dir(self, pid: str) -> str:
         return safe_child(self.base, require_id(pid, "Projekt-ID"))

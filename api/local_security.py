@@ -29,6 +29,8 @@ from urllib.parse import urlsplit
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from typing import Literal
+
 from pydantic import BaseModel, Field
 
 TOKEN_HEADER = "X-ClipForge-Token"
@@ -97,12 +99,23 @@ class LoginPayload(BaseModel):
     password: str = Field(min_length=1, max_length=256)
 
 
+class AdminUserPayload(BaseModel):
+    username: str
+    password: str
+    role: Literal["admin", "user"] = "user"
+
+
+class AdminPasswordPayload(BaseModel):
+    password: str
+
+
 class PasswordPayload(BaseModel):
     old_password: str = Field(min_length=1, max_length=256)
     new_password: str = Field(min_length=1, max_length=256)
 
 
-ACCOUNT_EXEMPT = {"/health", "/api/session", "/api/auth/login", "/api/youtube/oauth/callback"}
+ACCOUNT_EXEMPT = {"/health", "/api/session", "/api/auth/login", "/api/auth/register",
+                  "/api/youtube/oauth/callback"}
 
 
 def install(app: FastAPI) -> None:
@@ -137,7 +150,21 @@ def install(app: FastAPI) -> None:
                     return _deny(403, "csrf_invalid",
                                  "Sicherheits-Token fehlt oder ist ungültig. Seite neu laden.")
             request.state.user = session["username"]
-            return await call_next(request)
+            request.state.role = session.get("role", "user")
+            if path.startswith("/api/admin/") and request.state.role != "admin":
+                return _deny(403, "admin_required", "Nur für Administratoren.")
+            if session.get("must_change_password") and path not in (
+                    "/api/auth/password", "/api/auth/me", "/api/auth/logout") and mutating:
+                return _deny(403, "password_change_required",
+                             "Bitte zuerst das vorläufige Passwort ändern.")
+            if auth.workspaces_mode() == "shared":
+                return await call_next(request)
+            from clipforge.studio import workspace
+            ctx = workspace.set_current(session["username"], request.state.role)
+            try:
+                return await call_next(request)
+            finally:
+                workspace.reset(ctx)
         # ---------------------------------------- Lokaler Modus (unverändert)
         if is_api and mutating and auth_enabled():
             sent = request.headers.get(TOKEN_HEADER)
@@ -172,7 +199,11 @@ def install(app: FastAPI) -> None:
                                              "mode": "accounts"})
             return JSONResponse(
                 content={"token": current["csrf"], "auth_required": True, "mode": "accounts",
-                         "user": current["username"], "header": TOKEN_HEADER},
+                         "user": current["username"], "role": current.get("role"),
+                         "must_change_password": current.get("must_change_password", False),
+                         "workspaces": auth.workspaces_mode(),
+                         "registration_open": auth.registration_open(),
+                         "header": TOKEN_HEADER},
                 headers={"Cache-Control": "no-store"})
         if not _host_is_local(request):
             return _deny(403, "host_not_local", "Nur über die lokale Adresse erreichbar.")
@@ -202,6 +233,64 @@ def install(app: FastAPI) -> None:
         resp.set_cookie(auth.COOKIE, raw, max_age=auth.SESSION_DAYS * 86400, httponly=True,
                         secure=auth.cookie_secure(), samesite="lax", path="/")
         return resp
+
+    @app.post("/api/auth/register")
+    def register(req: LoginPayload, request: Request):
+        if not auth.accounts_mode() or not auth.registration_open():
+            return _deny(403, "registration_closed",
+                         "Registrierung ist geschlossen — ein Administrator legt Konten an.")
+        ip = auth.client_ip(request.headers, request.client.host if request.client else None)
+        if not auth.login_allowed(ip, "register:" + req.username):
+            return _deny(429, "rate_limited", "Zu viele Versuche. Bitte später erneut.")
+        try:
+            user = auth.create_user(req.username, req.password, "user")
+        except auth.AuthError as exc:
+            return _auth_error(exc)
+        return JSONResponse(status_code=201, content={"user": user["username"]})
+
+    @app.get("/api/auth/sessions")
+    def sessions(request: Request):
+        if not auth.accounts_mode():
+            return _deny(404, "accounts_disabled", "Benutzerkonten sind nicht aktiviert.")
+        return {"sessions": auth.list_sessions(request.state.user, request.cookies.get(auth.COOKIE))}
+
+    @app.post("/api/auth/sessions/revoke-others")
+    def revoke_others(request: Request):
+        if not auth.accounts_mode():
+            return _deny(404, "accounts_disabled", "Benutzerkonten sind nicht aktiviert.")
+        return {"revoked": auth.revoke_other_sessions(request.state.user,
+                                                       request.cookies.get(auth.COOKIE))}
+
+    @app.get("/api/admin/users")
+    def admin_users():
+        return {"users": auth.list_users(), "workspaces": auth.workspaces_mode(),
+                "registration_open": auth.registration_open()}
+
+    @app.post("/api/admin/users")
+    def admin_create(req: AdminUserPayload):
+        try:
+            return JSONResponse(status_code=201,
+                                content=auth.create_user(req.username, req.password, req.role))
+        except auth.AuthError as exc:
+            return _auth_error(exc)
+
+    @app.post("/api/admin/users/{username}/password")
+    def admin_password(username: str, req: AdminPasswordPayload):
+        try:
+            auth.set_password(username, req.password)
+        except auth.AuthError as exc:
+            return _auth_error(exc)
+        return {"reset": True, "must_change_password": True}
+
+    @app.delete("/api/admin/users/{username}")
+    def admin_delete(username: str, request: Request):
+        if username == request.state.user:
+            return _deny(409, "self_delete", "Das eigene Konto kann hier nicht gelöscht werden.")
+        try:
+            auth.delete_user(username)
+        except auth.AuthError as exc:
+            return _auth_error(exc)
+        return {"deleted": True, "note": "Daten des Benutzers bleiben auf dem Server erhalten."}
 
     @app.post("/api/auth/logout")
     def logout(request: Request):

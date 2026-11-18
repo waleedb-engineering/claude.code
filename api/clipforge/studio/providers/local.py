@@ -239,8 +239,8 @@ class WindowsSapiVoice(VoiceProvider):
 
 
 def piper_dir() -> str:
-    from ..storage import studio_dir
-    path = os.environ.get("CLIPFORGE_PIPER_VOICES") or os.path.join(studio_dir(), "piper")
+    from ..storage import studio_root
+    path = os.environ.get("CLIPFORGE_PIPER_VOICES") or os.path.join(studio_root(), "piper")
     os.makedirs(path, exist_ok=True)
     return path
 

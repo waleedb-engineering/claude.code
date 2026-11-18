@@ -14,6 +14,7 @@ from collections import Counter
 
 from .broll import keywords as _kw
 from .errors import ProviderError, StudioError
+from .credentials import secret
 
 LIMITS = {  # Titel, Beschreibung/Caption, max. Hashtags
     "youtube_shorts": (100, 5000, 5),
@@ -92,11 +93,11 @@ def with_llm(project: dict) -> dict:
     else:
         from ..config import get_settings
         settings = get_settings()
-        if not settings.anthropic_api_key:
+        if not secret("ANTHROPIC_API_KEY"):
             raise StudioError("credential_not_set", "Kein Anthropic-Schlüssel hinterlegt.", 409)
         try:
             import anthropic
-            client = anthropic.Anthropic(api_key=settings.anthropic_api_key,
+            client = anthropic.Anthropic(api_key=secret("ANTHROPIC_API_KEY"),
                                          timeout=settings.llm_timeout_seconds)
             resp = client.messages.create(model=settings.llm_model, max_tokens=2000,
                                           system=_SYSTEM,

@@ -18,6 +18,7 @@ import re
 import zipfile
 
 from .errors import ProviderError, StudioError
+from .credentials import secret
 
 LANG_NAMES = {"de": "Deutsch", "en": "English"}
 PAIRS = {("de", "en"), ("en", "de")}
@@ -99,11 +100,11 @@ def _anthropic(texts: list[str], src: str, dst: str) -> list[str]:
     else:
         from ..config import get_settings
         settings = get_settings()
-        if not settings.anthropic_api_key:
+        if not secret("ANTHROPIC_API_KEY"):
             raise StudioError("credential_not_set", "Kein Anthropic-Schlüssel hinterlegt.", 409)
         try:
             import anthropic
-            client = anthropic.Anthropic(api_key=settings.anthropic_api_key,
+            client = anthropic.Anthropic(api_key=secret("ANTHROPIC_API_KEY"),
                                          timeout=settings.llm_timeout_seconds)
             resp = client.messages.create(model=settings.llm_model, max_tokens=4096,
                                           system=_SYSTEM,
@@ -140,7 +141,7 @@ def engines_status() -> list[dict]:
     out = [{"id": "argos", "label": "Lokal (Argos/OPUS-MT)", "paid": False, "live_verified": False,
             "ready": {f"{a}-{b}": bool(model_path(model_id(a, b))) for a, b in sorted(PAIRS)}},
            {"id": "anthropic", "label": "Claude (kostenpflichtig)", "paid": True,
-            "live_verified": False, "ready": bool(get_settings().anthropic_api_key)},
+            "live_verified": False, "ready": bool(secret("ANTHROPIC_API_KEY"))},
            {"id": "manual", "label": "Manuell im Editor", "paid": False, "live_verified": True,
             "ready": True}]
     if is_enabled("studio_mock_providers"):

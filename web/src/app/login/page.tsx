@@ -2,19 +2,34 @@
 
 import { useState } from "react";
 import { API_BASE } from "@/lib/api";
-import { resetSession } from "@/lib/session";
+import { resetSession, sessionInfo } from "@/lib/session";
 
 export default function LoginPage() {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [registerMode, setRegisterMode] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setBusy(true);
     setError(null);
     try {
+      if (registerMode) {
+        const reg = await fetch(`${API_BASE}/api/auth/register`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ username, password }),
+        });
+        const rd = await reg.json().catch(() => null);
+        if (!reg.ok) {
+          setError(rd?.detail?.message ?? "Registrierung fehlgeschlagen.");
+          return;
+        }
+        setNotice("Konto angelegt — du wirst angemeldet.");
+      }
       const res = await fetch(`${API_BASE}/api/auth/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -26,6 +41,11 @@ export default function LoginPage() {
         return;
       }
       resetSession();
+      const info = await sessionInfo();
+      if (info.must_change_password) {
+        window.location.assign("/studio/setup#account");
+        return;
+      }
       const next = new URLSearchParams(window.location.search).get("next");
       // nur interne Ziele (kein Open Redirect)
       window.location.assign(next && next.startsWith("/") && !next.startsWith("//") ? next : "/studio");
@@ -76,7 +96,15 @@ export default function LoginPage() {
         disabled={busy}
         className="w-full rounded-lg bg-indigo-500 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-400 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-300 disabled:opacity-50"
       >
-        {busy ? "Anmelden …" : "Anmelden"}
+        {busy ? "Bitte warten …" : registerMode ? "Registrieren" : "Anmelden"}
+      </button>
+      {notice && <p className="text-xs text-emerald-300">{notice}</p>}
+      <button
+        type="button"
+        className="w-full text-xs text-neutral-400 underline hover:text-white"
+        onClick={() => setRegisterMode(!registerMode)}
+      >
+        {registerMode ? "Ich habe schon ein Konto" : "Neues Konto registrieren (falls freigeschaltet)"}
       </button>
     </form>
   );

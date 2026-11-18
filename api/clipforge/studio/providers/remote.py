@@ -13,6 +13,7 @@ import urllib.request
 
 from ..errors import ProviderError
 from .base import ImageProvider, Provider, VoiceProvider, VoiceResult
+from ..credentials import secret
 
 
 class ResponseTooLarge(ValueError):
@@ -109,7 +110,7 @@ class ElevenLabsVoice(VoiceProvider):
         ids = {v for v, _, _ in self._all()}
         voice = voice_id if voice_id in ids else self._VOICES[0][0]
         body = _post(self.id, f"https://api.elevenlabs.io/v1/text-to-speech/{voice}",
-                     {"xi-api-key": os.environ.get("ELEVENLABS_API_KEY", ""),
+                     {"xi-api-key": (secret("ELEVENLABS_API_KEY") or ""),
                       "Accept": "audio/mpeg"},
                      {"text": text, "model_id": model or os.environ.get(
                          "CLIPFORGE_ELEVENLABS_MODEL", "eleven_multilingual_v2"),
@@ -142,7 +143,7 @@ class OpenAIVoice(VoiceProvider):
     def synthesize(self, text, language, voice_id, out_path, model=None, speed=1.0):
         voice = voice_id if voice_id in {v for v, _ in self._VOICES} else "alloy"
         body = _post(self.id, "https://api.openai.com/v1/audio/speech",
-                     {"Authorization": "Bearer " + os.environ.get("OPENAI_API_KEY", "")},
+                     {"Authorization": "Bearer " + (secret("OPENAI_API_KEY") or "")},
                      {"model": model or os.environ.get("CLIPFORGE_OPENAI_TTS_MODEL", "tts-1"),
                       "voice": voice, "input": text, "response_format": "mp3",
                       "speed": round(max(0.25, min(4.0, speed)), 2)})
@@ -170,7 +171,7 @@ class OpenAIImage(ImageProvider):
         else:
             size = "1024x1536" if height > width else "1536x1024"
         body = _post(self.id, "https://api.openai.com/v1/images/generations",
-                     {"Authorization": "Bearer " + os.environ.get("OPENAI_API_KEY", "")},
+                     {"Authorization": "Bearer " + (secret("OPENAI_API_KEY") or "")},
                      {"model": os.environ.get("CLIPFORGE_OPENAI_IMAGE_MODEL", "gpt-image-1"),
                       "prompt": prompt[:3000], "size": size, "n": 1})
         try:
@@ -234,7 +235,7 @@ class ElevenLabsCloneProvider(Provider):
                                   "remove_background_noise": "false"}, files)
         try:
             code, raw = HTTP_RAW("POST", "https://api.elevenlabs.io/v1/voices/add",
-                                 {"xi-api-key": os.environ.get("ELEVENLABS_API_KEY", ""),
+                                 {"xi-api-key": (secret("ELEVENLABS_API_KEY") or ""),
                                   "Content-Type": ctype}, body)
         except Exception as exc:  # noqa: BLE001
             raise ProviderError(self.id, f"Anfrage fehlgeschlagen ({type(exc).__name__})") from None
@@ -251,7 +252,7 @@ class ElevenLabsCloneProvider(Provider):
     def delete(self, voice_id: str) -> None:
         try:
             code, _ = HTTP_RAW("DELETE", f"https://api.elevenlabs.io/v1/voices/{voice_id}",
-                               {"xi-api-key": os.environ.get("ELEVENLABS_API_KEY", "")}, None)
+                               {"xi-api-key": (secret("ELEVENLABS_API_KEY") or "")}, None)
         except Exception as exc:  # noqa: BLE001
             raise ProviderError(self.id, f"Anfrage fehlgeschlagen ({type(exc).__name__})") from None
         if code >= 400 and code != 404:

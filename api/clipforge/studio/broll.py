@@ -21,6 +21,7 @@ import urllib.parse
 from . import safe_fetch
 from .errors import StudioError
 from .storage import new_id, now_iso, read_json, safe_child, safe_filename, write_json_atomic
+from .credentials import secret
 
 IMAGE_EXT = {".png", ".jpg", ".jpeg", ".webp"}
 VIDEO_EXT = {".mp4", ".mov", ".mkv", ".webm", ".avi", ".m4v"}
@@ -161,7 +162,7 @@ def _get_json(url: str, headers: dict) -> dict:
 
 def stock_available() -> list[str]:
     return [p for p, env in (("pexels", "PEXELS_API_KEY"), ("pixabay", "PIXABAY_API_KEY"))
-            if os.environ.get(env)]
+            if secret(env)]
 
 
 def _orientation(aspect: str) -> str:
@@ -176,7 +177,7 @@ def search_stock(provider: str, query: str, aspect: str = "9:16", kind: str = "v
     if not query:
         return []
     if provider == "pexels":
-        key = os.environ.get("PEXELS_API_KEY")
+        key = secret("PEXELS_API_KEY")
         if not key:
             raise StudioError("credential_not_set", "Kein Pexels-Schlüssel hinterlegt.", 409)
         q = urllib.parse.urlencode({"query": query, "per_page": limit,
@@ -203,7 +204,7 @@ def search_stock(provider: str, query: str, aspect: str = "9:16", kind: str = "v
                  "download": (p.get("src") or {}).get("large2x") or (p.get("src") or {}).get("original"),
                  "author": p.get("photographer"), "page": p.get("url"),
                  "license": LICENSES["pexels"]} for p in data.get("photos", [])[:limit]]
-    key = os.environ.get("PIXABAY_API_KEY")
+    key = secret("PIXABAY_API_KEY")
     if not key:
         raise StudioError("credential_not_set", "Kein Pixabay-Schlüssel hinterlegt.", 409)
     params = {"key": key, "q": query, "per_page": max(3, limit), "safesearch": "true"}

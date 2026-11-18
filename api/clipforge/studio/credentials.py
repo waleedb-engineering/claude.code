@@ -122,9 +122,38 @@ def _fernet():
     return Fernet(key)
 
 
+def _isolated() -> bool:
+    """Getrennte Benutzerbereiche aktiv und ein Benutzer angemeldet?"""
+    from ..auth import accounts_mode, workspaces_mode
+    from .workspace import current
+    return accounts_mode() and workspaces_mode() == "per_user" and current() is not None
+
+
 def _vault_path() -> str:
     from ..auth import auth_dir
+    if _isolated():
+        from .workspace import current
+        path = os.path.join(auth_dir(), "vaults")
+        os.makedirs(path, exist_ok=True)
+        return os.path.join(path, f"{current()}.enc")
     return os.path.join(auth_dir(), "credentials.enc")
+
+
+def secret(name: str) -> str | None:
+    """API-Schlüssel für den aktuellen Benutzer.
+
+    Einzelbetrieb/gemeinsamer Bereich: Prozessumgebung (.env, Hosting-Secrets).
+    Getrennte Bereiche: eigener verschlüsselter Tresor; die Server-Schlüssel
+    nutzt nur ein Administrator (oder alle, wenn CLIPFORGE_SHARE_SERVER_KEYS=1)."""
+    if not _isolated():
+        return os.environ.get(name) or None
+    value = _vault_read().get(name)
+    if value:
+        return value
+    from .workspace import is_admin
+    if is_admin() or os.environ.get("CLIPFORGE_SHARE_SERVER_KEYS") == "1":
+        return os.environ.get(name) or None
+    return None
 
 
 def _vault_read() -> dict:
@@ -162,7 +191,7 @@ def _vault_write(values: dict) -> None:
 
 def load_vault_into_env() -> list[str]:
     """Beim Start im Online-Modus: entschlüsselte Schlüssel in den Prozess laden."""
-    if not _encrypted_mode() or not os.path.exists(_vault_path()):
+    if not _encrypted_mode() or _isolated() or not os.path.exists(_vault_path()):
         return []
     loaded = []
     for name, value in _vault_read().items():
@@ -175,7 +204,7 @@ def load_vault_into_env() -> list[str]:
 def status() -> list[dict]:
     """Zustand je Provider — bezogen auf den LAUFENDEN Prozess."""
     return [{"provider": pid, "label": label, "env": name,
-             "configured": bool(os.environ.get(name))}
+             "configured": bool(secret(name))}
             for pid, (name, label, _url, _hdr) in KNOWN.items()]
 
 
@@ -189,7 +218,8 @@ def set_key(provider: str, value: str) -> dict:
             values = _vault_read()
             values[name] = value
             _vault_write(values)
-            os.environ[name] = value
+            if not _isolated():  # gemeinsamer Bereich: sofort prozessweit wirksam
+                os.environ[name] = value
             return {"provider": provider, "label": label, "env": name, "configured": True}
         try:
             _rewrite(name, value)
@@ -208,7 +238,7 @@ def delete_key(provider: str) -> dict:
             in_file = values.pop(name, None) is not None
             if in_file:
                 _vault_write(values)
-            in_env = os.environ.pop(name, None) is not None
+            in_env = (not _isolated()) and os.environ.pop(name, None) is not None
             if not in_file and not in_env:
                 raise StudioError("credential_not_set",
                                   f"Für {label} war kein Schlüssel hinterlegt.", 404)
@@ -240,7 +270,7 @@ HTTP_GET = _http_get  # in Tests ersetzbar
 def test_key(provider: str) -> dict:
     """Explizite Prüfung gegen den Provider (kostenloser Lese-Endpunkt)."""
     name, label, url, headers = _spec(provider)
-    key = os.environ.get(name)
+    key = secret(name)
     if not key:
         raise StudioError("credential_not_set", f"Für {label} ist kein Schlüssel hinterlegt.", 409)
     try:

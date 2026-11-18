@@ -21,6 +21,7 @@ from collections import Counter
 
 from .broll import keywords as _kw
 from .errors import StudioError
+from .credentials import secret
 
 CATEGORIES = {  # YouTube-Kategorie-IDs (Auswahl)
     "": "Alle", "10": "Musik", "17": "Sport", "20": "Gaming", "22": "Menschen & Blogs",
@@ -53,7 +54,7 @@ def _get(url: str) -> dict:
 
 
 def youtube_trends(region: str = "DE", category: str = "", limit: int = 25) -> dict:
-    key = os.environ.get("YOUTUBE_API_KEY")
+    key = secret("YOUTUBE_API_KEY")
     if not key:
         raise StudioError("credential_not_set",
                           "Für YouTube-Trends einen kostenlosen YOUTUBE_API_KEY unter Einrichtung "
@@ -85,6 +86,6 @@ def youtube_trends(region: str = "DE", category: str = "", limit: int = 25) -> d
 
 
 def status() -> dict:
-    return {"platforms": {p: {"available": p == "youtube" and bool(os.environ.get("YOUTUBE_API_KEY")),
+    return {"platforms": {p: {"available": p == "youtube" and bool(secret("YOUTUBE_API_KEY")),
                               "note": n} for p, n in PLATFORM_STATUS.items()},
             "categories": CATEGORIES}

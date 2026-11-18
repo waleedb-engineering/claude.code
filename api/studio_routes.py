@@ -257,40 +257,55 @@ class Studio:
                          "ob der Beitrag erschienen ist, bevor du erneut veröffentlichst."})
 
     def tick(self) -> None:
-        self.automations.tick()
+        from clipforge.studio import workspace
+        for ws in workspace.all_workspaces():
+            with workspace.use(*(ws or (None,))):
+                self.automations.tick()
         due = publish_ops.scheduler_tick(self.registry, datetime.datetime.now(datetime.timezone.utc))
         for item in due:
             if item.get("auto"):
                 self.start_scheduled_post(item)
 
     def start_scheduled_post(self, item: dict) -> dict | None:
-        """Fälligen Post mit gespeicherter Freigabe starten (genau einmal)."""
+        """Fälligen Post mit gespeicherter Freigabe starten (genau einmal) —
+        im Benutzerbereich des Job-Besitzers (dessen Konto-Token)."""
+        from clipforge.auth import user_role
         from clipforge.publishing import apply_publish_state, load_draft
+        from clipforge.studio import workspace
         job = self.registry.get(item["job_id"])
         if job is None:
             return None
-        draft = load_draft(job.job_dir, item["publishing_id"]) or {}
-        auto = draft.get("auto_publish") or {}
-        try:
-            prep = publish_ops.direct_prepare(
-                job.job_dir, item["publishing_id"], confirm=True, options=auto.get("options"),
-                confirm_cost=bool(auto.get("confirm_cost")),
-                approval={"source": "zeitplan", "approved_at": auto.get("approved_at"),
-                          "scheduled_at": draft.get("scheduled_at")})
-        except StudioError as exc:
-            apply_publish_state(job.job_dir, item["publishing_id"], {
-                "status": "failed", "error": exc.message, "last_error_code": exc.code})
-            return None
-        if prep["already"]:
-            return None
-        return self.service.tasks.submit(
-            "publish_direct", None, {"job_id": job.id, "publishing_id": item["publishing_id"]},
-            idempotency_key=f"direct:{job.id}:{item['publishing_id']}:"
-                            f"{prep['draft'].get('publish_attempt_id')}")
+        owner = (job.owner, user_role(job.owner)) if job.owner else None
+        with workspace.use(*(owner or (None,))):
+            draft = load_draft(job.job_dir, item["publishing_id"]) or {}
+            auto = draft.get("auto_publish") or {}
+            try:
+                prep = publish_ops.direct_prepare(
+                    job.job_dir, item["publishing_id"], confirm=True, options=auto.get("options"),
+                    confirm_cost=bool(auto.get("confirm_cost")),
+                    approval={"source": "zeitplan", "approved_at": auto.get("approved_at"),
+                              "scheduled_at": draft.get("scheduled_at")})
+            except StudioError as exc:
+                apply_publish_state(job.job_dir, item["publishing_id"], {
+                    "status": "failed", "error": exc.message, "last_error_code": exc.code})
+                return None
+            if prep["already"]:
+                return None
+            return self.service.tasks.submit(
+                "publish_direct", None, {"job_id": job.id, "publishing_id": item["publishing_id"]},
+                idempotency_key=f"direct:{job.id}:{item['publishing_id']}:"
+                                f"{prep['draft'].get('publish_attempt_id')}")
 
     def startup(self) -> dict:
-        tasks = self.service.tasks.recover()
-        autos = self.automations.recover()
+        from clipforge.studio import workspace
+        tasks: dict = {"requeued": [], "interrupted": []}
+        autos = None
+        for ws in workspace.all_workspaces():  # jeder Benutzerbereich hat eigene Aufgaben
+            with workspace.use(*(ws or (None,))):
+                res = self.service.tasks.recover()
+                tasks["requeued"] += res["requeued"]
+                tasks["interrupted"] += res["interrupted"]
+                autos = self.automations.recover()
         if os.environ.get("CLIPFORGE_STUDIO_WORKER", "on").strip().lower() != "off" \
                 and is_enabled("studio_automation"):
             self.worker.start()

@@ -14,6 +14,7 @@ import threading
 from concurrent.futures import ThreadPoolExecutor
 
 from .errors import StudioError
+from . import workspace
 from .storage import new_id, now_iso, read_json, require_id, studio_dir, write_json_atomic
 
 ACTIVE = ("queued", "running")
@@ -26,7 +27,7 @@ class TaskCanceled(Exception):
 
 class TaskManager:
     def __init__(self, base: str | None = None, max_workers: int | None = None) -> None:
-        self.dir = os.path.join(base or studio_dir(), "tasks")
+        self._base = base  # None → je Benutzerbereich (siehe workspace.py)
         os.makedirs(self.dir, exist_ok=True)
         if max_workers is None:
             try:
@@ -39,6 +40,12 @@ class TaskManager:
         self._lock = threading.RLock()
         self._cancel: set[str] = set()
         self._finish_hooks: list = []
+
+    @property
+    def dir(self) -> str:
+        path = os.path.join(self._base or studio_dir(), "tasks")
+        os.makedirs(path, exist_ok=True)
+        return path
 
     def on_finish(self, hook) -> None:
         """hook(task) läuft nach JEDEM Endzustand (auch Cancel/Recovery)."""
@@ -85,7 +92,13 @@ class TaskManager:
         return None
 
     def submit(self, kind: str, project_id: str | None, params: dict | None = None,
-               idempotency_key: str | None = None, run_inline: bool = False) -> dict:
+               idempotency_key: str | None = None, run_inline: bool = False,
+               owner: tuple[str, str] | None = None) -> dict:
+        """owner: (Benutzer, Rolle) für Systemaufgaben (z. B. Zeitplan) — sonst
+        der aktuelle Benutzerbereich."""
+        if owner is not None:
+            with workspace.use(*owner):
+                return self.submit(kind, project_id, params, idempotency_key, run_inline)
         if kind not in self._handlers:
             raise StudioError("task_kind_unknown", f"Unbekannte Aufgabe '{kind}'.", 400)
         with self._lock:
@@ -99,12 +112,13 @@ class TaskManager:
                 "result": None, "error": None, "attempts": 0,
                 "idempotency_key": idempotency_key,
                 "created_at": now_iso(), "started_at": None, "finished_at": None,
+                "workspace": workspace.current(),
             }
             self._save(task)
         if run_inline:
             self._run(task["id"])
             return self.get(task["id"])
-        self._pool.submit(self._run, task["id"])
+        self._pool.submit(self._run_in, workspace.snapshot(), task["id"])
         return task
 
     def retry(self, tid: str) -> dict:
@@ -117,7 +131,7 @@ class TaskManager:
             task.update(status="queued", error=None, finished_at=None)
             task["progress"].append("Erneut eingeplant.")
             self._save(task)
-        self._pool.submit(self._run, tid)
+        self._pool.submit(self._run_in, workspace.snapshot(), tid)
         return task
 
     def cancel(self, tid: str) -> dict:
@@ -140,6 +154,11 @@ class TaskManager:
             task = self.get(tid)
             task["progress"] = (task["progress"] + [message])[-200:]
             self._save(task)
+
+    def _run_in(self, snap, tid: str) -> None:
+        """Im Thread-Pool: Benutzerbereich der Aufgabe wiederherstellen."""
+        with workspace.use(*(snap or (None,))):
+            self._run(tid)
 
     def _run(self, tid: str) -> None:
         with self._lock:
@@ -199,7 +218,7 @@ class TaskManager:
             elif task["status"] == "queued" and task["kind"] in self._handlers:
                 requeued.append(task["id"])
         for tid in requeued:
-            self._pool.submit(self._run, tid)
+            self._pool.submit(self._run_in, workspace.snapshot(), tid)
         return {"requeued": requeued, "interrupted": interrupted}
 
     def shutdown(self) -> None:

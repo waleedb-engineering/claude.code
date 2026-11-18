@@ -7,6 +7,7 @@ import { ErrorBox, Loading, Notice, Pill, btnCls, cardCls, inputCls, labelCls } 
 import VoiceCloneSection from "@/components/studio/VoiceCloneSection";
 import AccountsSection from "@/components/studio/AccountsSection";
 import ModelsSection from "@/components/studio/ModelsSection";
+import UsersSection from "@/components/studio/UsersSection";
 
 export default function SetupPage() {
   const t = useT();
@@ -136,6 +137,8 @@ export default function SetupPage() {
       )}
 
       <AccountsSection />
+
+      <UsersSection />
 
       <ModelsSection />
 

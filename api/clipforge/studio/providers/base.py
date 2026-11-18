@@ -36,7 +36,8 @@ class Provider:
     live_verified = True
 
     def configured(self) -> bool:
-        return all(os.environ.get(k) for k in self.env_keys)
+        from ..credentials import secret
+        return all(secret(k) for k in self.env_keys)
 
     def status(self) -> tuple[str, str]:
         from ..flags import is_enabled

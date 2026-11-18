@@ -24,6 +24,7 @@ import urllib.request
 
 from ..errors import ProviderError
 from .base import AvatarProvider, VideoProvider
+from ..credentials import secret
 
 QUEUE = "https://queue.fal.run"
 MAX_INPUT_BYTES = 15 * 1024 * 1024
@@ -75,7 +76,7 @@ def data_uri(path: str) -> str:
 
 
 def _auth() -> dict:
-    return {"Authorization": "Key " + os.environ.get("FAL_KEY", "")}
+    return {"Authorization": "Key " + (secret("FAL_KEY") or "")}
 
 
 def run(model: str, payload: dict, should_cancel=None, timeout: float = 900.0,

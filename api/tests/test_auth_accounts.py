@@ -8,14 +8,15 @@ import stat
 import tempfile
 import time
 
-from studio_helpers import clear_env, make_client, run_all
+from studio_helpers import wait_task, clear_env, make_client, run_all
 
 from clipforge import auth
 
 PW = "ein-langes-passwort-123"
 SCRIPT = "Erster Satz hier. Zweiter Satz hier. Folge für mehr."
 ENV = ("CLIPFORGE_AUTH", "CLIPFORGE_AUTH_DIR", "CLIPFORGE_COOKIE_SECURE", "CLIPFORGE_SECRET_KEY",
-       "CLIPFORGE_RATE_LIMIT_PER_MIN", "CLIPFORGE_ENV_FILE", "OPENAI_API_KEY", "CLIPFORGE_TRUST_PROXY")
+       "CLIPFORGE_RATE_LIMIT_PER_MIN", "CLIPFORGE_ENV_FILE", "OPENAI_API_KEY", "CLIPFORGE_TRUST_PROXY",
+       "CLIPFORGE_WORKSPACES", "CLIPFORGE_REGISTRATION", "CLIPFORGE_SHARE_SERVER_KEYS")
 
 
 def _client(tmp, **extra):
@@ -160,10 +161,11 @@ def test_password_change_logs_out_everywhere_and_validates():
 
 
 def test_api_keys_are_stored_encrypted_in_account_mode():
+    """Gemeinsamer Bereich (CLIPFORGE_WORKSPACES=shared, altes Verhalten)."""
     tmp = tempfile.mkdtemp(prefix="acc_")
     secret = "sk-sentinel-encrypted-key-123"
     try:
-        client, _ = _client(tmp)
+        client, _ = _client(tmp, CLIPFORGE_WORKSPACES="shared")
         auth.create_user("walid", PW)
         headers = _login(client)
         r = client.put("/api/studio/credentials/openai", json={"api_key": secret}, headers=headers)
@@ -174,11 +176,11 @@ def test_api_keys_are_stored_encrypted_in_account_mode():
         assert os.environ["OPENAI_API_KEY"] == secret                # sofort wirksam
         # Neustart: Schlüssel wird entschlüsselt geladen
         os.environ.pop("OPENAI_API_KEY")
-        client, _ = _client(tmp)
+        client, _ = _client(tmp, CLIPFORGE_WORKSPACES="shared")
         assert os.environ.get("OPENAI_API_KEY") == secret
         # falscher Server-Schlüssel → kein Start-Abbruch, aber nichts geladen
         os.environ.pop("OPENAI_API_KEY")
-        client, _ = _client(tmp)
+        client, _ = _client(tmp, CLIPFORGE_WORKSPACES="shared")
         os.environ["CLIPFORGE_SECRET_KEY"] = "y" * 40
         from clipforge.studio.credentials import load_vault_into_env
         from clipforge.studio.errors import StudioError
@@ -229,3 +231,97 @@ def test_cli_creates_users_without_echoing_the_password():
 
 if __name__ == "__main__":
     run_all(globals())
+
+
+def test_per_user_workspaces_are_isolated():
+    """Getrennte Bereiche: Projekte, Aufgaben, Jobs, Schlüssel, Vorlagen je Benutzer."""
+    tmp = tempfile.mkdtemp(prefix="acc_")
+    try:
+        client, app_module = _client(tmp, OPENAI_API_KEY="sk-server-key-of-operator")
+        auth.create_user("anna", PW)            # erstes Konto → admin
+        auth.create_user("bert", PW)
+        assert auth.user_role("anna") == "admin" and auth.user_role("bert") == "user"
+        ha = _login(client, "anna")
+        r = client.post("/api/studio/projects", json={"workflow": "script", "script": SCRIPT},
+                        headers=ha)
+        assert r.status_code == 201, r.text
+        pid = r.json()["project"]["id"]
+        wait_task(client, r.json()["task_id"])
+        tid = r.json()["task_id"]
+        r = client.put("/api/studio/credentials/elevenlabs",
+                       json={"api_key": "sk-anna-eleven-123"}, headers=ha)
+        assert r.status_code == 200
+        client.post("/api/studio/templates", json={"name": "Annas Stil"}, headers=ha)
+        job = client.post(f"/api/studio/projects/{pid}/render", json={"mode": "final"}, headers=ha)
+        wait_task(client, job.json()["task"]["id"])
+        exp = client.post(f"/api/studio/projects/{pid}/export", json={}, headers=ha).json()
+        assert os.path.isdir(os.path.join(tmp, "studio", "users", "anna", "projects", pid))
+        creds = {c["provider"]: c["configured"] for c in
+                 client.get("/api/studio/credentials").json()["credentials"]}
+        assert creds["elevenlabs"] and creds["openai"]          # Admin darf Server-Schlüssel nutzen
+        client.post("/api/auth/logout")
+
+        hb = _login(client, "bert")
+        assert client.get("/api/studio/projects").json()["projects"] == []
+        assert client.get(f"/api/studio/projects/{pid}").status_code == 404
+        assert client.get(f"/api/studio/tasks/{tid}").status_code == 404
+        assert client.get(f"/api/jobs/{exp['job_id']}").status_code == 404
+        assert exp["job_id"] not in [j["id"] for j in client.get("/api/jobs").json()["jobs"]]
+        assert client.delete(f"/api/jobs/{exp['job_id']}", headers=hb).status_code == 404
+        creds = {c["provider"]: c["configured"] for c in
+                 client.get("/api/studio/credentials").json()["credentials"]}
+        assert not creds["elevenlabs"] and not creds["openai"]  # weder Annas noch Server-Schlüssel
+        names = [t["name"] for t in client.get("/api/studio/templates").json()["templates"]]
+        assert "Annas Stil" not in names
+        assert client.get("/api/admin/users").status_code == 403
+        assert os.environ.get("ELEVENLABS_API_KEY") is None     # nie prozessweit gesetzt
+        vault = os.path.join(tmp, "auth", "vaults", "anna.enc")
+        assert b"sk-anna-eleven-123" not in open(vault, "rb").read()
+        client.post("/api/auth/logout")
+
+        ha = _login(client, "anna")
+        assert client.get(f"/api/studio/projects/{pid}").status_code == 200
+        users = client.get("/api/admin/users").json()["users"]
+        assert {u["username"]: u["role"] for u in users} == {"anna": "admin", "bert": "user"}
+        r = client.post("/api/admin/users/bert/password", json={"password": "neues-passwort-456"},
+                        headers=ha)
+        assert r.json()["must_change_password"] is True
+        client.post("/api/auth/logout")
+        hb = _login(client, "bert", "neues-passwort-456")
+        r = client.post("/api/studio/projects", json={"workflow": "script", "script": SCRIPT}, headers=hb)
+        assert r.status_code == 403 and r.json()["detail"]["code"] == "password_change_required"
+        r = client.post("/api/auth/password", json={"old_password": "neues-passwort-456",
+                                                    "new_password": "bert-eigenes-pw-789"}, headers=hb)
+        assert r.status_code == 200
+        hb = _login(client, "bert", "bert-eigenes-pw-789")
+        assert client.post("/api/studio/projects", json={"workflow": "script", "script": SCRIPT},
+                           headers=hb).status_code == 201
+        assert len(client.get("/api/auth/sessions").json()["sessions"]) >= 1
+    finally:
+        clear_env(*ENV)
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+def test_registration_and_migration():
+    tmp = tempfile.mkdtemp(prefix="acc_")
+    try:
+        client, _ = _client(tmp)
+        assert client.post("/api/auth/register", json={"username": "neu", "password": PW}).status_code == 403
+        client, _ = _client(tmp, CLIPFORGE_REGISTRATION="open")
+        auth.create_user("chef", PW)
+        r = client.post("/api/auth/register", json={"username": "neu", "password": PW})
+        assert r.status_code == 201 and auth.user_role("neu") == "user"
+        # Altbestand im gemeinsamen Ordner → einem Benutzer zuordnen
+        os.makedirs(os.path.join(tmp, "studio", "projects", "abc123abc123"))
+        jobs = os.path.join(tmp, "jobs", "j1")
+        os.makedirs(jobs)
+        with open(os.path.join(jobs, "job.json"), "w") as fh:
+            fh.write('{"id": "j1", "owner": null}')
+        from clipforge.studio.workspace import migrate_shared
+        res = migrate_shared("chef", os.path.join(tmp, "jobs"))
+        assert "projects" in res["moved"] and res["jobs_assigned"] == 1
+        assert os.path.isdir(os.path.join(tmp, "studio", "users", "chef", "projects", "abc123abc123"))
+        assert '"owner": "chef"' in open(os.path.join(jobs, "job.json")).read()
+    finally:
+        clear_env(*ENV)
+        shutil.rmtree(tmp, ignore_errors=True)

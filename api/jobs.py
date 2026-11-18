@@ -101,6 +101,8 @@ class Job:
     cancel_requested: bool = False
     canceled_at: str | None = None
     cancel_reason: str | None = None
+    # --- Besitzer im Online-Betrieb mit getrennten Benutzerbereichen ---
+    owner: str | None = None
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -131,6 +133,11 @@ class Job:
         field_names = {f.name for f in dataclasses.fields(cls)}
         kwargs = {k: v for k, v in data.items() if k in field_names}
         return cls(**kwargs)
+
+
+def _owner() -> str | None:
+    from clipforge.studio.workspace import current
+    return current()
 
 
 class JobRegistry:
@@ -171,6 +178,7 @@ class JobRegistry:
             advanced_analysis=advanced_analysis,
             created_at=_now(),
             updated_at=_now(),
+            owner=_owner(),
         )
         with self._lock:
             self._jobs[job_id] = job
@@ -197,12 +205,17 @@ class JobRegistry:
         return job
 
     def get(self, job_id: str) -> Job | None:
+        from clipforge.studio.workspace import visible
         with self._lock:
-            return self._jobs.get(job_id)
+            job = self._jobs.get(job_id)
+        # fremde Jobs sind für andere Benutzer „nicht vorhanden“ (kein Existenz-Leck)
+        return job if job is not None and visible(job.owner) else None
 
     def list(self) -> list[Job]:
+        from clipforge.studio.workspace import visible
         with self._lock:
-            return sorted(self._jobs.values(), key=lambda j: j.created_at, reverse=True)
+            jobs = [j for j in self._jobs.values() if visible(j.owner)]
+        return sorted(jobs, key=lambda j: j.created_at, reverse=True)
 
     # ---------- Löschen (sicher, nur innerhalb jobs/) ----------
 
@@ -236,9 +249,14 @@ class JobRegistry:
         """
         target = self.safe_job_dir(job_id)  # kann UnsafeJobPath werfen
 
+        from clipforge.studio.workspace import current, is_admin, visible
         with self._lock:
             job = self._jobs.get(job_id)
         exists_on_disk = os.path.isdir(target)
+        if job is not None and not visible(job.owner):
+            raise JobNotFound(f"Job {job_id} nicht gefunden.")  # fremder Job
+        if job is None and current() is not None and not is_admin():
+            raise JobNotFound(f"Job {job_id} nicht gefunden.")  # verwaiste Ordner: nur Admin
         if job is None and not exists_on_disk:
             raise JobNotFound(f"Job {job_id} nicht gefunden.")
 
@@ -283,8 +301,7 @@ class JobRegistry:
         (ein bereits laufender FFmpeg-Schritt läuft zu Ende). Wirft JobNotFound
         (→404) und JobNotCancelable (→409) bei Endzuständen.
         """
-        with self._lock:
-            job = self._jobs.get(job_id)
+        job = self.get(job_id)  # berücksichtigt den Benutzerbereich
         if job is None:
             raise JobNotFound(f"Job {job_id} nicht gefunden.")
         if job.status not in CANCELABLE_STATUSES:

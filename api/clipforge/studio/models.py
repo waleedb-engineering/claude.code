@@ -14,7 +14,7 @@ import threading
 import urllib.request
 
 from .errors import StudioError
-from .storage import studio_dir
+from .storage import studio_root
 
 _GH = "https://github.com/danielgatis/rembg/releases/download/v0.0.0/"
 _ZOO = "https://media.githubusercontent.com/media/opencv/opencv_zoo/main/models/"
@@ -115,7 +115,7 @@ _guard = threading.Lock()
 
 
 def models_dir() -> str:
-    path = os.environ.get("CLIPFORGE_MODELS_DIR") or os.path.join(studio_dir(), "models")
+    path = os.environ.get("CLIPFORGE_MODELS_DIR") or os.path.join(studio_root(), "models")
     os.makedirs(path, exist_ok=True)
     return path
 

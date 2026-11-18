@@ -8,8 +8,10 @@ Session-Token, siehe local_security.py).
   SHA-256-Hash. Jede Sitzung hat ein eigenes CSRF-Token für Änderungen.
 - Ratenbegrenzung: Login je IP und je Benutzername; allgemeine Anfragen je
   Sitzung bzw. IP.
-- Daten: ein gemeinsamer Arbeitsbereich für alle Konten (KEINE Trennung
-  zwischen Benutzern) — gedacht für den privaten Online-Betrieb.
+- Daten: je Benutzer ein eigener Bereich (CLIPFORGE_WORKSPACES=per_user,
+  Standard) oder ein gemeinsamer (=shared, altes Verhalten). Siehe
+  clipforge/studio/workspace.py.
+- Rollen: admin (erstes Konto; verwaltet Benutzer) und user.
 """
 
 from __future__ import annotations
@@ -34,8 +36,8 @@ def accounts_mode() -> bool:
 
 
 def auth_dir() -> str:
-    from .studio.storage import studio_dir
-    path = os.environ.get("CLIPFORGE_AUTH_DIR") or os.path.join(studio_dir(), "auth")
+    from .studio.storage import studio_root
+    path = os.environ.get("CLIPFORGE_AUTH_DIR") or os.path.join(studio_root(), "auth")
     os.makedirs(path, exist_ok=True)
     try:
         os.chmod(path, 0o700)
@@ -115,11 +117,27 @@ def _write(path: str, data: dict) -> None:
 
 
 def list_users() -> list[dict]:
-    return [{"username": u, "created_at": d.get("created_at")}
+    return [{"username": u, "created_at": d.get("created_at"), "role": d.get("role") or "admin"}
             for u, d in sorted(_read(_users_path()).items())]
 
 
-def create_user(username: str, password: str) -> dict:
+ROLES = ("admin", "user")
+
+
+def workspaces_mode() -> str:
+    return "shared" if os.environ.get("CLIPFORGE_WORKSPACES", "per_user") == "shared" else "per_user"
+
+
+def registration_open() -> bool:
+    return os.environ.get("CLIPFORGE_REGISTRATION", "closed") == "open"
+
+
+def user_role(username: str) -> str:
+    user = _read(_users_path()).get(username) or {}
+    return user.get("role") or "admin"  # Konten von vor den Rollen: Admin (Bestand)
+
+
+def create_user(username: str, password: str, role: str | None = None) -> dict:
     username = (username or "").strip().lower()
     if not _USER_RE.match(username):
         raise AuthError("invalid_username",
@@ -129,10 +147,58 @@ def create_user(username: str, password: str) -> dict:
         users = _read(_users_path())
         if username in users:
             raise AuthError("user_exists", "Diesen Benutzer gibt es schon.", 409)
-        users[username] = {"password": hash_password(password),
+        role = role or ("admin" if not users else "user")  # erstes Konto = Admin
+        if role not in ROLES:
+            raise AuthError("invalid_role", "Unbekannte Rolle.")
+        users[username] = {"password": hash_password(password), "role": role,
                            "created_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}
         _write(_users_path(), users)
-    return {"username": username}
+    return {"username": username, "role": role}
+
+
+def delete_user(username: str) -> None:
+    with _lock:
+        users = _read(_users_path())
+        if username not in users:
+            raise AuthError("user_unknown", "Unbekannter Benutzer.", 404)
+        admins = [u for u, d in users.items() if (d.get("role") or "admin") == "admin"]
+        if admins == [username]:
+            raise AuthError("last_admin", "Der letzte Administrator kann nicht gelöscht werden.", 409)
+        users.pop(username)
+        _write(_users_path(), users)
+    revoke_user_sessions(username)
+
+
+def set_password(username: str, new: str) -> None:
+    """Admin setzt ein (vorläufiges) Passwort; alle Sitzungen enden."""
+    _validate_password(new)
+    with _lock:
+        users = _read(_users_path())
+        if username not in users:
+            raise AuthError("user_unknown", "Unbekannter Benutzer.", 404)
+        users[username]["password"] = hash_password(new)
+        users[username]["must_change_password"] = True
+        _write(_users_path(), users)
+    revoke_user_sessions(username)
+
+
+def list_sessions(username: str, current_token: str | None) -> list[dict]:
+    cur = _token_hash(current_token) if current_token else None
+    return [{"id": k[:12], "created": v.get("created"), "expires": v.get("expires"),
+             "current": k == cur}
+            for k, v in _read(_sessions_path()).items()
+            if v.get("username") == username and v.get("expires", 0) > time.time()]
+
+
+def revoke_other_sessions(username: str, current_token: str | None) -> int:
+    cur = _token_hash(current_token) if current_token else None
+    with _lock:
+        sessions = _read(_sessions_path())
+        kept = {k: v for k, v in sessions.items() if v.get("username") != username or k == cur}
+        removed = len(sessions) - len(kept)
+        if removed:
+            _write(_sessions_path(), kept)
+    return removed
 
 
 def change_password(username: str, old: str, new: str) -> None:
@@ -143,6 +209,7 @@ def change_password(username: str, old: str, new: str) -> None:
             raise AuthError("invalid_credentials", "Das bisherige Passwort stimmt nicht.", 403)
         _validate_password(new)
         user["password"] = hash_password(new)
+        user.pop("must_change_password", None)
         _write(_users_path(), users)
     revoke_user_sessions(username)  # überall abmelden
 
@@ -177,9 +244,12 @@ def session_for(token: str | None) -> dict | None:
     session = _read(_sessions_path()).get(_token_hash(token))
     if not session or session.get("expires", 0) <= time.time():
         return None
-    if session.get("username") not in _read(_users_path()):
+    users = _read(_users_path())
+    user = users.get(session.get("username"))
+    if not user:
         return None  # Konto gelöscht → Sitzung ungültig
-    return session
+    return {**session, "role": user.get("role") or "admin",
+            "must_change_password": bool(user.get("must_change_password"))}
 
 
 def logout(token: str | None) -> None:
@@ -271,6 +341,11 @@ def _cli(argv: list[str] | None = None) -> int:
     sub = parser.add_subparsers(dest="cmd", required=True)
     c = sub.add_parser("create-user", help="Konto anlegen (Passwort wird abgefragt)")
     c.add_argument("username")
+    c.add_argument("--role", choices=ROLES, default=None,
+                   help="admin oder user (Standard: erstes Konto admin, sonst user)")
+    m = sub.add_parser("migrate-shared",
+                       help="bisherigen gemeinsamen Bestand einem Benutzer zuordnen")
+    m.add_argument("username")
     sub.add_parser("list-users")
     r = sub.add_parser("reset-password", help="Passwort neu setzen (meldet überall ab)")
     r.add_argument("username")
@@ -278,14 +353,25 @@ def _cli(argv: list[str] | None = None) -> int:
     try:
         if args.cmd == "list-users":
             for user in list_users():
-                print(user["username"], user["created_at"])
+                print(user["username"], user["role"], user["created_at"])
+            return 0
+        if args.cmd == "migrate-shared":
+            from .studio.workspace import migrate_shared
+            if args.username.lower() not in _read(_users_path()):
+                print("Unbekannter Benutzer.")
+                return 1
+            jobs = os.environ.get("CLIPFORGE_JOBS_DIR") or os.path.join(
+                os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "jobs")
+            res = migrate_shared(args.username.lower(), jobs)
+            print(f"Verschoben: {', '.join(res['moved']) or '–'}; übersprungen (Ziel nicht leer): "
+                  f"{', '.join(res['skipped']) or '–'}; Jobs zugeordnet: {res['jobs_assigned']}")
             return 0
         password = os.environ.get("CLIPFORGE_NEW_PASSWORD") or getpass.getpass("Passwort: ")
         if not os.environ.get("CLIPFORGE_NEW_PASSWORD") and getpass.getpass("Wiederholen: ") != password:
             print("Die Passwörter stimmen nicht überein.")
             return 1
         if args.cmd == "create-user":
-            create_user(args.username, password)
+            create_user(args.username, password, args.role)
             print(f"Konto '{args.username.lower()}' angelegt.")
         else:
             _validate_password(password)

@@ -10,7 +10,15 @@ export const TOKEN_HEADER = "X-ClipForge-Token";
 
 let cached: Promise<string | null> | null = null;
 
-export type SessionInfo = { mode: "local" | "accounts"; user: string | null; token: string | null };
+export type SessionInfo = {
+  mode: "local" | "accounts";
+  user: string | null;
+  token: string | null;
+  role?: "admin" | "user" | null;
+  must_change_password?: boolean;
+  workspaces?: "per_user" | "shared";
+  registration_open?: boolean;
+};
 
 /** Online-Betrieb: ohne Anmeldung zur Login-Seite (außer man ist schon dort). */
 export function goToLogin(): void {
@@ -25,7 +33,15 @@ export async function sessionInfo(): Promise<SessionInfo> {
     const res = await fetch(`${BASE}/api/session`, { cache: "no-store" });
     const data = await res.json().catch(() => ({}));
     if (res.status === 401) return { mode: "accounts", user: null, token: null };
-    return { mode: data.mode === "accounts" ? "accounts" : "local", user: data.user ?? null, token: data.token ?? null };
+    return {
+      mode: data.mode === "accounts" ? "accounts" : "local",
+      user: data.user ?? null,
+      token: data.token ?? null,
+      role: data.role ?? null,
+      must_change_password: !!data.must_change_password,
+      workspaces: data.workspaces,
+      registration_open: !!data.registration_open,
+    };
   } catch {
     return { mode: "local", user: null, token: null };
   }

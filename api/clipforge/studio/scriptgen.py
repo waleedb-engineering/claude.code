@@ -321,8 +321,9 @@ def llm_script(*, workflow, source_text, title, language, target_seconds, tone, 
     try:
         if client is None:
             import anthropic
+            from .credentials import secret
             client = anthropic.Anthropic(
-                api_key=settings.anthropic_api_key, timeout=settings.llm_timeout_seconds)
+                api_key=secret("ANTHROPIC_API_KEY"), timeout=settings.llm_timeout_seconds)
         prompt = _LLM_PROMPT.format(
             seconds=int(target_seconds), lang=language, workflow=workflow,
             tone=tone or "neutral", style=style or "clean", brief=_brief_lines(brief),
@@ -360,8 +361,10 @@ def generate_script(*, workflow: str, source_text: str, title: str = "",
     dropped = 0
     if workflow != "script":  # ein geliefertes Skript bleibt wörtlich erhalten
         source_text, dropped = _drop_forbidden(source_text or "", brief)
+    from .credentials import secret
     llm_ok = bool(use_llm and settings is not None and
-                  (llm_client is not None or getattr(settings, "llm_available", False)))
+                  (llm_client is not None or (getattr(settings, "use_llm", True)
+                                              and secret("ANTHROPIC_API_KEY"))))
     if llm_ok and workflow != "script" and (source_text or "").strip():
         result = llm_script(
             workflow=workflow, source_text=source_text, title=title, language=lang,

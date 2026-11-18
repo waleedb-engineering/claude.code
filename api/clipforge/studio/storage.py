@@ -23,6 +23,23 @@ def studio_dir() -> str:
         "studio_data",
     )
     path = os.path.abspath(os.environ.get("CLIPFORGE_STUDIO_DIR", default))
+    from .workspace import current
+    user = current()
+    if user:  # getrennter Benutzerbereich (Online-Betrieb)
+        if not re.fullmatch(r"[a-z0-9_.-]{3,40}", user) or user.startswith("."):
+            raise ValueError("ungültiger Benutzerbereich")
+        path = os.path.join(path, "users", user)
+    os.makedirs(path, exist_ok=True)
+    return path
+
+
+def studio_root() -> str:
+    """Gemeinsame Wurzel (Anmeldung, lokale Modelle) — unabhängig vom Benutzer."""
+    default = os.path.join(
+        os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+        "studio_data",
+    )
+    path = os.path.abspath(os.environ.get("CLIPFORGE_STUDIO_DIR", default))
     os.makedirs(path, exist_ok=True)
     return path
 
