@@ -476,9 +476,12 @@ def test_credentials_take_effect_without_restart_and_never_leak():
         assert "# Kommentar bleibt" in content and "OPENAI_API_KEY_BACKUP=keep-me" in content
         assert "export OTHER='a b'" in content and "ELEVENLABS_API_KEY=old-value-123" in content
         assert not [f for f in os.listdir(tmp) if f.startswith(".env.")]
-        out = subprocess.run(["bash", "-c", f'source "{env}"; printf %s "$OPENAI_API_KEY"'],
-                             capture_output=True, text=True).stdout
-        assert out == key
+        from clipforge.envfile import parse  # Windows liest die .env mit diesem Parser
+        assert parse(open(env, encoding="utf-8").read())["OPENAI_API_KEY"] == key
+        if os.name != "nt":  # unter Linux/macOS zusätzlich echt mit bash
+            out = subprocess.run(["bash", "-c", f'source "{env}"; printf %s "$OPENAI_API_KEY"'],
+                                 capture_output=True, text=True).stdout
+            assert out == key
         # überschreiben erzeugt keinen zweiten Eintrag
         client.put("/api/studio/credentials/openai", json={"api_key": "zweiter-wert-123"})
         assert open(env).read().count("OPENAI_API_KEY=") == 1
@@ -621,8 +624,11 @@ def test_mutations_require_token_and_foreign_origins_are_rejected():
         for root, _, files in os.walk(tmp):
             for name in files:
                 full = os.path.join(root, name)
-                if full != token_file and os.path.getsize(full) < 2_000_000:
-                    assert token.encode() not in open(full, "rb").read(), full
+                try:  # Hintergrundaufgaben legen kurzlebige .tmp-Dateien an
+                    if full != token_file and os.path.getsize(full) < 2_000_000:
+                        assert token.encode() not in open(full, "rb").read(), full
+                except FileNotFoundError:
+                    continue
         assert token not in client.get("/api/studio/overview").text
         # Neustart lädt dasselbe Token (Frontend bleibt angemeldet)
         client2, _ = make_client(tmp, CLIPFORGE_API_AUTH="on", CLIPFORGE_API_TOKEN_FILE=token_file)
