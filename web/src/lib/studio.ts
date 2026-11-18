@@ -302,7 +302,7 @@ export type DraftState = {
   platform: string;
   title: string;
   status: string;
-  state: "not_connected" | "ready" | "scheduled" | "due" | "published" | "failed";
+  state: "not_connected" | "ready" | "scheduled" | "due" | "published" | "failed" | "uploading" | "in_platform_drafts";
   scheduled_at: string | null;
   published_at: string | null;
   publish_source: string | null;
@@ -502,6 +502,16 @@ export const studio = {
 
   platforms: () => get<{ platforms: PlatformReadiness[]; safety: string }>("/publishing/platforms"),
   drafts: () => get<{ drafts: DraftState[] }>("/publishing/drafts").then((d) => d.drafts),
+  accounts: () =>
+    get<{
+      accounts: { platform: string; label: string; state: string; account: string | null; requires_env: string[] }[];
+      not_supported: Record<string, string>;
+    }>("/accounts"),
+  connectAccount: (platform: string) => post<{ auth_url: string }>(`/accounts/${platform}/connect`),
+  disconnectAccount: (platform: string) => request<{ disconnected: boolean }>("DELETE", `/accounts/${platform}`),
+  tiktokUpload: (jobId: string, pubId: string) =>
+    post<{ task: Task | null; already: boolean }>(`/publishing/${jobId}/${pubId}/tiktok`, { confirm: true }),
+  tiktokStatus: (jobId: string, pubId: string) => post<unknown>(`/publishing/${jobId}/${pubId}/tiktok/status`),
   markPublished: (jobId: string, pubId: string, url: string) =>
     post<unknown>(`/publishing/${jobId}/${pubId}/mark-published`, { confirm: true, url: url || null }),
 

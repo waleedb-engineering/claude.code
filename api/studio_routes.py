@@ -130,6 +130,10 @@ class AutomationPayload(BaseModel):
     monthly_budget_usd: float | None = Field(default=None, ge=0, le=10000)
 
 
+class ConfirmPayload(BaseModel):
+    confirm: bool = False
+
+
 class CredentialPayload(BaseModel):
     api_key: str = Field(min_length=8, max_length=500)
 
@@ -636,6 +640,49 @@ def init_studio(app: FastAPI, registry, youtube_status=None,
         rows.sort(key=lambda x: x["scheduled_at"] or x["published_at"] or "", reverse=True)
         return {"drafts": rows}
 
+    # ------------------------------------------------- Konten / TikTok
+    from clipforge.studio import accounts as accts
+
+    @r.get("/accounts")
+    def account_list() -> dict:
+        return {"accounts": [accts.status(p) for p in accts.PLATFORMS],
+                "not_supported": {
+                    "instagram_reels": "Kein Adapter: braucht Business-Konto, geprüfte Meta-App "
+                                       "und öffentlich erreichbare Video-URL.",
+                    "x": "Kein Adapter: braucht kostenpflichtigen X-API-Zugang."}}
+
+    @r.post("/accounts/{platform}/connect")
+    def account_connect(platform: str) -> dict:
+        return accts.start(platform)
+
+    @r.delete("/accounts/{platform}")
+    def account_disconnect(platform: str) -> dict:
+        accts.disconnect(platform)
+        return {"disconnected": True}
+
+    @r.post("/publishing/{job_id}/{publishing_id}/tiktok", status_code=202)
+    def tiktok_publish(job_id: str, publishing_id: str, req: ConfirmPayload) -> dict:
+        job = _job(job_id)
+        prep = publish_ops.tiktok_prepare(job.job_dir, publishing_id, req.confirm)
+        if prep["already"]:
+            return {"task": None, "draft": prep["draft"], "already": True}
+        task = svc.tasks.submit("publish_tiktok", None,
+                                {"job_id": job.id, "publishing_id": publishing_id},
+                                idempotency_key=f"tiktok:{job.id}:{publishing_id}:"
+                                                f"{prep['draft'].get('publish_started_at')}")
+        return {"task": task, "draft": prep["draft"], "already": False}
+
+    @r.post("/publishing/{job_id}/{publishing_id}/tiktok/status")
+    def tiktok_status(job_id: str, publishing_id: str) -> dict:
+        job = _job(job_id)
+        return publish_ops.tiktok_refresh(job.job_dir, publishing_id)
+
+    def _task_publish_tiktok(task: dict, progress, should_cancel) -> dict:
+        job = _job(task["params"]["job_id"])
+        res = publish_ops.tiktok_upload(job.job_dir, task["params"]["publishing_id"], progress)
+        return {"state": res["tiktok"]["state"], "publish_id": res["draft"].get("external_post_id")}
+    svc.tasks.register("publish_tiktok", _task_publish_tiktok)
+
     @r.post("/publishing/{job_id}/{publishing_id}/mark-published")
     def publishing_mark(job_id: str, publishing_id: str, req: MarkPublished) -> dict:
         job = _job(job_id)
@@ -709,6 +756,20 @@ def init_studio(app: FastAPI, registry, youtube_status=None,
         task = svc.start_ingest(project["id"])
         return {"project": project, "task_id": task["id"],
                 "originality_notice": ideas.ORIGINALITY_NOTICE[req.language]}
+
+    @app.get("/api/studio/accounts/{platform}/callback")
+    def account_callback(platform: str, code: str | None = None, state: str | None = None,
+                         error: str | None = None):
+        """OAuth-Rückkehr von der Plattform → zurück zur Einrichtungsseite."""
+        from fastapi.responses import RedirectResponse
+        from urllib.parse import quote
+        front = os.environ.get("CLIPFORGE_FRONTEND_URL", "http://127.0.0.1:3000").rstrip("/")
+        try:
+            accts.callback(platform, code, state, error)
+            return RedirectResponse(f"{front}/studio/setup?account={quote(platform)}&result=ok", 303)
+        except StudioError as exc:
+            return RedirectResponse(
+                f"{front}/studio/setup?account={quote(platform)}&result={quote(exc.code)}", 303)
 
     app.include_router(r)
     return studio

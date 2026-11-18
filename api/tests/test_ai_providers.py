@@ -62,16 +62,14 @@ def _setup(tmp, fake, **env):
     fal.FAL_HTTP = fake.http
     fal.DOWNLOAD_KWARGS.clear()
     fal.DOWNLOAD_KWARGS.update(fake.download_kwargs())
-    import clipforge.studio.providers.fal as falmod
-    falmod.time.sleep = lambda s: None  # nicht warten
+    fal.SLEEP = lambda s: None  # nicht warten (nur im fal-Modul)
     return make_service(tmp, FAL_KEY="sentinel-fal-key", **env)
 
 
 def _restore():
-    import time as real_time
     fal.FAL_HTTP = fal._http
     fal.DOWNLOAD_KWARGS.clear()
-    fal.time.sleep = real_time.sleep
+    fal.SLEEP = fal.time.sleep
     clear_env("FAL_KEY", "ELEVENLABS_API_KEY", "CLIPFORGE_PROVIDER_PRICES")
 
 

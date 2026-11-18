@@ -5,6 +5,7 @@ import { tDyn, useT } from "@/lib/i18n";
 import { errorMessage, studio, type CredentialStatus, type PlatformReadiness, type ProviderInfo } from "@/lib/studio";
 import { ErrorBox, Loading, Notice, Pill, btnCls, cardCls, inputCls, labelCls } from "@/components/studio/ui";
 import VoiceCloneSection from "@/components/studio/VoiceCloneSection";
+import AccountsSection from "@/components/studio/AccountsSection";
 
 export default function SetupPage() {
   const t = useT();
@@ -132,6 +133,8 @@ export default function SetupPage() {
           </ul>
         </section>
       )}
+
+      <AccountsSection />
 
       <VoiceCloneSection />
 

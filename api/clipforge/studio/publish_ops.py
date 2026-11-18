@@ -14,11 +14,11 @@ import datetime
 import os
 
 from ..publishing import PLATFORMS, apply_publish_state, list_drafts, load_draft
+from .storage import now_iso
 from .errors import StudioError
 from .safe_fetch import validate_url
 
 _NO_ADAPTER = {
-    "tiktok": "TikTok Content Posting API erfordert ein App-Audit; kein Adapter vorhanden.",
     "instagram_reels": "Instagram Graph API braucht öffentlich gehostete Videos; kein Adapter vorhanden.",
     "x": "X-API für Medien-Uploads ist kostenpflichtig; kein Adapter vorhanden.",
 }
@@ -46,8 +46,26 @@ def platform_readiness(settings, youtube: dict | None) -> list[dict]:
         "fallback": "export_pack",
         "note": "Upload ausschließlich als PRIVAT und nur nach ausdrücklicher Bestätigung.",
     }]
+    from . import accounts
+    tt = accounts.status("tiktok")
+    tt_steps = {
+        "not_configured": ["TikTok-Entwickler-App anlegen (developers.tiktok.com), Content Posting API "
+                           "mit Scope video.upload aktivieren",
+                           "TIKTOK_CLIENT_KEY und TIKTOK_CLIENT_SECRET setzen",
+                           "Konto unter Studio → Einrichtung verbinden"],
+        "not_connected": ["Konto unter Studio → Einrichtung verbinden"],
+        "expired": ["TikTok-Konto neu verbinden"],
+        "connected": [],
+    }[tt["state"]]
+    out.append({
+        "platform": "tiktok", "state": "ready" if tt["state"] == "connected" else "not_connected",
+        "adapter": "tiktok_inbox_upload", "upload_visibility": "tiktok_drafts",
+        "oauth_ready": tt["state"] != "not_configured", "setup_steps": tt_steps,
+        "fallback": "export_pack", "live_verified": False,
+        "note": ("Upload in deine TikTok-Entwürfe; veröffentlichen tust du selbst in der "
+                 "TikTok-App. Gegen die echte API noch ungetestet.")})
     for platform in PLATFORMS:
-        if platform == "youtube_shorts":
+        if platform in ("youtube_shorts", "tiktok"):
             continue
         out.append({
             "platform": platform, "state": "not_connected", "adapter": None,
@@ -64,6 +82,10 @@ def draft_state(draft: dict, readiness: list[dict]) -> str:
         return "published"
     if status == "failed":
         return "failed"
+    if draft.get("upload_state") == "in_tiktok_drafts":
+        return "in_platform_drafts"
+    if draft.get("upload_state") == "uploading" and draft.get("publish_platform") == "tiktok":
+        return "uploading"
     if status == "scheduled":
         return "due" if draft.get("schedule_state") == "due" else "scheduled"
     state = next((r["state"] for r in readiness if r["platform"] == draft.get("platform")),
@@ -126,3 +148,69 @@ def mark_published(job_dir: str, publishing_id: str, *, confirm: bool,
     return apply_publish_state(job_dir, publishing_id, {
         "status": "published", "published_at": stamp, "publish_source": "manual",
         "external_url": url or None, "schedule_state": None})
+
+
+# ------------------------------------------------------------- TikTok
+
+def tiktok_prepare(job_dir: str, publishing_id: str, confirm: bool) -> dict:
+    """Prüft alles VOR dem Upload. Idempotent: läuft schon/ist fertig → kein zweiter Upload."""
+    from . import accounts
+    draft = load_draft(job_dir, publishing_id)
+    if draft is None:
+        raise StudioError("draft_not_found", "Publishing-Draft nicht gefunden.", 404)
+    if draft.get("platform") != "tiktok":
+        raise StudioError("wrong_platform", "Dieser Entwurf ist nicht für TikTok.", 409)
+    if not confirm:
+        raise StudioError("confirmation_required",
+                          "Bitte ausdrücklich bestätigen (confirm=true), dass das Video in deine "
+                          "TikTok-Entwürfe hochgeladen werden soll.", 400)
+    if draft.get("publish_platform") == "tiktok" and draft.get("upload_state") in (
+            "uploading", "in_tiktok_drafts") or draft.get("status") == "published":
+        return {"already": True, "draft": draft}
+    if accounts.status("tiktok")["state"] != "connected":
+        raise StudioError("platform_not_connected", "TikTok ist nicht verbunden.", 409)
+    mp4 = draft.get("mp4_path") or ""
+    if not mp4 or not os.path.isfile(mp4):
+        raise StudioError("video_missing", "Die Videodatei dieses Entwurfs fehlt.", 409)
+    draft = apply_publish_state(job_dir, publishing_id, {
+        "status": "publishing", "publish_platform": "tiktok", "upload_state": "uploading",
+        "publish_started_at": now_iso(), "error": None})
+    return {"already": False, "draft": draft}
+
+
+def tiktok_upload(job_dir: str, publishing_id: str, progress=None) -> dict:
+    from . import accounts
+    draft = load_draft(job_dir, publishing_id)
+    try:
+        publish_id = accounts.upload_to_inbox(draft["mp4_path"], progress)
+    except StudioError as exc:
+        apply_publish_state(job_dir, publishing_id, {
+            "status": "failed", "upload_state": "failed",
+            "error": exc.message, "last_error_code": exc.code})
+        raise
+    apply_publish_state(job_dir, publishing_id, {
+        "external_post_id": publish_id, "upload_state": "uploaded",
+        "last_upload_activity_at": now_iso()})
+    return tiktok_refresh(job_dir, publishing_id)
+
+
+def tiktok_refresh(job_dir: str, publishing_id: str) -> dict:
+    """Status bei TikTok abfragen und ehrlich übernehmen."""
+    from . import accounts
+    draft = load_draft(job_dir, publishing_id)
+    if draft is None:
+        raise StudioError("draft_not_found", "Publishing-Draft nicht gefunden.", 404)
+    publish_id = draft.get("external_post_id")
+    if draft.get("publish_platform") != "tiktok" or not publish_id:
+        raise StudioError("not_uploaded", "Dieser Entwurf wurde noch nicht an TikTok übergeben.", 409)
+    st = accounts.fetch_status(publish_id)
+    updates: dict = {"last_upload_activity_at": now_iso()}
+    if st["state"] == "published":
+        updates.update(status="published", upload_state="published", publish_source="tiktok",
+                       published_at=draft.get("published_at") or now_iso())
+    elif st["state"] == "in_tiktok_drafts":
+        updates.update(status="publishing", upload_state="in_tiktok_drafts")
+    elif st["state"] == "failed":
+        updates.update(status="failed", upload_state="failed",
+                       error=f"TikTok: {str(st.get('fail_reason') or 'fehlgeschlagen')[:160]}")
+    return {"draft": apply_publish_state(job_dir, publishing_id, updates), "tiktok": st}

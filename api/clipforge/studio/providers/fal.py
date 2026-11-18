@@ -46,6 +46,7 @@ def _http(method: str, url: str, headers: dict, body: dict | None = None,
 
 
 FAL_HTTP = _http  # in Tests ersetzbar
+SLEEP = time.sleep  # in Tests ersetzbar (nie time.sleep global überschreiben)
 
 
 def _download(url: str, out_path: str) -> None:
@@ -108,7 +109,7 @@ def run(model: str, payload: dict, should_cancel=None, timeout: float = 900.0,
             raise ProviderError("fal", f"Auftrag fehlgeschlagen ({status or code})")
         if time.monotonic() > deadline:
             raise ProviderError("fal", "Zeitlimit überschritten")
-        time.sleep(poll_interval)
+        SLEEP(poll_interval)
     code, result = FAL_HTTP("GET", sub["response_url"], _auth(), None)
     if code >= 400:
         detail = result.get("detail")

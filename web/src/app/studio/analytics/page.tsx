@@ -224,6 +224,39 @@ export default function AnalyticsPage() {
                     onChange={(e) => setUrls({ ...urls, [d.publishing_id]: e.target.value })}
                   />
                 </div>
+                {d.platform === "tiktok" && (d.state === "ready" || d.state === "failed") && (
+                  <button
+                    type="button"
+                    className={btnCls}
+                    onClick={async () => {
+                      if (!window.confirm(t("an.tiktokConfirm"))) return;
+                      try {
+                        await studio.tiktokUpload(d.job_id, d.publishing_id);
+                        await load();
+                      } catch (e) {
+                        setError(errorMessage(e));
+                      }
+                    }}
+                  >
+                    {t("an.tiktokUpload")}
+                  </button>
+                )}
+                {d.platform === "tiktok" && (d.state === "uploading" || d.state === "in_platform_drafts") && (
+                  <button
+                    type="button"
+                    className={btnCls}
+                    onClick={async () => {
+                      try {
+                        await studio.tiktokStatus(d.job_id, d.publishing_id);
+                        await load();
+                      } catch (e) {
+                        setError(errorMessage(e));
+                      }
+                    }}
+                  >
+                    {t("an.refresh")}
+                  </button>
+                )}
                 <button
                   type="button"
                   className={btnCls}
