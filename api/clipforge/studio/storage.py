@@ -116,8 +116,20 @@ def write_json_atomic(path: str, data) -> None:
 
 
 def read_json(path: str, default=None):
-    try:
-        with open(path, "r", encoding="utf-8") as fh:
-            return json.load(fh)
-    except (OSError, ValueError):
-        return default
+    """Liest JSON; fehlt die Datei oder ist sie defekt → default.
+
+    Windows: Während ein anderer Thread die Datei atomar ersetzt, schlägt das
+    Öffnen kurz mit PermissionError fehl — dann kurz warten und erneut lesen,
+    statt fälschlich „nicht vorhanden“ zu melden."""
+    import time
+    for attempt in range(8):
+        try:
+            with open(path, "r", encoding="utf-8") as fh:
+                return json.load(fh)
+        except PermissionError:
+            if attempt == 7:
+                return default
+            time.sleep(0.02 * (attempt + 1))
+        except (OSError, ValueError):
+            return default
+    return default
