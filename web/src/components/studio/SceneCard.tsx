@@ -2,6 +2,7 @@
 
 import { useT, type TKey } from "@/lib/i18n";
 import { TRANSITION_IDS, type MediaItem, type Scene } from "@/lib/studio";
+import BrollPicker from "./BrollPicker";
 import { btnCls, cardCls, inputCls, labelCls } from "./ui";
 
 type Props = {
@@ -17,6 +18,8 @@ type Props = {
   onDelete: () => void;
   onRegenerate: () => void;
   dragProps?: React.LiHTMLAttributes<HTMLLIElement>;
+  projectId?: string;
+  onMediaAdded?: () => void;
 };
 
 const MODES = ["motion", "static", "media", "ai_image", "ai_video", "avatar", "split"] as const;
@@ -189,6 +192,14 @@ export default function SceneCard(p: Props) {
             </select>
           </div>
         </div>
+        {p.projectId && (
+          <BrollPicker
+            projectId={p.projectId}
+            sceneId={s.id}
+            onPick={(name) => setVisual({ mode: "media", media: name })}
+            onMediaAdded={() => p.onMediaAdded?.()}
+          />
+        )}
         <div className="grid grid-cols-3 gap-3">
           <div>
             <label htmlFor={`${id}-dur`} className={labelCls}>

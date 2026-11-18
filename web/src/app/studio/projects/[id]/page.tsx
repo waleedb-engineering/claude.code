@@ -274,6 +274,27 @@ export default function EditorPage() {
     }
   }
 
+  async function autoBroll() {
+    setError(null);
+    if (!(await flush())) return;
+    const cur = projectRef.current;
+    try {
+      const task = await studio.brollAuto(id);
+      setActiveTask(task);
+      const done = await waitForTask(task.id, setActiveTask);
+      setActiveTask(null);
+      if (done.status !== "succeeded" && done.error) setError(done.error.message);
+      if (cur) {
+        setPast((h) => [...h.slice(-49), cur]); // Rückgängig möglich
+        setFuture([]);
+      }
+      await refresh(true);
+    } catch (e) {
+      setActiveTask(null);
+      setError(errorMessage(e));
+    }
+  }
+
   async function reload() {
     setConflict(false);
     setPast([]);
@@ -470,6 +491,8 @@ export default function EditorPage() {
                       }
                       onDelete={() => setScenes((sc) => sc.filter((s) => s.id !== scene.id))}
                       onRegenerate={() => regenerate(scene.id)}
+                      projectId={id}
+                      onMediaAdded={() => void refresh(false)}
                       dragProps={{
                         draggable: true,
                         onDragStart: (e) => {
@@ -521,6 +544,9 @@ export default function EditorPage() {
                   }
                 >
                   + {t("ed.addScene")}
+                </button>
+                <button type="button" className={btnCls} disabled={busy || project.scenes.length === 0} onClick={() => void autoBroll()}>
+                  🎞 {t("broll.auto")}
                 </button>
               </>
             )}

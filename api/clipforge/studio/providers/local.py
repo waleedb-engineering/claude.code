@@ -255,9 +255,17 @@ class PiperVoice(VoiceProvider):
 
     id, label = "piper", "Piper (lokal, neuronal)"
     live_verified = False  # ohne echtes Stimmmodell getestet
-    setup_hint = ("Stimmmodell laden: `python -m piper.download_voices de_DE-thorsten-medium "
-                  "--data-dir api/studio_data/piper` (bzw. en_US-lessac-medium).")
     _loaded: dict = {}
+
+    @property
+    def setup_hint(self) -> str:  # type: ignore[override]
+        try:
+            import piper  # noqa: F401
+        except ImportError:
+            return ("Paket fehlt: `pip install piper-tts` (Lizenz GPL-3.0; ClipForge ruft es nur "
+                    "als separates Paket auf). Danach Stimme laden unter Studio → Einrichtung → "
+                    "Lokale KI-Modelle.")
+        return "Stimme laden unter Studio → Einrichtung → Lokale KI-Modelle (z. B. Thorsten, Deutsch)."
 
     def _models(self) -> list[dict]:
         try:
@@ -270,7 +278,10 @@ class PiperVoice(VoiceProvider):
             if not name.endswith(".onnx") or not os.path.isfile(os.path.join(base, name + ".json")):
                 continue
             stem = name[:-5]
-            out.append({"id": stem, "label": stem, "tone": "neutral",
+            parts = stem.split("-")  # z. B. de_DE-thorsten-medium
+            label = (f"{parts[1].capitalize()} ({parts[0]}, {parts[2]})" if len(parts) == 3
+                     else stem)
+            out.append({"id": stem, "label": label, "tone": "neutral",
                         "language": stem.split("_")[0].lower(),
                         "path": os.path.join(base, name)})
         return out

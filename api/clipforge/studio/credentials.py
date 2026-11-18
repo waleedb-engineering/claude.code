@@ -31,6 +31,11 @@ KNOWN = {
     "anthropic": ("ANTHROPIC_API_KEY", "Anthropic (Skripte, Analyse)",
                   "https://api.anthropic.com/v1/models",
                   lambda k: {"x-api-key": k, "anthropic-version": "2023-06-01"}),
+    # Stock-Medien (kostenlose Schlüssel; Lizenzen erlauben kommerzielle Nutzung)
+    "pexels": ("PEXELS_API_KEY", "Pexels (Stock-Videos/-Fotos, kostenlos)",
+               "https://api.pexels.com/v1/curated?per_page=1", lambda k: {"Authorization": k}),
+    "pixabay": ("PIXABAY_API_KEY", "Pixabay (Stock-Videos/-Fotos, kostenlos)",
+                lambda k: "https://pixabay.com/api/?per_page=3&q=test&key=" + k, lambda k: {}),
 }
 _lock = threading.Lock()
 _LINE = re.compile(r"^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=")
@@ -236,7 +241,7 @@ def test_key(provider: str) -> dict:
     if not key:
         raise StudioError("credential_not_set", f"Für {label} ist kein Schlüssel hinterlegt.", 409)
     try:
-        code = HTTP_GET(url, headers(key))
+        code = HTTP_GET(url(key) if callable(url) else url, headers(key))
     except Exception as exc:  # noqa: BLE001 — nie den Schlüssel in die Meldung
         return {"provider": provider, "ok": False, "reason": "unreachable",
                 "message": f"{label} ist nicht erreichbar ({type(exc).__name__})."}

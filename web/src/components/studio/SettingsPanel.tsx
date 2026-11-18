@@ -13,6 +13,7 @@ import {
   type TransitionId,
   type VoiceOptions,
 } from "@/lib/studio";
+import BackgroundTool from "./BackgroundTool";
 import { ErrorBox, Progress, btnCls, cardCls, inputCls, labelCls } from "./ui";
 
 type Props = {
@@ -35,6 +36,7 @@ export default function SettingsPanel({ project, media, estimate, onChange, onMe
   const [templates, setTemplates] = useState<Template[]>([]);
   const [templatePick, setTemplatePick] = useState("");
   const [notice, setNotice] = useState<string | null>(null);
+  const [bgTarget, setBgTarget] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const language = project.language;
 
@@ -438,10 +440,21 @@ export default function SettingsPanel({ project, media, estimate, onChange, onMe
         ) : (
           <ul className="space-y-1 text-xs text-neutral-300">
             {media.map((m) => (
-              <li key={m.name} className="flex items-center justify-between gap-2">
+              <li key={m.name}>
+                <div className="flex items-center justify-between gap-2">
                 <span className="truncate">
                   {m.name} <span className="text-neutral-500">({m.kind})</span>
                 </span>
+                {m.kind !== "audio" && (
+                  <button
+                    type="button"
+                    className="text-neutral-400 underline hover:text-white"
+                    aria-expanded={bgTarget === m.name}
+                    onClick={() => setBgTarget(bgTarget === m.name ? null : m.name)}
+                  >
+                    {t("bg.button")}
+                  </button>
+                )}
                 <button
                   type="button"
                   className="text-neutral-400 underline hover:text-white"
@@ -457,6 +470,16 @@ export default function SettingsPanel({ project, media, estimate, onChange, onMe
                 >
                   {t("common.delete")}
                 </button>
+                </div>
+                {bgTarget === m.name && (
+                  <BackgroundTool
+                    projectId={project.id}
+                    item={m}
+                    media={media}
+                    onDone={onMediaChanged}
+                    onClose={() => setBgTarget(null)}
+                  />
+                )}
               </li>
             ))}
           </ul>

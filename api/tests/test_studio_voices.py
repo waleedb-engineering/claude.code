@@ -156,11 +156,15 @@ def test_windows_sapi_builds_a_safe_powershell_call():
 
 
 def test_piper_lists_only_complete_models_and_fails_cleanly():
+    import importlib.util
+    if importlib.util.find_spec("piper") is None:
+        import pytest
+        pytest.skip("optionales Paket piper-tts nicht installiert")
     tmp = tempfile.mkdtemp(prefix="voice_")
     try:
         os.environ["CLIPFORGE_PIPER_VOICES"] = tmp
         prov = local.PiperVoice()
-        assert prov.status()[0] == "not_configured" and "download_voices" in prov.status()[1]
+        assert prov.status()[0] == "not_configured" and "Lokale KI-Modelle" in prov.status()[1]
         open(os.path.join(tmp, "de_DE-test-medium.onnx"), "wb").close()      # ohne .json
         assert not prov.configured()
         with open(os.path.join(tmp, "de_DE-test-medium.onnx.json"), "w") as fh:

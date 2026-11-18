@@ -125,6 +125,9 @@ class StudioService:
         self.tasks.register("ingest", self._task_ingest)
         self.tasks.register("render", self._task_render)
         self.tasks.register("scene", self._task_scene)
+        self.tasks.register("media_background", self._task_background)
+        self.tasks.register("model_download", self._task_model_download)
+        self.tasks.register("broll_auto", self._task_broll_auto)
         self.tasks.on_finish(self._on_task_finish)
 
     def _on_task_finish(self, task: dict) -> None:
@@ -345,7 +348,9 @@ class StudioService:
         return {"name": name, "kind": kind, **meta}
 
     def list_media(self, pid: str) -> list[dict]:
+        from .broll import media_meta
         mdir = os.path.join(self.store.dir(pid), "media")
+        meta = media_meta(self.store.dir(pid))
         out = []
         if os.path.isdir(mdir):
             for name in sorted(os.listdir(mdir)):
@@ -353,9 +358,159 @@ class StudioService:
                 kind = ("image" if ext in IMAGE_EXT else "video" if ext in VIDEO_EXT
                         else "audio" if ext in AUDIO_EXT else None)
                 if kind:
+                    entry = meta.get(name) or {}
                     out.append({"name": name, "kind": kind,
-                                "bytes": os.path.getsize(os.path.join(mdir, name))})
+                                "bytes": os.path.getsize(os.path.join(mdir, name)),
+                                "tags": entry.get("tags", []), "origin": entry.get("origin")})
         return out
+
+    # ------------------------------------------------- Hintergrundentfernung
+    def _bg_args(self, pid: str, name: str, params: dict) -> tuple[str, str, dict]:
+        from . import bgremove
+        src = self.media_path(pid, name)
+        ext = os.path.splitext(name)[1].lower()
+        kind = "image" if ext in IMAGE_EXT else "video" if ext in VIDEO_EXT else None
+        if kind is None:
+            raise StudioError("media_unsupported", "Nur Bilder und Videos.", 415)
+        mode = params.get("mode") or ("transparent" if kind == "image" else "color")
+        model = params.get("model") or ("bg_quality" if kind == "image" else "bg_person")
+        if model not in bgremove.MODEL_IDS:
+            raise StudioError("validation_error", "Unbekanntes Hintergrund-Modell.")
+        bg = params.get("background")
+        bg_path = self.media_path(pid, safe_filename(str(bg))) if bg else None
+        if mode in ("image", "video") and not bg_path:
+            raise StudioError("validation_error", "Bitte ein Hintergrund-Medium wählen.")
+        return src, kind, {"mode": mode, "model_id": model,
+                           "color": params.get("color") or "#00b140", "background": bg_path}
+
+    def background_preview(self, pid: str, name: str, params: dict) -> bytes:
+        """Vorschau: ein Bild (bei Videos das erste Bild), als PNG-Bytes."""
+        import tempfile
+
+        import cv2
+
+        from . import bgremove
+        src, kind, args = self._bg_args(pid, name, params)
+        with tempfile.TemporaryDirectory() as tmp:
+            still = os.path.join(tmp, "in.png")
+            if kind == "video":
+                cap = cv2.VideoCapture(src)
+                ok, frame = cap.read()
+                cap.release()
+                if not ok:
+                    raise StudioError("file_unreadable", "Video konnte nicht gelesen werden.", 415)
+                cv2.imwrite(still, frame)
+                if args["mode"] == "video":  # Vorschau: erstes Bild des Hintergrundvideos
+                    cap = cv2.VideoCapture(args["background"])
+                    ok, bgf = cap.read()
+                    cap.release()
+                    if not ok:
+                        raise StudioError("file_unreadable", "Hintergrundvideo nicht lesbar.", 415)
+                    bgp = os.path.join(tmp, "bg.png")
+                    cv2.imwrite(bgp, bgf)
+                    args = {**args, "mode": "image", "background": bgp}
+            else:
+                shutil.copyfile(src, still)
+            out = os.path.join(tmp, "out.png")
+            bgremove.process_image(still, out, **args)
+            with open(out, "rb") as fh:
+                return fh.read()
+
+    def start_background(self, pid: str, name: str, params: dict) -> dict:
+        self._bg_args(pid, name, params)  # früh validieren
+        return self.tasks.submit("media_background", pid, {"name": name, **{
+            k: params.get(k) for k in ("mode", "model", "color", "background")}})
+
+    def _task_background(self, task: dict, progress, should_cancel) -> dict:
+        from . import bgremove
+        pid, params = task["project_id"], task["params"]
+        src, kind, args = self._bg_args(pid, params["name"], params)
+        stem = os.path.splitext(params["name"])[0][:40]
+        ext = ".png" if kind == "image" else ".mp4"
+        out_name = f"{stem}_bg-{args['mode']}_{new_id()[:6]}{ext}"
+        out = safe_child(os.path.join(self.store.dir(pid), "media"), out_name)
+        progress("Hintergrund entfernen")
+        try:
+            if kind == "image":
+                info = bgremove.process_image(src, out, **args)
+            else:
+                info = bgremove.process_video(src, out, progress=progress,
+                                              should_cancel=should_cancel, **args)
+        except bgremove.Canceled as exc:
+            raise TaskCanceled() from exc
+        self._artifact(pid, f"background_{os.path.splitext(out_name)[0]}.json", {
+            "source": params["name"], "result": out_name, "mode": args["mode"],
+            "model": args["model_id"], "local": True, **info})
+        return {"media": out_name, "kind": kind, **info}
+
+    # ------------------------------------------------------------------ B-Roll
+    def broll_suggest(self, pid: str, scene_id: str, stock: str | None = None,
+                      kind: str = "video") -> dict:
+        from . import broll
+        project = self.store.load(pid)
+        scene = next((x for x in project["scenes"] if x["id"] == scene_id), None)
+        if scene is None:
+            raise StudioError("scene_not_found", "Szene nicht gefunden.", 404)
+        text = " ".join([scene["text"], scene.get("visual_prompt") or "", scene.get("headline") or ""])
+        query = " ".join(broll.keywords(text, 3))
+        out = {"keywords": broll.keywords(text), "query": query,
+               "library": broll.library_matches(self.store.dir(pid), text),
+               "stock": [], "stock_available": broll.stock_available()}
+        if stock:
+            out["stock"] = broll.search_stock(stock, query, project["aspect_ratio"], kind)
+        return out
+
+    def broll_import(self, pid: str, item: dict, query: str) -> dict:
+        from . import broll
+        self.store.load(pid)
+        name = broll.import_stock(self.store.dir(pid), item, query)
+        return {"name": name}
+
+    def set_media_tags(self, pid: str, name: str, tags) -> dict:
+        from . import broll
+        self.media_path(pid, name)
+        return broll.set_media_meta(self.store.dir(pid), name, tags=tags)
+
+    def start_broll_auto(self, pid: str, stock: str | None, overwrite: bool) -> dict:
+        from . import broll
+        self.store.load(pid)
+        if stock and stock not in broll.stock_available():
+            raise StudioError("credential_not_set", "Für diesen Stock-Anbieter ist kein Schlüssel hinterlegt.", 409)
+        return self.tasks.submit("broll_auto", pid, {"stock": stock, "overwrite": overwrite})
+
+    def _task_broll_auto(self, task: dict, progress, should_cancel) -> dict:
+        from . import broll
+        pid, params = task["project_id"], task["params"]
+        pdir = self.store.dir(pid)
+        project = self.store.load(pid)
+        stock_fn = None
+        if params.get("stock"):
+            def stock_fn(text: str) -> str | None:
+                if should_cancel():
+                    raise TaskCanceled()
+                query = " ".join(broll.keywords(text, 3))
+                progress(f"Stock-Suche: {query}")
+                hits = broll.search_stock(params["stock"], query, project["aspect_ratio"], "video")
+                return broll.import_stock(pdir, hits[0], query) if hits else None
+        progress("B-Roll zuordnen")
+        scenes, log = broll.auto_assign(project, pdir, overwrite=bool(params.get("overwrite")),
+                                        stock=stock_fn)
+        if log:
+            chosen = {e["scene"]: e["media"] for e in log}
+            allowed = broll.AUTO_MODES + (("media",) if params.get("overwrite") else ())
+
+            def apply(p: dict) -> None:
+                # nur Szenen anfassen, die währenddessen nicht manuell belegt wurden
+                for sc in p["scenes"]:
+                    if sc["id"] in chosen and sc["visual"]["mode"] in allowed:
+                        sc["visual"] = {**sc["visual"], "mode": "media", "media": chosen[sc["id"]]}
+            self.store.mutate(pid, apply)
+        self._artifact(pid, "broll.json", {"assigned": log, "stock": params.get("stock")})
+        return {"assigned": len(log), "log": log}
+
+    def _task_model_download(self, task: dict, progress, should_cancel) -> dict:
+        from . import models
+        return models.download(task["params"]["model"], True, progress=progress)
 
     def media_path(self, pid: str, name: str) -> str:
         path = safe_child(os.path.join(self.store.dir(pid), "media"), name)

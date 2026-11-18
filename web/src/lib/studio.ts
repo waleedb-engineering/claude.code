@@ -61,6 +61,17 @@ export type Template = {
   structure: { kind: string; hint: string }[];
 };
 
+export type LocalModel = {
+  id: string;
+  label: string;
+  group: "background" | "face" | "piper" | string;
+  language: string | null;
+  size_mb: number;
+  license: string;
+  commercial_use: boolean | null;
+  installed: boolean;
+};
+
 export type CaptionStyleId = "minimal" | "bold" | "karaoke" | "dynamic" | "none";
 
 export type Project = {
@@ -153,7 +164,28 @@ export type RenderReport = {
   scene_id?: string;
 };
 
-export type MediaItem = { name: string; kind: "image" | "video" | "audio"; bytes: number };
+export type MediaItem = {
+  name: string;
+  kind: "image" | "video" | "audio";
+  bytes: number;
+  tags?: string[];
+  origin?: { source: string; author?: string; page?: string; license?: { name: string; url: string } } | null;
+};
+
+export type BrollHit = {
+  source: "library" | "pexels" | "pixabay";
+  name?: string;
+  kind: "image" | "video";
+  score?: number;
+  matched?: string[];
+  id?: string;
+  preview?: string;
+  download?: string;
+  author?: string;
+  page?: string;
+  duration?: number;
+  license?: { name: string; url: string };
+};
 
 export type ProjectView = {
   project: Project;
@@ -480,6 +512,36 @@ export const studio = {
       template_id: templateId,
       expected_version: expectedVersion,
     }).then((d) => d.project),
+
+  brollSuggest: (id: string, sceneId: string, stock?: string, kind = "video") =>
+    get<{ keywords: string[]; query: string; library: BrollHit[]; stock: BrollHit[]; stock_available: string[] }>(
+      `/projects/${id}/scenes/${sceneId}/broll?kind=${kind}${stock ? `&stock=${stock}` : ""}`,
+    ),
+  brollImport: (id: string, item: BrollHit, query: string) =>
+    post<{ name: string }>(`/projects/${id}/broll/import`, { item, query }),
+  brollAuto: (id: string, stock?: string) =>
+    post<{ task: Task }>(`/projects/${id}/broll/auto`, { stock: stock || null }).then((d) => d.task),
+  setMediaTags: (id: string, name: string, tags: string[]) =>
+    request<{ tags: string[] }>("PUT", `/projects/${id}/media/${encodeURIComponent(name)}/tags`, { tags }),
+  models: (group?: string) =>
+    get<{ models: LocalModel[] }>(`/models${group ? `?group=${group}` : ""}`).then((d) => d.models),
+  downloadModel: (id: string) =>
+    post<{ task: Task }>(`/models/${id}/download`, { accept_license: true }).then((d) => d.task),
+  deleteModel: (id: string) => request<{ deleted: boolean }>("DELETE", `/models/${id}`),
+  async backgroundPreview(id: string, name: string, body: Record<string, unknown>): Promise<string> {
+    const res = await apiFetch(`${API_BASE}/api/studio/projects/${id}/media/${encodeURIComponent(name)}/background/preview`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => null);
+      throw new StudioApiError(res.status, data?.detail?.code ? data.detail : { code: "http_error", message: "Vorschau fehlgeschlagen." });
+    }
+    return URL.createObjectURL(await res.blob());
+  },
+  startBackground: (id: string, name: string, body: Record<string, unknown>) =>
+    post<{ task: Task }>(`/projects/${id}/media/${encodeURIComponent(name)}/background`, body).then((d) => d.task),
 
   projects: () => get<{ projects: ProjectSummary[] }>("/projects").then((d) => d.projects),
   createProject: (body: Record<string, unknown>, idempotencyKey: string) =>

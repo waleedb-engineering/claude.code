@@ -6,6 +6,7 @@ import { errorMessage, studio, type CredentialStatus, type PlatformReadiness, ty
 import { ErrorBox, Loading, Notice, Pill, btnCls, cardCls, inputCls, labelCls } from "@/components/studio/ui";
 import VoiceCloneSection from "@/components/studio/VoiceCloneSection";
 import AccountsSection from "@/components/studio/AccountsSection";
+import ModelsSection from "@/components/studio/ModelsSection";
 
 export default function SetupPage() {
   const t = useT();
@@ -135,6 +136,8 @@ export default function SetupPage() {
       )}
 
       <AccountsSection />
+
+      <ModelsSection />
 
       <VoiceCloneSection />
 

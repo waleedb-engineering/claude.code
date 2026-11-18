@@ -15,7 +15,7 @@ from .remote import ElevenLabsCloneProvider, ElevenLabsVoice, OpenAIImage, OpenA
 
 # Reihenfolge = Priorität der automatischen Auswahl (lokal vor Cloud).
 _VOICES: list[VoiceProvider] = [
-    MacSayVoice(), WindowsSapiVoice(), PiperVoice(), EspeakVoice(),
+    PiperVoice(), MacSayVoice(), WindowsSapiVoice(), EspeakVoice(),
     ElevenLabsVoice(), OpenAIVoice(), MockVoice(), SilentVoice(),
 ]
 _IMAGES: list[ImageProvider] = [OpenAIImage(), MockImage()]

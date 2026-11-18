@@ -93,6 +93,31 @@ class TemplateSave(BaseModel):
     structure: list[dict[str, Any]] | None = None
 
 
+class BackgroundRequest(BaseModel):
+    mode: Literal["transparent", "color", "image", "video", "blur"] | None = None
+    model: Literal["bg_fast", "bg_quality", "bg_person"] | None = None
+    color: str | None = None
+    background: str | None = None
+
+
+class BrollImport(BaseModel):
+    item: dict[str, Any]
+    query: str = ""
+
+
+class BrollAuto(BaseModel):
+    stock: Literal["pexels", "pixabay"] | None = None
+    overwrite: bool = False
+
+
+class MediaTags(BaseModel):
+    tags: list[str] = Field(default_factory=list, max_length=30)
+
+
+class ModelDownload(BaseModel):
+    accept_license: bool = False
+
+
 class ApplyTemplate(BaseModel):
     expected_version: int
     template_id: str
@@ -546,6 +571,55 @@ def init_studio(app: FastAPI, registry, youtube_status=None,
     @r.delete("/projects/{pid}/media/{name}")
     def media_delete(pid: str, name: str) -> dict:
         svc.delete_media(pid, name)
+        return {"deleted": True}
+
+    @r.post("/projects/{pid}/media/{name}/background/preview")
+    def media_background_preview(pid: str, name: str, req: BackgroundRequest):
+        from fastapi.responses import Response
+        png = svc.background_preview(pid, name, req.model_dump(exclude_none=True))
+        return Response(png, media_type="image/png", headers={"Cache-Control": "no-store"})
+
+    @r.post("/projects/{pid}/media/{name}/background", status_code=202)
+    def media_background(pid: str, name: str, req: BackgroundRequest) -> dict:
+        return {"task": svc.start_background(pid, name, req.model_dump(exclude_none=True))}
+
+    # ------------------------------------------------------------- B-Roll
+    @r.get("/projects/{pid}/scenes/{scene_id}/broll")
+    def broll_suggest(pid: str, scene_id: str, stock: Literal["pexels", "pixabay"] | None = None,
+                      kind: Literal["video", "image"] = "video") -> dict:
+        return svc.broll_suggest(pid, scene_id, stock, kind)
+
+    @r.post("/projects/{pid}/broll/import", status_code=201)
+    def broll_import(pid: str, req: BrollImport) -> dict:
+        return svc.broll_import(pid, req.item, req.query)
+
+    @r.post("/projects/{pid}/broll/auto", status_code=202)
+    def broll_auto(pid: str, req: BrollAuto) -> dict:
+        return {"task": svc.start_broll_auto(pid, req.stock, req.overwrite)}
+
+    @r.put("/projects/{pid}/media/{name}/tags")
+    def media_tags(pid: str, name: str, req: MediaTags) -> dict:
+        return svc.set_media_tags(pid, name, req.tags)
+
+    # ------------------------------------------------------- lokale Modelle
+    @r.get("/models")
+    def model_list(group: str | None = None) -> dict:
+        from clipforge.studio import models
+        return {"models": models.status(group)}
+
+    @r.post("/models/{model_id}/download", status_code=202)
+    def model_download(model_id: str, req: ModelDownload) -> dict:
+        from clipforge.studio import models
+        if model_id not in models.CATALOG:
+            raise StudioError("model_unknown", "Unbekanntes Modell.", 404)
+        if not req.accept_license:
+            models.download(model_id, False)  # wirft consent_required
+        return {"task": svc.tasks.submit("model_download", None, {"model": model_id})}
+
+    @r.delete("/models/{model_id}")
+    def model_delete(model_id: str) -> dict:
+        from clipforge.studio import models
+        models.delete(model_id)
         return {"deleted": True}
 
     @r.post("/projects/{pid}/scenes")
