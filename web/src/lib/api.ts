@@ -27,9 +27,12 @@ import type {
 } from "./types";
 import { apiFetch } from "./session";
 
+// "same-origin": alle Aufrufe gehen an /api/* der eigenen Herkunft und werden
+// serverseitig ans Backend durchgereicht (src/lib/apiProxy.ts). Sonst: direkte URL.
 export const API_BASE =
-  process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, "") ||
-  "http://127.0.0.1:8000";
+  process.env.NEXT_PUBLIC_API_BASE_URL === "same-origin"
+    ? ""
+    : process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, "") || "http://127.0.0.1:8000";
 
 class ApiError extends Error {
   status: number;

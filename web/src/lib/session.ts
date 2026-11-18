@@ -3,7 +3,9 @@
 // unter GET /api/session; es wird im Speicher gehalten (nie in localStorage).
 
 const BASE =
-  process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, "") || "http://127.0.0.1:8000";
+  process.env.NEXT_PUBLIC_API_BASE_URL === "same-origin"
+    ? ""
+    : process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, "") || "http://127.0.0.1:8000";
 export const TOKEN_HEADER = "X-ClipForge-Token";
 
 let cached: Promise<string | null> | null = null;

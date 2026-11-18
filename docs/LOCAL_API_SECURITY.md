@@ -80,3 +80,31 @@ nicht setzen.
   sein. Nicht auf `0.0.0.0` binden.
 - `GET /api/youtube/oauth/callback` bleibt ohne Token erreichbar (Google ruft
   es per Redirect auf); es ist durch den kurzlebigen OAuth-State geschützt.
+
+## Betrieb hinter einem einzigen Port (Durchleitung)
+
+Erreicht der Browser nur den Port der Oberfläche (z. B. Vorschau-Link einer
+Cloud-Sitzung oder ein SSH-Tunnel auf Port 3000), lässt sich die Oberfläche so
+bauen, dass sie alle API-Aufrufe an die eigene Herkunft schickt:
+
+```bash
+cd web && NEXT_PUBLIC_API_BASE_URL=same-origin npm run build
+```
+
+```bash
+cd web && npx next start -p 3000
+```
+
+Die Route `web/src/app/api/[...path]/route.ts` reicht `/api/*` und `/health`
+serverseitig an `http://127.0.0.1:8000` weiter (änderbar mit
+`CLIPFORGE_API_INTERNAL_URL`). Der Schutz bleibt vollständig:
+
+- Das Backend verlangt weiterhin für jede Mutation das Token.
+- Die Durchleitung weist mutierende Requests mit fremdem `Origin` ab
+  (`403 origin_not_allowed`).
+- Sie nimmt nur Requests an `localhost`/`127.0.0.1` an, sonst
+  `403 host_not_allowed` (Schutz vor DNS-Rebinding). Weitere Hostnamen über
+  `CLIPFORGE_PUBLIC_HOSTS`.
+- `CLIPFORGE_PROXY_ANY_HOST=1` hebt die Host-Prüfung auf. Nur setzen, wenn der
+  Rechner ausschließlich über einen vertrauenswürdigen, angemeldeten Proxy
+  erreichbar ist — so läuft die Cloud-Vorschau dieser Sitzung.
