@@ -9,6 +9,26 @@ Semver mit Beta-Suffix (`MAJOR.MINOR.PATCH-beta.N`). Aktuelle Version: siehe
 
 # Unveröffentlicht
 
+## ClipForge 2.0 (Branch claude/creator-studio)
+- Editor: Szenenübergänge (FFmpeg xfade), Videovorlagen, Stimmlautstärke,
+  Drag-and-drop, B-Roll-Vorschläge, Titel/Hashtag-Vorschläge
+- Medien: lokale Hintergrundentfernung (Bild/Video), Modellverwaltung mit
+  Zustimmung + Prüfsumme, B-Roll aus Mediathek oder Pexels/Pixabay mit
+  Lizenzvermerk
+- Sprache: Videoübersetzung de↔en (Untertitel oder synthetische Stimme,
+  gekennzeichnet), Piper bevorzugt und über die Oberfläche ladbar,
+  Browser-Aufnahme für Stimmklon, eigene Aufnahme je Szene
+- Avatar: Bild-im-Bild/untere Hälfte über Hintergrund
+- Publishing: Instagram Reels, X, TikTok Direct Post (offizielle APIs,
+  Bestätigung Pflicht), geplante Posts mit Freigabe, kein automatisches
+  Wiederholen; Analytics-Abruf + Engagement; YouTube-Trends
+- Konten: getrennte Benutzerbereiche, Rollen, Registrierung, Benutzer- und
+  Sitzungsverwaltung, Schlüssel je Benutzer verschlüsselt, Migration
+- Face Swap mit Einwilligung, lokaler Gesichtsprüfung, Kennzeichnung, Protokoll
+- Betrieb: CI (Linux/Windows/E2E/Docker), Backup-Skript, Ressourcenlimits,
+  Hardware-Prüfung für lokale KI-Videos
+- Behoben: drei React-Lint-Fehler in den Job-Seiten
+
 ## Creator Studio (neu)
 - Quellen: Skript, Prompt, Artikel-/Website-/Social-URL (SSRF-geschützt), PDF,
   Audio, Musik (Beat-Sync), Podcast/Longform (bestehende Pipeline), eigene

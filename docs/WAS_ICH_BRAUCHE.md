@@ -1,70 +1,78 @@
 # Was ClipForge noch von dir braucht
 
-Alle Preise sind Richtwerte nach meinem Kenntnisstand (die Anbieterseiten
-waren aus der Entwicklungsumgebung nicht erreichbar) — **vor der Entscheidung
-beim Anbieter prüfen**. Schlüssel gehören nur in **Studio → Einrichtung**
-(lokal: `.env`, online: verschlüsselt) oder in die Secret-Einstellungen des
-Hosting-Anbieters — **nie** in GitHub, Commits oder geteilte Dateien.
+Stand: ClipForge 2.0 (Branch `claude/creator-studio`). Preise sind Richtwerte
+nach meiner Recherche (11/2026), **vor der Entscheidung beim Anbieter prüfen**.
+Schlüssel gehören nur in **Studio → Einrichtung** (lokal `.env`, online
+verschlüsselt je Benutzer) oder in die Secret-Einstellungen des Hosters —
+**nie** in GitHub, Commits oder geteilte Dateien.
 
-## 1. Kostenlos, ohne deine Mithilfe — erledigt
+## 1. Kostenlos und ohne deine Mithilfe — fertig
 
 | Was | Stand |
 |---|---|
-| Lokale Stimme auf Windows/macOS/Linux (eSpeak NG über pip) | fertig, getestet |
-| Windows-Start (PowerShell-Skripte, Pfade, `.env`) | fertig; auf echtem Windows **nicht** getestet |
-| Benutzeranmeldung, Docker-Vorbereitung | fertig, getestet (Docker-Image nicht gebaut) |
-| YouTube-Import für eigene Videos | fertig, getestet |
+| Übergänge, Vorlagen, Lautstärke, Drag-and-drop | fertig, real getestet |
+| Hintergrundentfernung Bild/Video (lokal) | fertig, real getestet (Modell lädst du per Klick) |
+| B-Roll aus der eigenen Mediathek | fertig, real getestet |
+| Videoübersetzung (Ablauf, Untertitel, Neuvertonung, Kennzeichnung) | fertig; „manuell“ kostenlos, lokal mit Argos-Modell (per Klick) |
+| Avatar-Position, eigene Aufnahme je Szene | fertig, real getestet |
+| Getrennte Benutzerbereiche, Rollen, Sitzungen | fertig, real getestet |
+| Face-Swap-Schutz (Einwilligung, Gesichtsprüfung, Kennzeichnung) | fertig, real getestet |
+| Backups, CI-Workflows | fertig (CI-Läufe auf GitHub noch nicht gesehen) |
 
-## 2. Braucht einen API-Schlüssel (kostenpflichtig)
+## 2. Kostenlose Schlüssel (empfohlen)
 
-| Was | Wozu | Wo | Kosten (Richtwert) | Kostenlose Alternative | Arbeit bis dahin möglich? |
-|---|---|---|---|---|---|
-| `FAL_KEY` | KI-Video (Text/Bild→Video) und Talking Avatar | fal.ai → Dashboard → Keys | KI-Video ca. 0,05–0,30 USD je Sekunde (modellabhängig), Avatar ca. 0,02–0,10 USD je Sekunde | keine gleichwertige; lokal nur Motion-Hintergründe, eigene Videos, Ken-Burns-Bilder | ja — Adapter fertig, nur der Live-Test fehlt |
-| `ELEVENLABS_API_KEY` | Premium-Stimmen, **Stimmklon** | elevenlabs.io → Profil → API Keys | Stimmen nach Zeichen (ca. 0,15–0,30 USD/1000 Zeichen); Stimmklon braucht einen bezahlten Tarif (ab ca. 5 USD/Monat) | Piper (lokal, gut), eSpeak (lokal, synthetisch) | ja |
-| `OPENAI_API_KEY` | Stimmen (TTS), KI-Bilder | platform.openai.com → API keys | TTS ca. 0,015 USD/1000 Zeichen, Bild ca. 0,04–0,08 USD | Piper/eSpeak; eigene Bilder | ja |
-| `ANTHROPIC_API_KEY` | ausformulierte Skripte aus Prompts, Ziel/Zielgruppe/Hinweise | console.anthropic.com | nach Tokens, meist Cent-Bereich je Skript | lokale Zusammenfassung/Gerüst | ja |
+| Schlüssel | Wozu | Wo |
+|---|---|---|
+| `PEXELS_API_KEY` | Stock-Videos/-Fotos für B-Roll | pexels.com/api |
+| `PIXABAY_API_KEY` | Stock-Videos/-Fotos für B-Roll | pixabay.com/api/docs |
+| `YOUTUBE_API_KEY` | YouTube-Trends (mostPopular) | console.cloud.google.com → YouTube Data API v3 |
 
-**Live-Tests:** Jeder echte Aufruf kostet Geld. Ich mache sie erst nach deiner
-ausdrücklichen Freigabe, mit kleinem Projektbudget (z. B. 1 USD).
-Voraussetzung ist außerdem, dass die Entwicklungsumgebung diese Hosts
-erreichen darf (aktuell gesperrt) — oder du testest lokal.
+## 3. Kostenpflichtige Schlüssel (optional)
 
-## 3. Braucht externe Konten oder Plattform-Freigaben
+| Schlüssel | Wozu | Kosten (Richtwert) | Kostenlose Alternative |
+|---|---|---|---|
+| `FAL_KEY` | KI-Video, Talking Avatar, Face Swap | Video ca. 0,05–0,30 USD/s, Avatar ca. 0,02–0,10 USD/s, Face Swap Bild ca. 0,05 USD | Motion, eigene Videos, Stock, Standbild-Avatar |
+| `ELEVENLABS_API_KEY` | Premium-Stimmen, Stimmklon | Stimmklon ab bezahltem Tarif (ca. 5 USD/Monat) | Piper, eSpeak |
+| `OPENAI_API_KEY` | Stimmen, KI-Bilder | Cent-Bereich je Szene | Piper, eigene Bilder |
+| `ANTHROPIC_API_KEY` | Skripte, Übersetzung, Social-Texte | Cent-Bereich je Aufruf | lokale Skript-Gerüste, Argos, lokale Texte |
 
-| Was | Wozu | Wo | Kosten | Stand |
-|---|---|---|---|---|
-| TikTok-Entwickler-App mit Content Posting API (`video.upload`), dann `TIKTOK_CLIENT_KEY` + `TIKTOK_CLIENT_SECRET` | Upload in deine TikTok-Entwürfe | developers.tiktok.com | kostenlos | Adapter fertig, **ungetestet** live; Redirect-URI in der App eintragen: `http://127.0.0.1:8000/api/studio/accounts/tiktok/callback` |
-| TikTok App-Audit | direktes **öffentliches** Posten ohne Umweg über die App | TikTok-Prüfprozess | kostenlos, dauert | nicht umgesetzt (bewusst: Entwürfe-Weg reicht und hält dich in Kontrolle) |
-| Meta-App + Instagram Business/Creator-Konto + App-Review (`instagram_business_content_publish`) | Instagram Reels direkt | developers.facebook.com | kostenlos | **kein Adapter**; zusätzlich braucht Instagram eine öffentlich erreichbare Video-URL (passt erst zum Online-Betrieb) |
-| X-Developer-Konto mit Schreibzugriff | Posten auf X | developer.x.com | kostenpflichtiger Zugang (Basic, Richtwert um 200 USD/Monat) | **kein Adapter** — Entscheidung, ob dir das den Preis wert ist |
-| Google-Cloud-Projekt mit YouTube Data API (bereits vorhanden) | privater YouTube-Upload | console.cloud.google.com | kostenlos | vorhanden, weiterhin **nicht** mit echtem Konto getestet |
+**Budget:** Die Projektbudgets in ClipForge reservieren Schätzwerte und
+blockieren darüber — sie sind **keine** Ausgabengrenze beim Anbieter. Bitte
+zusätzlich in jedem Anbieter-Konto ein Limit setzen.
 
-Bis dahin gilt für alle Plattformen: Export-Pack herunterladen und selbst posten.
+## 4. Externe Konten und Plattform-Freigaben
 
-## 4. Braucht zusätzliche Hardware / GPU
+| Plattform | Was du brauchst | Kosten | Stand in ClipForge |
+|---|---|---|---|
+| TikTok | Entwickler-App, Content Posting API; `video.upload` (Entwürfe), `video.publish` (Direct Post), optional `video.list` (Kennzahlen); **App-Audit** für öffentliche Posts | kostenlos | simuliert getestet; ohne Audit nur private Posts |
+| Instagram | Business- oder Creator-Konto, Meta-App „Instagram API mit Instagram-Login“, Berechtigung `instagram_business_content_publish` (+ `…_manage_insights`), HTTPS-Redirect; App-Review für fremde Konten | kostenlos | simuliert getestet |
+| X | Entwicklerkonto mit Nutzungsabrechnung, OAuth-2.0-App mit `tweet.write media.write offline.access` | nach Nutzung: Post ca. 0,015 USD, Video-Post laut Entwicklerberichten ca. 0,03 USD (in der X-Konsole prüfen) | simuliert getestet; Kostenbestätigung Pflicht |
+| YouTube | Google-Cloud-Projekt (vorhanden) | kostenlos | privater Upload vorhanden, nicht mit echtem Konto getestet |
+
+Redirect-URIs: `…/api/studio/accounts/<tiktok|instagram|x>/callback`
+(lokal `http://127.0.0.1:8000`, Instagram verlangt HTTPS).
+
+## 5. Hardware
 
 | Was | Bedarf | Stand |
 |---|---|---|
-| Lokales KI-Video (z. B. Wan, LTX-Video) | NVIDIA-GPU mit 12–24 GB VRAM, Modelle 10–30 GB | nicht umgesetzt — auf normalen Laptops nicht sinnvoll |
-| Lokaler Talking Avatar (SadTalker, Wav2Lip) | NVIDIA-GPU ab ~6 GB VRAM; CPU-only sehr langsam (Minuten je Sekunde Video) | nicht umgesetzt; Cloud-Weg über fal.ai vorhanden |
-| Lokale Transkription (Whisper) | läuft auf CPU, GPU beschleunigt | vorhanden |
+| Lokale KI-Videos (Wan, LTX-Video) | NVIDIA-GPU ab ~12 GB VRAM (Wan 14B: ~24 GB) | nicht eingebaut; ClipForge prüft deine Hardware und nennt Alternativen |
+| Lokaler Talking Avatar / Lip-Sync | NVIDIA-GPU ab ~6 GB | nicht eingebaut (verfügbare Modelle meist nicht kommerziell lizenziert) |
+| Hintergrundentfernung Video | läuft auf CPU, GPU nicht nötig | fertig; CPU langsam |
 
-## 5. Braucht eine Entscheidung von dir
+## 6. Deine Entscheidungen
 
-1. **Hosting-Anbieter** (Railway, Render, Fly.io oder eigener Server) und
-   Größe (mind. 2 GB RAM). Vergleich: `docs/ONLINE_BETRIEB.md`.
-2. **Face Swap — umsetzen ja/nein?** Ich habe es bewusst **nicht** gebaut.
-   Gründe: Lokale Modelle (z. B. inswapper) sind nicht für kommerzielle
-   Nutzung lizenziert und in der Umgebung nicht ladbar; vor allem ist ein
-   bloßes „Ich bestätige“ kein wirksamer Schutz gegen Deepfakes fremder
-   Personen. Wenn du es willst, würde ich es nur so bauen:
-   - Gesicht nur von einem **verifizierten Referenzfoto deines Kontos**
-     (Abgleich per Gesichtsmerkmalen, fremde Gesichter werden abgelehnt),
-   - **sichtbare Kennzeichnung** „KI-verändert“ im Export, nicht abschaltbar,
-   - Protokoll jeder Nutzung, Cloud-Anbieter mit eigener Missbrauchsprüfung.
-   Kosten: Cloud ca. 0,01–0,05 USD je Bild, Video deutlich mehr.
-3. **X-API-Zugang** — lohnt sich der Monatspreis für dich?
-4. **Getrennte Bereiche pro Benutzer** im Online-Betrieb — nur nötig, wenn
-   andere als du und Vertraute ClipForge nutzen sollen (größerer Umbau).
-5. **Freigabe für bezahlte Live-Tests** der Cloud-Adapter (fal.ai,
-   ElevenLabs, OpenAI, TikTok), mit Budgetgrenze.
+1. **Freigabe für bezahlte Live-Tests** (fal.ai, ElevenLabs, OpenAI, Claude,
+   X) mit Budgetgrenze, z. B. 2 USD gesamt.
+2. **Plattform-Apps anlegen?** TikTok (inkl. Audit), Meta/Instagram, X.
+   Ich kann die Einrichtung Schritt für Schritt begleiten.
+3. **Hosting:** Railway, Render, Fly.io oder eigener VPS (Vergleich in
+   `ONLINE_BETRIEB.md`). Kein kostenpflichtiges Deployment ohne dich.
+4. **Face Swap online freischalten?** (`CLIPFORGE_FACE_SWAP_ONLINE=1`) —
+   empfehle ich nur, wenn du die Nutzer kennst.
+5. **Registrierung öffnen?** (`CLIPFORGE_REGISTRATION=open`) oder Konten nur
+   durch dich anlegen.
+6. **Datenbank:** JSON reicht für eine Instanz mit wenigen Nutzern; für
+   größeren Betrieb Umstieg auf PostgreSQL (größerer Umbau).
+7. **Piper-Lizenz:** `piper-tts` steht unter GPL-3.0 und wird nur als
+   optionales Paket genutzt; bei kommerzieller Verteilung prüfen.

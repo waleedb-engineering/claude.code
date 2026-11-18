@@ -1,0 +1,119 @@
+# ClipForge CI: Backend (Linux + Windows), Oberfläche, Browser-E2E, Docker-Build.
+# Keine Geheimnisse nötig: alle Cloud-Dienste sind in den Tests nachgebildet.
+name: CI
+
+on:
+  push:
+    branches: ["claude/**", "main"]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    name: Backend (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    # Windows-Lauf ist neu und wurde noch nie ausgeführt → Ergebnis sichtbar,
+    # blockiert aber nicht, bis er einmal grün war.
+    continue-on-error: ${{ matrix.os == 'windows-latest' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: api/requirements.txt
+      - name: FFmpeg (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+      - name: FFmpeg (Windows)
+        if: runner.os == 'Windows'
+        run: choco install ffmpeg -y --no-progress
+      - name: Abhängigkeiten
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r api/requirements.txt pytest httpx
+      - name: Testmodelle laden (frei lizenziert)
+        run: python scripts/fetch_test_models.py test_models
+      - name: pytest
+        working-directory: api
+        env:
+          CLIPFORGE_TEST_MODELS_DIR: ${{ github.workspace }}/test_models
+        run: python -m pytest -q tests
+
+  frontend:
+    name: Oberfläche (tsc, lint, build)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci --no-audit --no-fund
+      - run: npx tsc --noEmit -p .
+      - run: npm run lint
+      - run: npm run build
+
+  e2e:
+    name: Browser-E2E (Playwright)
+    runs-on: ubuntu-latest
+    needs: [frontend]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: api/requirements.txt
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: sudo apt-get update && sudo apt-get install -y ffmpeg
+      - run: pip install -r api/requirements.txt
+      - working-directory: web
+        run: |
+          npm ci --no-audit --no-fund
+          npx playwright install --with-deps chromium
+          npx playwright test --trace off
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: web/playwright-report
+          retention-days: 7
+
+  docker:
+    name: Docker-Build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Image bauen (ohne Push)
+        run: docker build -t clipforge:ci .
+      - name: Container starten und Healthcheck prüfen
+        run: |
+          docker run -d --name cf -p 3000:3000 \
+            -e CLIPFORGE_SECRET_KEY="$(python3 -c 'import secrets;print(secrets.token_urlsafe(48))')" \
+            -e CLIPFORGE_ADMIN_USER=ci-admin -e CLIPFORGE_ADMIN_PASSWORD=ci-password-123456 \
+            -e CLIPFORGE_COOKIE_SECURE=0 clipforge:ci
+          for i in $(seq 1 60); do
+            if curl -fsS http://127.0.0.1:3000/health; then exit 0; fi
+            sleep 2
+          done
+          docker logs cf
+          exit 1

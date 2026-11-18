@@ -57,7 +57,16 @@ def _net(model_id: str):
                           "Studio → Einrichtung → Lokale Modelle.", 409,
                           details={"model": model_id})
     if path not in _nets:
-        _nets[path] = _cv2().dnn.readNetFromONNX(path)
+        try:  # bevorzugt ONNX Runtime (kommt mit faster-whisper; kann quantisierte Modelle)
+            import onnxruntime as ort
+            _nets[path] = ("ort", ort.InferenceSession(path, providers=["CPUExecutionProvider"]))
+        except ImportError:
+            try:
+                _nets[path] = ("cv2", _cv2().dnn.readNetFromONNX(path))
+            except Exception as exc:  # noqa: BLE001 — z. B. quantisierte Modelle
+                raise StudioError("dependency_missing",
+                                  "Dieses Modell braucht ONNX Runtime (pip install onnxruntime) — "
+                                  "oder das Modell „schnell“ verwenden.", 503) from exc
     return _nets[path]
 
 
@@ -69,9 +78,12 @@ def mask(frame_bgr: np.ndarray, model_id: str) -> np.ndarray:
                        cv2.COLOR_BGR2RGB).astype(np.float32)
     rgb = (rgb / max(1.0, float(rgb.max())) - _MEAN) / _STD
     blob = rgb.transpose(2, 0, 1)[None].astype(np.float32)
-    net = _net(model_id)
-    net.setInput(blob)
-    out = net.forward()  # (1,1,320,320), erster Ausgang = feinste Maske
+    kind, net = _net(model_id)
+    if kind == "ort":
+        out = net.run(None, {net.get_inputs()[0].name: blob})[0]
+    else:
+        net.setInput(blob)
+        out = net.forward()  # (1,1,320,320), erster Ausgang = feinste Maske
     m = out[0, 0]
     lo, hi = float(m.min()), float(m.max())
     m = (m - lo) / (hi - lo) if hi - lo > 1e-6 else np.zeros_like(m)

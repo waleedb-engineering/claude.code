@@ -26,7 +26,8 @@ separates Flag, niemals von automatisierten Tests gesetzt).
 Mehrere Personen, die dieselbe Instanz gleichzeitig nutzen, teilen sich
 Jobs/Drafts ohne Trennung.
 **Workaround:** Pro Person eine eigene lokale Installation/Port.
-**Status:** geplant — kein Multi-User-Auth für diese Beta vorgesehen.
+**Status:** im Online-Modus gelöst (`CLIPFORGE_AUTH=accounts`, getrennte
+Benutzerbereiche, Rollen). Lokal bleibt ClipForge bewusst Einzelbenutzer.
 
 ## 3. CORS/Auth nicht für Internet-Exposition gehärtet
 
@@ -36,7 +37,8 @@ offene Internet ohne zusätzliche Härtung wäre unsicher.
 **Workaround:** Nicht ins offene Internet exponieren; nur lokal oder hinter
 einem selbst konfigurierten, vertrauenswürdigen Reverse-Proxy mit Auth
 betreiben.
-**Status:** offen, bewusst — außerhalb des Beta-Scopes.
+**Status:** für den Online-Modus gelöst (Konten, CSRF, Ratenbegrenzung,
+CORS-Allowlist); der lokale Modus bleibt nur für 127.0.0.1 gedacht.
 
 ## 4. Kein Public- oder Unlisted-YouTube-Upload
 
@@ -148,3 +150,70 @@ wichtigsten Grenzen:
 - **Docker-Image nie gebaut** (kein Docker-Dienst in der Entwicklungsumgebung).
 - **Online-Betrieb:** alle Konten teilen einen Arbeitsbereich; nur eine Instanz.
 - **eSpeak klingt synthetisch**; für natürliche lokale Stimmen Piper verwenden.
+
+
+---
+
+## ClipForge 2.0 — neue bekannte Grenzen
+
+### Cloud-Anbindungen nur gegen nachgebildete Antworten getestet
+Instagram, X, TikTok (Direct Post), fal.ai (KI-Video, Avatar, Face Swap),
+ElevenLabs-Stimmklon, Pexels/Pixabay, YouTube-Trends, Claude-Übersetzung und
+-Texte folgen der offiziellen Dokumentation (soweit erreichbar), wurden aber
+nie gegen den echten Dienst ausgeführt. Bei fal.ai-Face-Swap konnten die
+Feldnamen nicht geprüft werden (per Umgebungsvariable anpassbar).
+**Status:** Live-Tests nur mit deiner Freigabe und Budgetgrenze.
+
+### Instagram braucht eine HTTPS-Weiterleitung und ein Business-/Creator-Konto
+Meta erlaubt nur HTTPS-Redirect-URIs; lokal also über einen Tunnel oder im
+Online-Betrieb. Für fremde Konten ist ein Meta-App-Review nötig.
+
+### TikTok veröffentlicht ohne App-Audit nur privat
+Bis TikTok die App geprüft hat, sind Direct Posts nur als „Nur ich“ möglich
+(`CLIPFORGE_TIKTOK_AUDITED=1` erst nach bestandenem Audit setzen).
+
+### Geplante Posts brauchen einen laufenden ClipForge
+Der Zeitplan wird vom Hintergrund-Worker ausgeführt. Ist ClipForge zum
+Zeitpunkt aus, wird der Post beim nächsten Start nachgeholt (Status „fällig“).
+
+### Abgebrochene Veröffentlichungen werden nicht wiederholt
+Nach einem Neustart mitten im Upload ist unklar, ob der Beitrag erschienen
+ist. ClipForge markiert ihn als fehlgeschlagen und bittet um Prüfung auf der
+Plattform — kein automatischer zweiter Post.
+
+### Hintergrundentfernung für Videos ist auf der CPU langsam
+Etwa 5 Bilder/s bei 360×480 auf 4 CPU-Kernen; 1080p deutlich langsamer.
+Maximal 180 s Video je Auftrag.
+
+### Lokale Übersetzung und Piper-Stimmen nicht real getestet
+Die Modelle liegen auf Hugging Face bzw. argos-net.com, die aus der
+Entwicklungsumgebung gesperrt waren. Die Logik ist getestet, die Modelle nicht.
+
+### Lokale KI-Videos nicht eingebaut
+Nur Hardware-Prüfung. Wan/LTX-Video brauchen eine NVIDIA-GPU (≥ 12 GB VRAM).
+
+### Face Swap: Identität nicht beweisbar
+ClipForge prüft, dass nur registrierte Referenzgesichter eingesetzt werden,
+und protokolliert die Einwilligungserklärung. Ob das Gesicht wirklich dem
+Benutzer gehört, kann Software nicht beweisen. Lokale Swap-Modelle
+(inswapper u. a.) sind nicht kommerziell lizenziert und daher nicht enthalten.
+
+### Datenhaltung in JSON-Dateien
+Für eine Instanz mit wenigen Benutzern ausreichend. Viele gleichzeitige
+Benutzer oder mehrere Instanzen bräuchten SQLite/PostgreSQL (nicht umgesetzt).
+
+### Shorts-Pipeline nutzt den Server-Schlüssel für Claude
+Die ältere Shorts-Analyse (Longform → Shorts) liest den Anthropic-Schlüssel
+weiterhin aus der Server-Umgebung, nicht aus dem Benutzertresor. Im Online-
+Betrieb mit getrennten Bereichen den Server-Schlüssel daher leer lassen oder
+bewusst teilen.
+
+### YouTube-Verbindung (privater Upload) ist instanzweit
+Die bestehende YouTube-OAuth-Verbindung gilt für die ganze Instanz, nicht je
+Benutzer.
+
+### Budget ist eine Schätzung
+Die lokale Budgetkontrolle reserviert geschätzte Kosten vor jedem bezahlten
+Aufruf und blockiert darüber. Sie ist **keine** Ausgabengrenze beim Anbieter:
+tatsächliche Abrechnungen können abweichen. Setze zusätzlich Limits in den
+Konten der Anbieter (fal.ai, ElevenLabs, OpenAI, Anthropic, X).

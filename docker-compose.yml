@@ -13,5 +13,12 @@ services:
     restart: unless-stopped
     # FFmpeg-Renders brauchen Arbeitsspeicher; 2 GB sind ein sinnvolles Minimum.
     mem_limit: 3g
+    cpus: 2
+    # Protokolle begrenzen (sonst wächst die Platte unbemerkt voll)
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
 volumes:
   clipforge-data:

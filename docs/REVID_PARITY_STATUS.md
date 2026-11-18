@@ -8,20 +8,46 @@ bzw. das echte Betriebssystem gelaufen.
 Viralität wird nirgends versprochen; der Score heißt durchgehend
 „Performance-Potenzial“ und ist eine Schätzung.
 
-## Funktionsrunde (Stand dieses Branches)
+## ClipForge 2.0 (Stand dieses Branches)
 
-| Bereich | Status | Getestet |
+Drei Stufen: **real getestet** (automatischer Test gegen echtes FFmpeg/echte
+Modelle), **simuliert getestet** (Code fertig, Tests nur gegen nachgebildete
+Anbieter-Antworten — gilt NICHT als funktionsfähig bestätigt), **nicht
+verfügbar / extern blockiert**.
+
+| Funktion | Stufe | Anmerkung |
 |---|---|---|
-| Lokale Stimme auf allen Systemen (eSpeak NG über pip) | vollständig funktionsfähig | ja, echte Sprachausgabe |
-| Windows-Unterstützung (Pfade, `.env`, PowerShell-Skripte) | implementiert | Pfad-Logik mit echtem FFmpeg; **nicht auf echtem Windows** |
-| Benutzeranmeldung (Online-Modus) | vollständig funktionsfähig, ein gemeinsamer Arbeitsbereich | ja, auch über die Durchleitung |
-| Docker / Online-Betrieb | implementiert | Startablauf ohne Docker durchgespielt; **Image nie gebaut** |
-| YouTube-Import (eigene Videos) | vollständig funktionsfähig | ja (Metadaten-Abruf nachgebildet) |
-| KI-Video, Talking Avatar (fal.ai) | implementiert, benötigt API-Key | nur gegen nachgebildete Antworten |
-| Stimmklon (ElevenLabs) | implementiert, benötigt API-Key + Tarif | nur gegen nachgebildete Antworten |
-| TikTok-Upload in Entwürfe | implementiert, benötigt OAuth/App | nur gegen nachgebildete Antworten |
-| Instagram, X direkt | noch nicht implementiert | – |
-| Face Swap | noch nicht implementiert (Entscheidung offen) | – |
+| Szenenübergänge (Fade, Zoom, Slide, Smooth, Wipe, Dissolve, Kreis, auto, Beat) | real getestet | Dauer, Stimme, Untertitel bleiben synchron |
+| Videovorlagen (10 eingebaut + eigene) | real getestet | |
+| Stimmlautstärke, Drag-and-drop der Szenen | real getestet (Backend) / UI | |
+| Hintergrundentfernung Bild + Video (U²-Net lokal) | real getestet | Video auf CPU langsam (wenige Bilder/s) |
+| Lokale Modellverwaltung mit Zustimmung + Prüfsumme | real getestet (Prüflogik) | Downloads von Hugging Face/Argos hier nicht erreichbar |
+| B-Roll aus der Mediathek | real getestet | Zuordnung über Dateiname + Schlagwörter |
+| B-Roll von Pexels/Pixabay | simuliert getestet | kostenloser Schlüssel nötig |
+| Videoübersetzung de↔en (Untertitel oder neue Stimme) | real getestet mit Mock-Übersetzer | Whisper + Übersetzungsengine echt nur mit Modellen |
+| Übersetzung lokal (Argos/OPUS-MT) | simuliert getestet | Modell-Download hier blockiert |
+| Übersetzung mit Claude | simuliert getestet | API-Key, kostenpflichtig |
+| Piper-Stimmen über die Oberfläche laden, Piper bevorzugt | implementiert | Modelle hier nicht ladbar (Hugging Face blockiert) |
+| Stimmklon: Browser-Aufnahme, Hörprobe | real getestet (Umwandlung) / simuliert (ElevenLabs) | |
+| Avatar Bild-im-Bild / untere Hälfte, eigene Aufnahme je Szene | real getestet | Lippenbewegung nur mit fal.ai (simuliert) |
+| Instagram Reels direkt | simuliert getestet | Meta-App + Business/Creator-Konto nötig |
+| X direkt | simuliert getestet | kostenpflichtig je Post, Kostenbestätigung Pflicht |
+| TikTok Direct Post + Entwürfe | simuliert getestet | `video.publish` + TikTok-Audit für öffentliche Posts |
+| Geplante Veröffentlichung mit Freigabe | real getestet (Ablauf) / simuliert (Plattform) | ClipForge muss zum Zeitpunkt laufen |
+| Analytics-Abruf Instagram/X/TikTok, Engagement | simuliert getestet | nur gelieferte Werte |
+| Titel/Beschreibung/Hashtags je Plattform | real getestet (lokal) / simuliert (Claude) | |
+| Trends YouTube (mostPopular) | simuliert getestet | kostenloser YouTube-API-Schlüssel |
+| Trends TikTok/Instagram | nicht verfügbar | keine offizielle Schnittstelle |
+| Getrennte Benutzerbereiche, Rollen, Registrierung, Sitzungen | real getestet | Migration des Altbestands per CLI |
+| Face Swap: Einwilligung, Gesichtsprüfung, Kennzeichnung, Protokoll | real getestet (YuNet/SFace) | |
+| Face Swap: eigentlicher Tausch (fal.ai) | simuliert getestet | Feldnamen der Modelle ungeprüft |
+| Lokale KI-Videos (Wan, LTX-Video) | nicht verfügbar | nur Hardware-Prüfung; GPU nötig |
+| CI (Linux/Windows), Docker-Build-Test | eingerichtet | Läufe auf GitHub noch nicht gesehen |
+| Backups | real getestet (Skript) | |
+
+Vorrunde (weiterhin gültig): eSpeak lokal, Windows-Skripte, Anmeldung,
+Docker, YouTube-Import, KI-Video/Avatar/Stimmklon (simuliert), TikTok-Entwürfe
+(simuliert).
 
 Was du dafür bereitstellen oder entscheiden musst: [`WAS_ICH_BRAUCHE.md`](WAS_ICH_BRAUCHE.md).
 

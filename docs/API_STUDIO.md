@@ -196,3 +196,31 @@ Die API ist bewusst so geschnitten, dass ein Agent sie direkt bedienen kann:
 JSON rein und raus, stabile Fehlercodes, idempotente Mutationen, Aufgaben mit
 abfragbarem Zustand. Ein MCP-Server existiert **nicht**; wer einen baut, kann
 die Operationen aus `openapi.json` übernehmen.
+
+## Neu in ClipForge 2.0
+
+| Methode | Pfad | Zweck |
+|---|---|---|
+| GET/POST/PUT/DELETE | `/api/studio/templates[/{id}]` | Vorlagen (eingebaute schreibgeschützt; `from_project` speichert Projekteinstellungen) |
+| POST | `/api/studio/projects/{pid}/apply-template` | Vorlage anwenden (`expected_version`) |
+| POST | `/api/studio/projects/{pid}/media/{name}/background[/preview]` | Hintergrund entfernen/ersetzen (Aufgabe bzw. PNG-Vorschau) |
+| GET/POST/DELETE | `/api/studio/models[/{id}/download]` | lokale Modelle; Download nur mit `accept_license=true` |
+| GET | `/api/studio/projects/{pid}/scenes/{sid}/broll` | B-Roll-Vorschläge (`stock=pexels|pixabay`, `kind=video|image`) |
+| POST | `/api/studio/projects/{pid}/broll/import`, `/broll/auto` | Stock-Datei übernehmen, Auto-B-Roll (Aufgabe) |
+| PUT | `/api/studio/projects/{pid}/media/{name}/tags` | Schlagwörter für die Mediathek |
+| GET | `/api/studio/translation/engines` | Übersetzungs-Engines und Bereitschaft |
+| POST | `/api/studio/projects` mit `workflow=translate` | `translation={target, mode: subtitles|dub, engine}`, `rights_confirmed=true` |
+| POST | `/api/studio/projects/{pid}/social-copy` | Titel/Beschreibung/Hashtags (`engine=local|anthropic`, Kosten bestätigen) |
+| GET | `/api/studio/trends`, `/api/studio/trends/youtube` | Trendquellen, YouTube mostPopular |
+| GET | `/api/studio/publishing/tiktok/creator-info` | erlaubte TikTok-Sichtbarkeiten |
+| POST | `/api/studio/publishing/{job}/{pub}/publish` | Direktveröffentlichung (`confirm=true`, ggf. `confirm_cost`, `options`) |
+| POST/DELETE | `/api/studio/publishing/{job}/{pub}/schedule` | Planung mit Freigabe (`approve=true`) / aufheben |
+| GET/POST/DELETE | `/api/studio/faces[/{id}]`, GET `/faces/audit` | Referenzgesichter mit Einwilligung, Protokoll |
+| POST | `/api/studio/projects/{pid}/media/{name}/faceswap` | Face Swap (`face_id`, `confirm_cost`) |
+| GET | `/api/studio/hardware` | Hardware-Prüfung für lokale KI-Videos |
+| POST | `/api/auth/register` | Selbstregistrierung (nur mit `CLIPFORGE_REGISTRATION=open`) |
+| GET/POST | `/api/auth/sessions`, `/api/auth/sessions/revoke-others` | eigene Sitzungen |
+| GET/POST/DELETE | `/api/admin/users[/{name}[/password]]` | Benutzerverwaltung (nur Admin) |
+
+Veröffentlichungs-Aufgaben (`publish_direct`, `publish_tiktok`) lassen sich
+bewusst **nicht** über `/tasks/{id}/retry` wiederholen (Schutz vor Doppel-Posts).

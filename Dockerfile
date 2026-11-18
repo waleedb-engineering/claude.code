@@ -37,10 +37,11 @@ COPY --from=web /web/node_modules web/node_modules
 COPY --from=web /web/public web/public
 COPY --from=web /web/package.json web/package.json
 COPY deploy/entrypoint.sh /app/entrypoint.sh
+COPY deploy/backup.sh /app/deploy/backup.sh
 
 RUN useradd --create-home --uid 10001 clipforge \
  && mkdir -p /data && chown -R clipforge:clipforge /data /app/api \
- && chmod +x /app/entrypoint.sh
+ && chmod +x /app/entrypoint.sh /app/deploy/backup.sh
 USER clipforge
 
 # Online-Betrieb: Konten, sichere Cookies, Daten unter /data

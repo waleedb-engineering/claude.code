@@ -16,10 +16,36 @@ geschützter Download.
 | API-Schlüssel | `.env` (0600) | verschlüsselt mit `CLIPFORGE_SECRET_KEY` |
 | Schutz vor Durchprobieren | – | 5 Login-Versuche je Konto / 20 je IP in 15 Min.; 600 Anfragen/Min. je Sitzung |
 
-**Wichtige Einschränkung:** Alle Konten teilen **einen** Arbeitsbereich
-(Projekte, Videos, Schlüssel, Budget). Die Konten sind für dich und Personen,
-denen du voll vertraust — nicht für fremde Nutzer. Getrennte Bereiche je
-Benutzer sind nicht umgesetzt.
+**Benutzerbereiche:** Standard ist ein **eigener Bereich je Benutzer**
+(`CLIPFORGE_WORKSPACES=per_user`): Projekte, Medien, Videos, Aufgaben,
+Vorlagen, Ideen, Analytics, verbundene Social-Konten, Stimmklone,
+Referenzgesichter und **API-Schlüssel** (eigener verschlüsselter Tresor) sind
+getrennt. Fremde Projekte und Jobs sind für andere Konten „nicht vorhanden“.
+Die Server-Schlüssel (Hosting-Secrets) nutzt nur ein Administrator, außer du
+setzt bewusst `CLIPFORGE_SHARE_SERVER_KEYS=1`. Gemeinsam bleiben nur
+Anmeldedaten, lokale KI-Modelle und Piper-Stimmen. `CLIPFORGE_WORKSPACES=shared`
+stellt das alte Verhalten (ein gemeinsamer Bereich) wieder her.
+
+**Rollen:** Das erste Konto ist Administrator. Admins legen Konten an, setzen
+vorläufige Passwörter (der Benutzer muss sie beim nächsten Login ändern) und
+löschen Konten (Daten bleiben erhalten) — unter **Studio → Einrichtung →
+Konto & Benutzer**. Selbstregistrierung nur mit `CLIPFORGE_REGISTRATION=open`.
+Jeder sieht seine Sitzungen und kann alle anderen abmelden.
+
+**Bestehende Daten übernehmen** (nach dem Update, einmalig, dann neu starten):
+
+```bash
+cd /app/api && python -m clipforge.auth migrate-shared <admin-name>
+```
+
+**Datenhaltung:** JSON-Dateien mit atomaren Schreibvorgängen und Sperren im
+Prozess. Für eine Instanz mit einigen Benutzern reicht das. Für viele
+gleichzeitige Benutzer oder mehrere Instanzen wäre eine Datenbank (SQLite →
+PostgreSQL) nötig — bewusst noch nicht umgesetzt (großer Umbau, siehe
+KNOWN_ISSUES).
+
+**Face Swap** ist online gesperrt, bis du ihn mit
+`CLIPFORGE_FACE_SWAP_ONLINE=1` ausdrücklich freischaltest.
 
 ClipForge läuft als **eine** Instanz (Dateien als Speicher, Sperren und
 Ratenbegrenzung im Prozess). Mehrere Instanzen parallel werden nicht
@@ -34,6 +60,17 @@ unterstützt.
   Videos, Konten, verschlüsselte Schlüssel.
 - `docker-compose.yml` + `deploy/clipforge.env.example` — für einen eigenen Server.
 - Healthcheck: `GET /health`.
+
+Backups: `deploy/backup.sh` (im Container `/app/deploy/backup.sh /data
+/data/backups 7`) sichert Konten, Projekte, Jobs und Tresore, lässt Caches
+und Modelle aus und behält die letzten N Sicherungen. `CLIPFORGE_SECRET_KEY`
+getrennt sichern, sonst sind die Tresore im Backup unlesbar. Am besten
+täglich per Cron/Plattform-Job und die Datei zusätzlich außerhalb des
+Servers ablegen.
+
+Ressourcen: `docker-compose.yml` begrenzt auf 3 GB RAM / 2 CPUs und rotiert
+Protokolle (5 × 10 MB). HTTPS übernimmt der Anbieter bzw. ein Reverse-Proxy
+(Caddy/Traefik) vor Port 3000.
 
 Lange Renders laufen im Hintergrund des Containers. Startet der Container
 neu, werden wartende Aufgaben fortgesetzt und laufende als „unterbrochen“
@@ -90,8 +127,14 @@ Entscheidung beim Anbieter prüfen. Ich lege mich auf keinen fest.
 | HTTPS + eigene Domain | inklusive | inklusive | inklusive |
 | Einschätzung | am einfachsten | solide, eher teurer für 2 GB RAM | günstig, etwas mehr Kommandozeile |
 
-Empfehlung bei Unsicherheit: **Railway** (wenig Einrichtung). Gratis-Stufen
-eignen sich nicht: zu wenig RAM für FFmpeg und kein dauerhafter Speicher.
+Weitere Option: **eigener VPS** (z. B. Hetzner CX22/CX32, ca. 5–10 EUR/Monat,
+Richtwert) mit `docker compose` und Caddy für HTTPS — am günstigsten, aber du
+kümmerst dich selbst um Updates, Backups und Sicherheit.
+
+Empfehlung bei Unsicherheit: **Railway** (wenig Einrichtung), bei Kostenfokus
+ein eigener VPS. Gratis-Stufen eignen sich nicht: zu wenig RAM für FFmpeg und
+kein dauerhafter Speicher. Ein kostenpflichtiges Deployment habe ich nicht
+ausgeführt — das entscheidest du.
 
 ## Ablauf bei Railway (Beispiel)
 
