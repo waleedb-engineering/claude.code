@@ -142,6 +142,36 @@ class FaceSwapRequest(BaseModel):
     confirm_cost: bool = False
 
 
+class StreamCreate(BaseModel):
+    title: str = ""
+    platform: Literal["twitch", "youtube", "kick", "obs", "upload"] = "upload"
+    rights_confirmed: bool = False
+
+
+class StreamAnalyze(BaseModel):
+    keywords: list[str] = Field(default_factory=list, max_length=20)
+    chat_delay: float | None = Field(default=None, ge=0, le=30)
+    max_clips: int = Field(default=8, ge=1, le=20)
+    pre: float = Field(default=10, ge=2, le=30)
+    post: float = Field(default=8, ge=2, le=30)
+    max_len: float = Field(default=60, ge=10, le=180)
+    transcribe: bool = True
+
+
+class HighlightPatch(BaseModel):
+    start: float | None = None
+    end: float | None = None
+    title: str | None = None
+
+
+class StreamRender(BaseModel):
+    ids: list[str] = Field(min_length=1, max_length=20)
+    reframe_mode: Literal["smart", "center", "face"] = "smart"
+    remove_silence: bool = True
+    caption_mode: Literal["karaoke", "standard"] = "karaoke"
+    caption_style: Literal["clean", "high_energy"] = "high_energy"
+
+
 class ApplyTemplate(BaseModel):
     expected_version: int
     template_id: str
@@ -242,6 +272,8 @@ class Studio:
         self.registry = registry
         self.service = StudioService(registry=registry)
         self.automations = AutomationService(self.service, registry=registry)
+        from clipforge.stream.service import StreamService
+        self.streams = StreamService(self.service.tasks, registry=registry)
         self.youtube_status = youtube_status or (lambda: {})
         self.youtube_upload_service = youtube_upload_service
         self.worker = Worker(self.tick)
@@ -735,6 +767,70 @@ def init_studio(app: FastAPI, registry, youtube_status=None,
     def translation_engines() -> dict:
         from clipforge.studio import translate as tr
         return {"engines": tr.engines_status(), "languages": tr.LANG_NAMES}
+
+    # ---------------------------------------------------- Stream Intelligence
+    streams = studio.streams
+
+    @r.get("/streams")
+    def stream_list() -> dict:
+        return {"streams": streams.list()}
+
+    @r.post("/streams", status_code=201)
+    def stream_create(req: StreamCreate, request: Request) -> dict:
+        return {"stream": streams.create(title=req.title, platform=req.platform,
+                                         rights_confirmed=req.rights_confirmed,
+                                         user=getattr(request.state, "user", None))}
+
+    @r.get("/streams/{sid}")
+    def stream_get(sid: str) -> dict:
+        meta = streams.load(sid)
+        try:
+            analysis = streams.analysis(sid)
+        except StudioError:
+            analysis = None
+        return {"stream": meta, "analysis": analysis}
+
+    @r.delete("/streams/{sid}")
+    def stream_delete(sid: str) -> dict:
+        streams.delete(sid)
+        return {"deleted": True}
+
+    @r.post("/streams/{sid}/video")
+    def stream_video(sid: str, file: UploadFile = File(...)) -> dict:
+        from clipforge.studio.service import _env_mb
+        return {"stream": streams.upload_video(sid, file.filename or "", file.file, save_upload,
+                                               _env_mb("CLIPFORGE_MAX_STREAM_UPLOAD_MB", 8192))}
+
+    @r.post("/streams/{sid}/chat")
+    def stream_chat(sid: str, file: UploadFile = File(...)) -> dict:
+        raw = file.file.read(300 * 1024 * 1024 + 1)
+        if len(raw) > 300 * 1024 * 1024:
+            raise StudioError("file_too_large", "Chat-Export größer als 300 MB.", 413)
+        return {"stream": streams.upload_chat(sid, file.filename or "", raw)}
+
+    @r.post("/streams/{sid}/analyze", status_code=202)
+    def stream_analyze(sid: str, req: StreamAnalyze) -> dict:
+        return {"task": streams.start_analyze(sid, req.model_dump())}
+
+    @r.patch("/streams/{sid}/highlights/{hid}")
+    def stream_highlight(sid: str, hid: str, req: HighlightPatch) -> dict:
+        return {"highlight": streams.update_highlight(sid, hid, req.start, req.end, req.title)}
+
+    @r.post("/streams/{sid}/highlights/{hid}/preview", status_code=202)
+    def stream_preview(sid: str, hid: str) -> dict:
+        return {"task": streams.start_preview(sid, hid)}
+
+    @r.get("/streams/{sid}/highlights/{hid}/preview")
+    def stream_preview_file(sid: str, hid: str):
+        path = streams.preview_path(sid, hid)
+        if not os.path.isfile(path):
+            raise StudioError("preview_missing", "Vorschau noch nicht erstellt.", 404)
+        return FileResponse(path, media_type="video/mp4")
+
+    @r.post("/streams/{sid}/render", status_code=202)
+    def stream_render(sid: str, req: StreamRender) -> dict:
+        body = req.model_dump()
+        return {"task": streams.start_render(sid, body.pop("ids"), body)}
 
     # ------------------------------------------------------------ Face Swap
     @r.get("/faces")
