@@ -27,6 +27,11 @@ MAX_SNAPSHOTS = 25
 ASPECT_RATIOS = ("9:16", "16:9", "1:1", "4:5")
 RESOLUTIONS = ("720p", "1080p", "4k")
 CAPTION_STYLES = ("minimal", "bold", "karaoke", "dynamic", "none")
+CAPTION_POSITIONS = ("bottom", "middle", "top")
+# nur Schriften, die auf den Zielsystemen (Docker/macOS/Windows) vorhanden sind oder
+# von libass sauber ersetzt werden — keine freien Fontnamen in die ASS-Datei
+CAPTION_FONTS = ("Arial", "Helvetica", "Verdana", "Impact", "Georgia", "DejaVu Sans", "Liberation Sans")
+ZOOM_FOCUS = ("center", "face", "top", "bottom", "left", "right")
 VISUAL_MODES = ("motion", "static", "media", "ai_image", "split", "ai_video", "avatar")
 # Übergang *in* eine Szene hinein; "auto" = nach Stil bzw. Projekt-Vorgabe
 TRANSITIONS = ("auto", "cut", "fade", "fadeblack", "zoom", "slide", "slideup", "smooth",
@@ -101,6 +106,28 @@ def normalize_scene(raw: dict, project_dir: str | None = None) -> dict:
         start = 0.0
     if media and 0 < start < 86400:
         scene["visual"]["start"] = round(start, 3)
+    zoom = raw.get("zoom")
+    if isinstance(zoom, dict):
+        factor = _clamp(zoom.get("factor"), 1.0, 2.5, 1.0)
+        if factor > 1.001:
+            scene["zoom"] = {"factor": round(factor, 2),
+                             "focus": zoom.get("focus") if zoom.get("focus") in ZOOM_FOCUS else "center",
+                             "ramp": bool(zoom.get("ramp", False))}
+    sfx = raw.get("sfx")
+    if isinstance(sfx, list):
+        clean_sfx = []
+        for fx in sfx[:5]:
+            if not isinstance(fx, dict) or not fx.get("track"):
+                continue
+            track = str(fx["track"])[:200]
+            if not track.startswith(("library:", "project:")):
+                continue
+            if project_dir is not None:
+                resolve_music(project_dir, track)
+            clean_sfx.append({"track": track, "at": round(_clamp(fx.get("at"), 0.0, 120.0, 0.0), 2),
+                              "volume": round(_clamp(fx.get("volume"), 0.0, 2.0, 0.8), 2)})
+        if clean_sfx:
+            scene["sfx"] = clean_sfx
     vm = raw.get("voice_media")
     if vm:
         from .audio import AUDIO_EXT
@@ -193,7 +220,17 @@ def migrate(data: dict) -> dict:
     caps = p.get("captions") if isinstance(p.get("captions"), dict) else {}
     p["captions"] = {
         "style": caps.get("style") if caps.get("style") in CAPTION_STYLES else "karaoke",
-        "use_brand": bool(caps.get("use_brand", True))}
+        "use_brand": bool(caps.get("use_brand", True)),
+        "position": caps.get("position") if caps.get("position") in CAPTION_POSITIONS else "bottom",
+        "font": caps.get("font") if caps.get("font") in CAPTION_FONTS else None,
+        "color": caps.get("color") if _HEX.match(str(caps.get("color") or "")) else None,
+        "highlight_color": caps.get("highlight_color") if _HEX.match(str(caps.get("highlight_color") or "")) else None,
+        "size": round(_clamp(caps.get("size"), 0.6, 1.6, 1.0), 2)}
+    aud = p.get("audio") if isinstance(p.get("audio"), dict) else {}
+    # Lautheitsnormalisierung (EBU R128, Ziel −14 LUFS wie bei den großen Plattformen);
+    # bewusst opt-in, damit bestehende Projekte unverändert klingen
+    p["audio"] = {"loudnorm": bool(aud.get("loudnorm", False)),
+                  "target_lufs": round(_clamp(aud.get("target_lufs"), -24.0, -9.0, -14.0), 1)}
     vis = p.get("visuals") if isinstance(p.get("visuals"), dict) else {}
     p["visuals"] = {
         "image_provider": str(vis.get("image_provider") or "openai_image"),
@@ -226,7 +263,7 @@ def migrate(data: dict) -> dict:
 
 _EDITABLE = ("title", "language", "tone", "style", "aspect_ratio", "resolution",
              "scenes", "voice", "music", "captions", "visuals", "budget_limit_usd",
-             "options", "transitions")
+             "options", "transitions", "audio")
 
 
 def apply_patch(project: dict, patch: dict, project_dir: str) -> dict:
@@ -266,6 +303,12 @@ def apply_patch(project: dict, patch: dict, project_dir: str) -> dict:
         elif key == "captions":
             if not isinstance(value, dict) or value.get("style") not in CAPTION_STYLES:
                 raise StudioError("validation_error", "Unbekannter Caption-Stil.")
+            for k, allowed in (("position", CAPTION_POSITIONS), ("font", CAPTION_FONTS)):
+                if value.get(k) not in (None, "") and value.get(k) not in allowed:
+                    raise StudioError("validation_error", f"Caption-{k}: {', '.join(allowed)}.")
+            for k in ("color", "highlight_color"):
+                if value.get(k) not in (None, "") and not _HEX.match(str(value.get(k))):
+                    raise StudioError("validation_error", "Farbe als #RRGGBB angeben.")
             p["captions"] = value
         elif key == "music":
             if not isinstance(value, dict):
@@ -301,6 +344,10 @@ def apply_patch(project: dict, patch: dict, project_dir: str) -> dict:
                 raise StudioError("validation_error", "Ungültige Produktionsoptionen.")
             p["options"] = ProductionOptions.from_dict(
                 {**p.get("options", {}), **value}, strict=True).to_dict()
+        elif key == "audio":
+            if not isinstance(value, dict):
+                raise StudioError("validation_error", "Ungültige Audio-Einstellungen.")
+            p["audio"] = value
         elif key == "voice":
             if not isinstance(value, dict):
                 raise StudioError("validation_error", "Ungültige Voice-Einstellungen.")

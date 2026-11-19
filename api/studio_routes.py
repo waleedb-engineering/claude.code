@@ -927,6 +927,16 @@ def init_studio(app: FastAPI, registry, youtube_status=None,
     # ------------------------------------------------------------ Editor-Agent
     agent = studio.agent
 
+    @r.get("/agent/ollama")
+    def agent_ollama() -> dict:
+        from clipforge.agent import ollama
+        return ollama.status()
+
+    @r.post("/agent/ollama/test")
+    def agent_ollama_test() -> dict:
+        from clipforge.agent import ollama
+        return ollama.test()
+
     @r.get("/agent/engines")
     def agent_engines() -> dict:
         from clipforge.agent import planner

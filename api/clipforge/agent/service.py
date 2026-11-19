@@ -10,7 +10,7 @@ from __future__ import annotations
 import os
 
 from ..studio.costs import CostLedger
-from ..studio.errors import StudioError
+from ..studio.errors import ProviderError, StudioError
 from ..studio.storage import new_id, now_iso, read_json, studio_dir, write_json_atomic
 from . import planner
 from .tools import TOOLS, Ctx, validate
@@ -88,6 +88,14 @@ class AgentService:
                 calls, text = planner.llm_plan(engine, message, state, kind)
                 if rid:
                     ledger.commit(rid, cost, engine, "agent")
+            except ProviderError as exc:
+                # LLM nicht erreichbar/zu langsam → nichts berechnet, Regel-Planer übernimmt
+                if rid:
+                    ledger.release(rid)
+                count = len(state.get("scenes") or state.get("highlights") or [])
+                calls, notes = planner.rule_plan(message, kind, count)
+                notes = [f"{engine} nicht verfügbar ({str(exc).split(': ', 1)[-1][:120]}) — Regel-Planer verwendet, keine Kosten."] + notes
+                text, cost, engine = "", 0.0, "rules"
             except BaseException:
                 if rid:
                     ledger.release(rid)

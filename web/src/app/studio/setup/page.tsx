@@ -10,6 +10,7 @@ import ModelsSection from "@/components/studio/ModelsSection";
 import FacesSection from "@/components/studio/FacesSection";
 import SkillsSection from "@/components/studio/SkillsSection";
 import ProviderMatrix from "@/components/studio/ProviderMatrix";
+import OllamaPanel from "@/components/studio/OllamaPanel";
 import UsersSection from "@/components/studio/UsersSection";
 
 export default function SetupPage() {
@@ -151,6 +152,7 @@ export default function SetupPage() {
 
       <SkillsSection />
 
+      <OllamaPanel />
       <ProviderMatrix />
 
       {providers && (

@@ -317,6 +317,173 @@ def t_render_highlights(ctx, a):
     return {"task_id": task["id"], "change": f"{len(ids)} vertikale Clips werden gerendert"}
 
 
+# --------------------------------------------- Darstellung, Audio, Effekte
+FOCUS = ("center", "face", "top", "bottom", "left", "right")
+FONTS = ("Arial", "Helvetica", "Verdana", "Impact", "Georgia", "DejaVu Sans", "Liberation Sans")
+COLOR_NAMES = {"weiß": "#ffffff", "white": "#ffffff", "gelb": "#ffd400", "yellow": "#ffd400",
+               "rot": "#ff3030", "red": "#ff3030", "grün": "#20d060", "green": "#20d060",
+               "blau": "#3080ff", "blue": "#3080ff", "orange": "#ff8c00", "pink": "#ff4fa0",
+               "lila": "#9b5cff", "purple": "#9b5cff", "schwarz": "#000000", "black": "#000000",
+               "türkis": "#00d0d0", "cyan": "#00d0d0"}
+
+
+def _color(value: str) -> str:
+    v = value.strip().lower()
+    v = COLOR_NAMES.get(v, v)
+    import re as _re
+    if not _re.fullmatch(r"#[0-9a-f]{6}", v):
+        raise StudioError("agent_invalid", f"Farbe '{value}' unbekannt (#RRGGBB oder z. B. gelb, rot, weiß).")
+    return v
+
+
+def _scene_range(p: dict, a: dict) -> list[dict]:
+    if a.get("scene"):
+        return [_scene(p, a["scene"])]
+    return p["scenes"]
+
+
+def t_zoom(ctx, a):
+    p = copy.deepcopy(_project(ctx))
+    targets = _scene_range(p, a)
+    factor = a.get("factor", 1.4)
+    for s in targets:
+        if factor <= 1.0:
+            s.pop("zoom", None)
+        else:
+            s["zoom"] = {"factor": factor, "focus": a.get("focus", "face"), "ramp": a.get("ramp", False)}
+    where = f"Szene {a['scene']}" if a.get("scene") else "alle Szenen"
+    if factor <= 1.0:
+        return {**_save(ctx, p, ("scenes",)), "change": f"Zoom entfernt ({where})"}
+    note = "" if a.get("focus", "face") != "face" else " — Fokus aus Gesichtserkennung (Mitte, falls keins gefunden)"
+    return {**_save(ctx, p, ("scenes",)),
+            "change": f"Zoom ×{factor:.2f} ({a.get('focus', 'face')}{', einfahrend' if a.get('ramp') else ''}) "
+                      f"für {where}{note}"}
+
+
+def t_caption_look(ctx, a):
+    p = copy.deepcopy(_project(ctx))
+    caps = dict(p["captions"])
+    parts = []
+    if "color" in a:
+        caps["color"] = _color(a["color"])
+        parts.append(f"Textfarbe {caps['color']}")
+    if "highlight_color" in a:
+        caps["highlight_color"] = _color(a["highlight_color"])
+        parts.append(f"Hervorhebung {caps['highlight_color']}")
+    if "font" in a:
+        caps["font"] = a["font"]
+        parts.append(f"Schrift {a['font']}")
+    if "position" in a:
+        caps["position"] = a["position"]
+        parts.append({"top": "oben", "middle": "Mitte", "bottom": "unten"}[a["position"]])
+    if "size" in a:
+        caps["size"] = a["size"]
+        parts.append(f"Größe {a['size']:.0%}")
+    if not parts:
+        raise StudioError("agent_invalid", "Keine Untertitel-Änderung angegeben.")
+    p["captions"] = caps
+    return {**_save(ctx, p, ("captions",)), "change": "Untertitel: " + ", ".join(parts)}
+
+
+def _audio_files(ctx) -> list[dict]:
+    from ..studio.audio import AUDIO_EXT, list_music
+    out = [{"track": f"library:{m['id']}", "name": m["name"], "duration": m["duration"], "source": "Bibliothek"}
+           for m in list_music()]
+    import os
+    media = os.path.join(ctx.svc.store.dir(ctx.target), "media")
+    if os.path.isdir(media):
+        for n in sorted(os.listdir(media)):
+            if os.path.splitext(n)[1].lower() in AUDIO_EXT:
+                out.append({"track": f"project:{n}", "name": n, "source": "Projekt"})
+    return out
+
+
+def t_list_audio(ctx, a):
+    files = _audio_files(ctx)
+    return {"audio": files, "note": "" if files else
+            "Keine Musik/Effekte vorhanden — Audiodatei in die Mediathek oder ins Projekt hochladen."}
+
+
+def _pick_track(ctx, wanted: str) -> str:
+    files = _audio_files(ctx)
+    if not files:
+        raise StudioError("agent_invalid", "Keine Audiodateien vorhanden — bitte zuerst Musik/Effekt hochladen.")
+    w = (wanted or "").lower()
+    for f in files:
+        if w and (w == f["track"].lower() or w in f["name"].lower()):
+            return f["track"]
+    if not w:
+        return files[0]["track"]
+    raise StudioError("agent_invalid", f"Audio '{wanted}' nicht gefunden. Vorhanden: "
+                      + ", ".join(f["name"] for f in files[:8]))
+
+
+def t_music(ctx, a):
+    p = copy.deepcopy(_project(ctx))
+    if a.get("remove"):
+        p["music"] = {**p["music"], "track": None}
+        return {**_save(ctx, p, ("music",)), "change": "Hintergrundmusik entfernt"}
+    track = _pick_track(ctx, a.get("track", ""))
+    p["music"] = {**p["music"], "track": track, "volume": a.get("volume", p["music"].get("volume", 0.25)),
+                  "ducking": a.get("ducking", True)}
+    return {**_save(ctx, p, ("music",)),
+            "change": f"Musik {track.split(':', 1)[1]} ({p['music']['volume']:.0%}, Ducking "
+                      f"{'an' if p['music']['ducking'] else 'aus'})"}
+
+
+def t_sfx(ctx, a):
+    p = copy.deepcopy(_project(ctx))
+    s = _scene(p, a["scene"])
+    track = _pick_track(ctx, a.get("track", ""))
+    fx = list(s.get("sfx") or [])
+    if len(fx) >= 5:
+        raise StudioError("agent_invalid", "Höchstens 5 Effekte pro Szene.")
+    fx.append({"track": track, "at": a.get("at", 0.0), "volume": a.get("volume", 0.8)})
+    s["sfx"] = fx
+    return {**_save(ctx, p, ("scenes",)),
+            "change": f"Soundeffekt {track.split(':', 1)[1]} in Szene {a['scene']} bei {a.get('at', 0.0):.1f} s"}
+
+
+def t_loudness(ctx, a):
+    p = copy.deepcopy(_project(ctx))
+    p["audio"] = {"loudnorm": a.get("enabled", True), "target_lufs": a.get("target_lufs", -14.0)}
+    return {**_save(ctx, p, ("audio",)),
+            "change": (f"Lautheit wird auf {p['audio']['target_lufs']:.0f} LUFS normalisiert"
+                       if p["audio"]["loudnorm"] else "Lautheitsnormalisierung aus")}
+
+
+def t_title(ctx, a):
+    from ..studio import social_copy
+    data = social_copy.local(_project(ctx))
+    return {"suggestions": data, "change": "Titel/Beschreibung lokal vorgeschlagen (nicht gespeichert)",
+            "note": "Regelbasierte Vorschläge aus dem Skript — keine Reichweitenprognose."}
+
+
+def t_thumbnails(ctx, a):
+    import os
+    from ..studio import thumbnails
+    renders = ctx.svc.list_renders(ctx.target)
+    if not renders:
+        raise StudioError("agent_invalid", "Noch kein Render vorhanden — zuerst Vorschau oder Export rendern.")
+    rid = renders[0]["render_id"]
+    out = os.path.join(ctx.svc.store.dir(ctx.target), "renders", f"{rid}_thumbs")
+    thumbs = thumbnails.suggest(ctx.svc.render_file(ctx.target, rid), out)
+    return {"render_id": rid, "thumbnails": thumbs,
+            "change": f"{len(thumbs)} Thumbnail-Vorschläge aus dem letzten Render (Bildqualität, keine Klickprognose)"}
+
+
+def t_clip_variant(ctx, a):
+    h = _hl(ctx, a["clip"])
+    new = ctx.streams.update_highlight(ctx.target, h["id"], None, None, None, a["variant"])
+    return {"change": f"Clip {a['clip']}: Variante {a['variant']} ({new['start']:.1f}–{new['end']:.1f} s)"}
+
+
+def t_list_variants(ctx, a):
+    h = _hl(ctx, a["clip"])
+    return {"variants": h.get("variants") or [],
+            "note": "Eignung ist eine prüfbare Heuristik (Ereignis enthalten, Satzgrenzen, Länge), keine Viralitätsprognose."}
+
+
 N = {"type": "number"}
 I = {"type": "integer", "minimum": 1}
 TOOLS: dict[str, Tool] = {t.name: t for t in [
@@ -346,6 +513,30 @@ TOOLS: dict[str, Tool] = {t.name: t for t in [
          run=t_adjust_audio),
     Tool("generate_hook_variants", "Projekt-Kopien mit unterschiedlichen Hooks anlegen.", "project",
          {"count": {"type": "integer", "minimum": 1, "maximum": 4}}, run=t_hook_variants),
+    Tool("zoom_scene", "Punch-in-Zoom auf eine Szene (oder alle): Faktor 1–2,5, Fokus (face = Gesichtserkennung), "
+         "optional langsam einfahrend. factor 1 entfernt den Zoom.", "project",
+         {"scene": I, "factor": {**N, "minimum": 1, "maximum": 2.5},
+          "focus": {"type": "string", "enum": list(FOCUS)}, "ramp": {"type": "boolean"}}, run=t_zoom),
+    Tool("set_caption_appearance", "Untertitel-Farbe, Hervorhebungsfarbe, Schrift, Position, Größe.", "project",
+         {"color": {"type": "string"}, "highlight_color": {"type": "string"},
+          "font": {"type": "string", "enum": list(FONTS)},
+          "position": {"type": "string", "enum": ["bottom", "middle", "top"]},
+          "size": {**N, "minimum": 0.6, "maximum": 1.6}}, run=t_caption_look),
+    Tool("list_audio", "Verfügbare Musik/Soundeffekte (Bibliothek + Projekt) auflisten.", "project", {},
+         mutating=False, run=t_list_audio),
+    Tool("add_background_music", "Hintergrundmusik setzen (Name aus list_audio) oder entfernen.", "project",
+         {"track": {"type": "string"}, "volume": {**N, "minimum": 0, "maximum": 1},
+          "ducking": {"type": "boolean"}, "remove": {"type": "boolean"}}, run=t_music),
+    Tool("add_sound_effect", "Soundeffekt in eine Szene legen (Sekunde ab Szenenbeginn).", "project",
+         {"scene": I, "track": {"type": "string"}, "at": {**N, "minimum": 0, "maximum": 120},
+          "volume": {**N, "minimum": 0, "maximum": 2}}, ("scene",), run=t_sfx),
+    Tool("normalize_loudness", "Lautheit beim Export normalisieren (EBU R128, Standard −14 LUFS).", "project",
+         {"enabled": {"type": "boolean"}, "target_lufs": {**N, "minimum": -24, "maximum": -9}},
+         run=t_loudness),
+    Tool("generate_title", "Titel, Beschreibung und Hashtags lokal vorschlagen (nichts wird gespeichert).",
+         "project", {}, mutating=False, run=t_title),
+    Tool("generate_thumbnail", "Thumbnail-Vorschläge aus dem letzten Render erzeugen.", "project", {},
+         mutating=False, run=t_thumbnails),
     Tool("render_preview", "Schnelle Vorschau rendern.", "project", {}, run=t_render_preview),
     Tool("export_video", "Finales Video rendern.", "project", {}, confirm=True, run=t_export,
          cost_note="kostenlos, außer das Projekt nutzt bezahlte Anbieter (Budget greift)"),
@@ -358,6 +549,11 @@ TOOLS: dict[str, Tool] = {t.name: t for t in [
     Tool("trim_clip", "Highlight-Clip kürzen (Sekunden vorne/hinten).", "stream",
          {"clip": I, "cut_start": {**N, "minimum": 0, "maximum": 60},
           "cut_end": {**N, "minimum": 0, "maximum": 60}}, ("clip",), run=t_trim_highlight),
+    Tool("list_clip_variants", "Varianten (kurz/ausgewogen/mehr Kontext) eines Clips mit Eignung zeigen.",
+         "stream", {"clip": I}, ("clip",), mutating=False, run=t_list_variants),
+    Tool("set_clip_variant", "Variante eines Clips wählen: short, balanced oder context.", "stream",
+         {"clip": I, "variant": {"type": "string", "enum": ["short", "balanced", "context"]}},
+         ("clip", "variant"), run=t_clip_variant),
     Tool("render_clips", "Highlights als vertikale Clips rendern.", "stream",
          {"clips": {"type": "array"}, "count": {"type": "integer", "minimum": 1, "maximum": 20},
           "remove_pauses": {"type": "boolean"}, "animated_captions": {"type": "boolean"}},
@@ -366,10 +562,11 @@ TOOLS: dict[str, Tool] = {t.name: t for t in [
 
 # Bewusst NICHT verfügbar (ehrliche Antwort statt Scheinfunktion)
 UNSUPPORTED = {
-    "zoom": "Gesichts-Zoom auf Ereignisse ist im Renderer noch nicht umgesetzt (Smart-Reframe folgt "
-            "Gesichtern, aber ohne Punch-in-Zoom).",
     "translate": "Übersetzen geht über den Workflow „Video übersetzen“ (eigenes Projekt aus dem Video).",
-    "caption_color": "Untertitel-Farben kommen aus dem Brand-Kit; der Agent kann nur den Stil wählen.",
+    "track": "Durchgehende Objektverfolgung (Tracking) gibt es nicht; Zoom nutzt einen festen Fokus je "
+             "Szene, Stream-Clips folgen Gesichtern per Smart-Reframe.",
+    "keyframe": "Freie Keyframes gibt es nicht; Zoom kann statisch oder einfahrend sein.",
+    "broll": "B-Roll per Chat ist nicht angebunden — im Editor über „B-Roll vorschlagen“ (Pexels/Pixabay/Mediathek).",
 }
 
 

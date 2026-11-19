@@ -84,6 +84,43 @@ def _grade(style: str) -> str:
     return ",eq=contrast=1.06:saturation=0.88,vignette=PI/5" if style == "cinematic" else ""
 
 
+def normalize_loudness(path: str, target: float = -14.0, bitrate: str = "160k") -> dict:
+    """Zweistufige EBU-R128-Normalisierung (messen → linear anwenden), nur Tonspur neu.
+
+    Einstufiges loudnorm verfehlt das Ziel bei kurzen Clips deutlich; daher die
+    gemessenen Werte in den zweiten Durchlauf geben (linear=true)."""
+    import json as _json
+    import subprocess as _sp
+    probe_cmd = ["ffmpeg", "-hide_banner", "-nostats", "-i", path, "-vn", "-af",
+                 f"loudnorm=I={target:.1f}:TP=-1.5:LRA=11:print_format=json", "-f", "null", "-"]
+    err = _sp.run(probe_cmd, capture_output=True, text=True, timeout=600).stderr
+    m = re.search(r"\{[^{}]*\"input_i\"[^{}]*\}", err)
+    if not m:
+        return {"applied": False, "reason": "Messung fehlgeschlagen"}
+    data = _json.loads(m.group(0))
+    if data.get("input_i") in ("-inf", None) or float(data["input_i"]) < -70:
+        return {"applied": False, "reason": "Tonspur praktisch still", "input_lufs": data.get("input_i")}
+    gain = target - float(data["input_i"])
+    if float(data["input_tp"]) + gain <= -1.5:
+        method = "loudnorm linear"
+        filt = (f"loudnorm=I={target:.1f}:TP=-1.5:LRA=11:measured_I={data['input_i']}:"
+                f"measured_TP={data['input_tp']}:measured_LRA={data['input_lra']}:"
+                f"measured_thresh={data['input_thresh']}:offset={data['target_offset']}:linear=true,"
+                f"aresample=44100")
+    else:
+        # Spitzen würden übersteuern: Verstärkung + True-Peak-Limiter statt dynamischem loudnorm
+        method = "Verstärkung + Limiter"
+        filt = (f"volume={gain:.2f}dB,aresample=176400,alimiter=limit=0.84:attack=1:release=50:level=false,"
+                f"aresample=44100")
+    out = path + ".ln.mp4"
+    run_ffmpeg(["ffmpeg", "-y", "-i", path, "-map", "0:v", "-map", "0:a", "-c:v", "copy", "-af", filt,
+                "-c:a", "aac", "-b:a", bitrate, "-ar", "44100", "-movflags", "+faststart", out],
+               "Lautheit normalisieren")
+    os.replace(out, path)
+    return {"applied": True, "method": method, "input_lufs": float(data["input_i"]),
+            "input_true_peak": float(data["input_tp"]), "target_lufs": target}
+
+
 class StudioRenderer:
     def __init__(self, project: dict, project_dir: str, *, mode: str = "final",
                  progress=None, should_cancel=None, voice_override=None) -> None:
@@ -99,6 +136,7 @@ class StudioRenderer:
         self.cache = os.path.join(project_dir, "cache")
         self.ledger = CostLedger(project_dir, project.get("budget_limit_usd") or 0.0)
         self.warnings: list[str] = []
+        self.loudness: dict | None = None
         self._upscale_checked: set[str] = set()
         self._tts_words: dict[str, list] = {}
         self._scene_wav: dict[str, str] = {}
@@ -509,6 +547,7 @@ class StudioRenderer:
             if split:
                 self.warnings.append("Split-Screen ohne Gameplay-Datei — Szene im Vollbild gerendert.")
             inputs, chain = self._base_inputs(index, scene, dur, self.w, self.h, offset)
+            chain += self._zoom_chain(scene, self.w, self.h, dur)
             cmd = ["ffmpeg", "-y", *inputs, "-vf", chain, *enc]
         run_ffmpeg(cmd, f"Szene {index + 1}")
 
@@ -536,6 +575,10 @@ class StudioRenderer:
         scale = 1080.0 / min(self.w, self.h)
         vw, vh = int(round(self.w * scale)), int(round(self.h * scale))
         overrides = to_caption_overrides(self.brand) if self.p["captions"].get("use_brand") else {}
+        hl = self.p["captions"].get("highlight_color")
+        if hl:
+            from ..brand_kit import _hex_to_ass_inline
+            overrides = {**overrides, "highlight_color": _hex_to_ass_inline(hl)}
         if style == "none" or not words:
             cap_style, cap_mode, use_words = "minimal", "standard", []
         else:
@@ -551,6 +594,7 @@ class StudioRenderer:
         if font and _FONT_RE.match(str(font)):
             ass = ass.replace("Style: Caption,Arial,", f"Style: Caption,{font},", 1)
             info["font"] = font
+        ass = self._caption_layout(ass, info, vw, vh)
         events = []
         if self.p["visuals"].get("headlines", True):
             for start, end, text in headlines:
@@ -687,6 +731,73 @@ class StudioRenderer:
         finally:
             shutil.rmtree(work, ignore_errors=True)
 
+    def _caption_layout(self, ass: str, info: dict, vw: int, vh: int) -> str:
+        """Position/Schrift/Farbe/Größe aus dem Projekt auf den Caption-Stil anwenden."""
+        caps = self.p["captions"]
+        m = re.search(r"^Style: Caption,.*$", ass, flags=re.M)
+        if not m:
+            return ass
+        f = m.group(0)[len("Style: "):].split(",")
+        if len(f) < 16:
+            return ass
+        changed = {}
+        if caps.get("font"):
+            f[1] = caps["font"]
+            changed["font"] = caps["font"]
+        size = float(caps.get("size") or 1.0)
+        if abs(size - 1.0) > 1e-3:
+            f[2] = str(max(10, int(round(float(f[2]) * size))))
+            changed["size"] = size
+        if caps.get("color"):
+            hx = caps["color"].lstrip("#")
+            f[3] = f"&H00{hx[4:6]}{hx[2:4]}{hx[0:2]}".upper()
+            changed["color"] = caps["color"]
+        pos = caps.get("position") or "bottom"
+        if pos != "bottom":
+            f[11] = "5" if pos == "middle" else "8"
+            f[14] = "0" if pos == "middle" else str(int(vh * 0.2))
+            changed["position"] = pos
+        if not changed:
+            return ass
+        info["layout"] = changed
+        return ass.replace(m.group(0), "Style: " + ",".join(f), 1)
+
+    def _zoom_chain(self, scene: dict, w: int, h: int, dur: float) -> str:
+        """Punch-in-Zoom (statisch oder langsam einfahrend) mit Fokuspunkt."""
+        z = scene.get("zoom")
+        if not z:
+            return ""
+        f = float(z["factor"])
+        focus = z.get("focus", "center")
+        if focus == "face":
+            fx, fy = self._face_focus(scene, dur), 0.4
+            if fx is None:
+                self.warnings.append(f"Szene {scene['id']}: kein Gesicht gefunden — Zoom auf die Mitte.")
+                fx, fy = 0.5, 0.5
+        else:
+            fx, fy = {"top": (0.5, 0.25), "bottom": (0.5, 0.75), "left": (0.25, 0.5),
+                      "right": (0.75, 0.5)}.get(focus, (0.5, 0.5))
+        x = f"max(0,min(iw-iw/zoom,{fx:.3f}*iw-iw/zoom/2))"
+        y = f"max(0,min(ih-ih/zoom,{fy:.3f}*ih-ih/zoom/2))"
+        if z.get("ramp"):
+            frames = max(2, int(round(dur * self.fps)))
+            zexpr = f"min({f:.3f},1+{f - 1:.4f}*on/{frames})"
+        else:
+            zexpr = f"{f:.3f}"
+        return f",zoompan=z='{zexpr}':d=1:x='{x}':y='{y}':s={w}x{h}:fps={self.fps},setsar=1"
+
+    def _face_focus(self, scene: dict, dur: float) -> float | None:
+        media = scene["visual"].get("media")
+        if not media:
+            return None
+        try:
+            from ..reframe import detect_focus
+            start = float(scene["visual"].get("start") or 0.0)
+            info = detect_focus(self._media(media), start, start + max(0.5, dur), max_samples=12)
+            return info.get("focus_frac")
+        except Exception:  # noqa: BLE001 — Fokus ist optional
+            return None
+
     def _final_pass(self, concat_txt, voice_wav, plan, ass, total, out_path, work) -> None:
         cmd = ["ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", concat_txt, "-i", voice_wav]
         vf = "null"
@@ -723,6 +834,27 @@ class StudioRenderer:
             amap = voice_in
         else:
             amap = "1:a"
+        n_in = 3 if music else 2
+        fx_labels = []
+        for e in plan["entries"]:
+            for fx in e["scene"].get("sfx") or []:
+                try:
+                    path = resolve_music(self.dir, fx["track"])
+                except StudioError:
+                    self.warnings.append(f"Soundeffekt {fx['track']} nicht gefunden — übersprungen.")
+                    continue
+                at = e["start"] + min(float(fx["at"]), max(0.0, e["dur"] - 0.1))
+                ms = int(round(at * 1000))
+                cmd += ["-i", path]
+                fx_labels.append(f"[fx{len(fx_labels)}]")
+                filters.append(f"[{n_in}:a]aresample=44100,volume={float(fx['volume']):.3f},"
+                               f"adelay={ms}|{ms}{fx_labels[-1]}")
+                n_in += 1
+        if fx_labels:
+            base = amap if amap.startswith("[") else f"[{amap}]"
+            filters.append(f"{base}{''.join(fx_labels)}amix=inputs={len(fx_labels) + 1}:"
+                           f"duration=first:normalize=0[afx]")
+            amap = "[afx]"
         tmp = out_path + ".part.mp4"
         cmd += ["-filter_complex", ";".join(filters), "-map", "[v]", "-map", amap,
                 "-c:v", "libx264", "-preset", self.preset, "-crf", self.crf,
@@ -730,6 +862,10 @@ class StudioRenderer:
                 "-c:a", "aac", "-b:a", "96k" if self.preview else "160k", "-ar", "44100",
                 "-t", f"{total:.3f}", "-movflags", "+faststart", tmp]
         run_ffmpeg(cmd, "Finaler Export")
+        aud = self.p.get("audio") or {}
+        if aud.get("loudnorm"):
+            self.loudness = normalize_loudness(tmp, float(aud.get("target_lufs", -14.0)),
+                                               "96k" if self.preview else "160k")
         os.replace(tmp, out_path)
 
     def _report(self, out_path: str, plan: dict, cap_info: dict) -> dict:
@@ -753,6 +889,7 @@ class StudioRenderer:
                       "bpm": (plan["beats"] or {}).get("bpm"),
                       "beat_synced": bool(plan["beats"] and plan["beats"]["beats"])},
             "captions": cap_info,
+            "loudness": self.loudness,
             "scenes": [{"id": e["scene"]["id"], "start": round(e["start"], 3),
                         "duration": round(e["dur"], 3), "speech": round(e["speech"], 3),
                         "visual_mode": e["scene"]["visual"]["mode"]} for e in plan["entries"]],

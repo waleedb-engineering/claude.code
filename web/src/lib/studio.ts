@@ -47,7 +47,12 @@ export type Scene = {
   visual: SceneVisual;
   audio_source?: { start: number; end: number };
   words?: { text: string; start: number; end: number }[];
+  zoom?: { factor: number; focus: ZoomFocus; ramp: boolean };
+  sfx?: { track: string; at: number; volume: number }[];
 };
+
+export type ZoomFocus = "center" | "face" | "top" | "bottom" | "left" | "right";
+export const CAPTION_FONTS = ["Arial", "Helvetica", "Verdana", "Impact", "Georgia", "DejaVu Sans", "Liberation Sans"] as const;
 
 export type TransitionId =
   | "auto" | "cut" | "fade" | "fadeblack" | "zoom" | "slide" | "slideup" | "smooth" | "wipe" | "dissolve" | "circle";
@@ -182,7 +187,16 @@ export type Project = {
   transitions: { style: TransitionId; duration: number };
   template_id?: string;
   music: { track: string | null; volume: number; ducking: boolean; beat_sync: boolean };
-  captions: { style: CaptionStyleId; use_brand: boolean };
+  captions: {
+    style: CaptionStyleId;
+    use_brand: boolean;
+    position?: "bottom" | "middle" | "top";
+    font?: string | null;
+    color?: string | null;
+    highlight_color?: string | null;
+    size?: number;
+  };
+  audio?: { loudnorm: boolean; target_lufs: number };
   visuals: {
     image_provider: string;
     gameplay_media: string | null;
@@ -682,6 +696,18 @@ export const studio = {
     get<{ providers: { id: string; label: string; category: string; status: string; paid: boolean; cost: string; limits: string; live_verified: boolean; fallback: string }[] }>(
       "/provider-matrix",
     ).then((d) => d.providers),
+  ollamaStatus: () =>
+    get<{
+      reachable: boolean;
+      version: string | null;
+      models: { name: string; size_gb: number; tool_calling: boolean }[];
+      model: string | null;
+      model_reason: string;
+      hint?: string;
+      hardware: { os: string; arch: string; cpus: number; ram_gb: number | null; apple_silicon: boolean; nvidia_gpu: boolean };
+      recommendation: { model?: string; download_gb?: number; reason?: string; acceleration?: string; command?: string; note?: string };
+    }>("/agent/ollama"),
+  ollamaTest: () => post<{ ok: boolean; stage: string; message: string; model?: string; seconds?: number }>("/agent/ollama/test"),
   agentEngines: () =>
     get<{ engines: { id: string; label: string; ready: boolean; paid: boolean; hint?: string; cost_per_message_usd?: number }[] }>(
       "/agent/engines",

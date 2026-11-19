@@ -61,13 +61,14 @@ def rule_plan(message: str, kind: str, count: int) -> tuple[list[dict], list[str
     unit = "clip" if kind == "stream" else "szene"
     idx = _index(t, "clip", count) or _index(t, "szene", count) or _index(t, "scene", count)
 
-    if re.search(r"zoom|heranzoom|ranzoom", t):
-        notes.append(UNSUPPORTED["zoom"])
     if re.search(r"übersetz|translate|deutsche version|english version|synchronisiert", t):
         notes.append(UNSUPPORTED["translate"])
-    if re.search(r"\b(gelb|rot|blau|grün|weiß|yellow|red|blue|green)\w*\b.*untertitel|caption", t) and \
-            re.search(r"gelb|rot|blau|grün|yellow|red|blue|green", t):
-        notes.append(UNSUPPORTED["caption_color"])
+    if re.search(r"verfolg|tracking|track the|folge dem", t):
+        notes.append(UNSUPPORTED["track"])
+    if re.search(r"keyframe", t):
+        notes.append(UNSUPPORTED["keyframe"])
+    if re.search(r"b-roll|broll", t):
+        notes.append(UNSUPPORTED["broll"])
 
     # Kürzen: "entferne die ersten 4 Sekunden", "kürze die letzten zwei Sekunden"
     for m in re.finditer(r"(ersten|first|letzten|last)\s+(\w+(?:[.,]\d+)?)\s+(sekunden|sek|s|seconds)\b", t):
@@ -125,7 +126,66 @@ def rule_plan(message: str, kind: str, count: int) -> tuple[list[dict], list[str
         m = re.search(r"(\w+)\s+(versionen|varianten|variants).{0,30}(hook|einstieg)", t)
         if m:
             steps.append({"tool": "generate_hook_variants", "args": {"count": int(_n(m.group(1)) or 3)}})
-        if re.search(r"vorschau|preview", t):
+        # Zoom: „zoom auf das Gesicht in Szene 2“, „zoom langsam rein“, „kein zoom“
+        if re.search(r"zoom|heranzoom|ranzoom|reinzoom", t) and not re.search(r"zoom-übergang|zoom übergang", t):
+            if re.search(r"(kein|ohne|entfern|remove|no)\w*\s+(den\s+)?zoom|zoom\s+(entfernen|weg|aus)", t):
+                steps.append({"tool": "zoom_scene", "args": {**({"scene": idx} if idx else {}), "factor": 1.0}})
+            else:
+                focus = "face" if re.search(r"gesicht|face|person|streamer|facecam", t) else "center"
+                for word, f in (("links", "left"), ("left", "left"), ("rechts", "right"), ("right", "right"),
+                                ("oben", "top"), ("unten", "bottom")):
+                    if re.search(rf"\b{word}\b", t):
+                        focus = f
+                m2 = re.search(r"(\d+(?:[.,]\d+)?)\s*(x|×|fach)", t)
+                factor = min(2.5, max(1.05, _n(m2.group(1)) or 1.4)) if m2 else (1.6 if re.search(r"stark|nah|close", t) else 1.3)
+                steps.append({"tool": "zoom_scene", "args": {**({"scene": idx} if idx else {}), "factor": factor,
+                                                              "focus": focus,
+                                                              "ramp": bool(re.search(r"langsam|einfahr|slow|ramp", t))}})
+        # Untertitel-Aussehen
+        if re.search(r"untertitel|caption|subtitle", t):
+            look = {}
+            cols = [c for c in re.findall(r"\b(weiß|white|gelb|yellow|rot|red|grün|green|blau|blue|orange|pink|lila|purple|türkis|cyan|schwarz|black)\w*", t)]
+            if cols:
+                if re.search(r"hervorheb|highlight|aktuelle wort|markier", t):
+                    look["highlight_color"] = cols[0]
+                else:
+                    look["color"] = cols[0]
+            pos = re.search(r"\b(oben|top|mitte|middle|center|unten|bottom)\b", t)
+            if pos:
+                look["position"] = {"oben": "top", "top": "top", "mitte": "middle", "middle": "middle",
+                                    "center": "middle", "unten": "bottom", "bottom": "bottom"}[pos.group(1)]
+            if re.search(r"größer|bigger|larger", t):
+                look["size"] = 1.25
+            elif re.search(r"kleiner|smaller", t):
+                look["size"] = 0.8
+            for f in ("impact", "verdana", "arial", "georgia", "helvetica"):
+                if f in t:
+                    look["font"] = f.capitalize()
+            if look:
+                steps.append({"tool": "set_caption_appearance", "args": look})
+        # Musik / Effekte / Lautheit
+        m = re.search(r"(füge|leg|add|setz)\w*\s+(?:(?:eine?n?|die|some)\s+)?(?:hintergrund)?(musik|music)(?:\s+[„\"']?([\w .-]+?)[“\"']?)?\s*(hinzu|ein|unter|$)", t)
+        if m or re.search(r"(mit|with)\s+(hintergrund)?musik", t):
+            name = (m.group(3) or "").strip() if m else ""
+            if name in ("hinzu", "ein", "unter", "dazu", "rein", "drunter"):
+                name = ""
+            steps.append({"tool": "add_background_music", "args": {"track": name}})
+        elif re.search(r"(keine|ohne|entfern\w*)\s+(die\s+)?musik|musik\s+(entfernen|weg|raus)", t):
+            steps.append({"tool": "add_background_music", "args": {"remove": True}})
+        if re.search(r"soundeffekt|sound effect|sfx|geräusch", t):
+            at = re.search(r"(?:bei|at)\s+(\d+(?:[.,]\d+)?)\s*(?:s|sek)", t)
+            name = re.search(r"(?:effekt|sfx|sound effect|geräusch)\s+[„\"']?([\w.-]+)", t)
+            target = idx or 1
+            steps.append({"tool": "add_sound_effect", "args": {
+                "scene": target, "at": _n(at.group(1)) if at else 0.0,
+                **({"track": name.group(1)} if name and name.group(1) not in ("in", "bei", "at", "zu") else {})}})
+        if re.search(r"lautheit|loudness|lufs|normalisier|gleich laut|zu leise", t):
+            steps.append({"tool": "normalize_loudness", "args": {"enabled": not re.search(r"(keine|ohne|aus)\s+\w*\s*normal", t)}})
+        if re.search(r"titel|title|beschreibung|hashtag", t) and re.search(r"vorschl|schlag\w*\b.*\bvor\b|generier|schreib|ideen|suggest|generate", t):
+            steps.append({"tool": "generate_title", "args": {}})
+        if re.search(r"thumbnail|vorschaubild", t):
+            steps.append({"tool": "generate_thumbnail", "args": {}})
+        if re.search(r"vorschau|preview", t) and not re.search(r"vorschaubild", t):
             steps.append({"tool": "render_preview", "args": {}})
         if re.search(r"exportier|final render|export", t):
             steps.append({"tool": "export_video", "args": {}})
@@ -145,6 +205,13 @@ def rule_plan(message: str, kind: str, count: int) -> tuple[list[dict], list[str
             steps.append({"tool": "render_clips", "args": {
                 **({"clips": clips} if clips else {"count": min(count, 5) or 5}),
                 "remove_pauses": not re.search(r"pausen behalten|keep pauses", t)}})
+        var = re.search(r"\b(kürzer|kurze|short|ausgewogen|balanced|mehr kontext|more context|länger|kontext)", t)
+        if var and idx and re.search(r"variante|version|fassung|clip", t):
+            v = {"kürzer": "short", "kurze": "short", "short": "short", "ausgewogen": "balanced",
+                 "balanced": "balanced"}.get(var.group(1), "context")
+            steps.append({"tool": "set_clip_variant", "args": {"clip": idx, "variant": v}})
+        elif re.search(r"variante|varianten|variants", t) and idx:
+            steps.append({"tool": "list_clip_variants", "args": {"clip": idx}})
         if re.search(r"liste|zeig|show|list", t) and not steps:
             steps.append({"tool": "list_highlights", "args": {}})
     return steps, notes
@@ -210,9 +277,16 @@ def llm_plan(engine: str, message: str, state: dict, kind: str) -> tuple[list[di
             "messages": msgs, "tools": fn_tools}, {"Authorization": f"Bearer {key}"})
         msg = (data.get("choices") or [{}])[0].get("message") or {}
     elif engine == "ollama":
+        from . import ollama as ol
+        st = ol.status()
+        if not st["reachable"]:
+            raise ProviderError("ollama", "nicht erreichbar")
+        if not st["model"]:
+            raise ProviderError("ollama", st["model_reason"])
         data = _http_json(f"{ollama_url()}/api/chat", {
-            "model": os.environ.get("CLIPFORGE_OLLAMA_MODEL", "qwen2.5:7b"), "stream": False,
-            "messages": msgs, "tools": fn_tools}, {}, timeout=180)
+            "model": st["model"], "stream": False, "options": {"temperature": 0},
+            "messages": msgs, "tools": fn_tools}, {},
+            timeout=float(os.environ.get("CLIPFORGE_OLLAMA_TIMEOUT", "120")))
         msg = data.get("message") or {}
     else:
         raise StudioError("validation_error", "Unbekannte KI-Engine.")
@@ -233,17 +307,13 @@ def engines() -> list[dict]:
     from ..studio.credentials import secret
     out = [{"id": "rules", "label": "Regelbasiert (lokal, kostenlos)", "ready": True, "paid": False,
             "live_verified": True}]
-    try:
-        url = ollama_url()
-        req = urllib.request.Request(f"{url}/api/tags")
-        with urllib.request.urlopen(req, timeout=1.5) as resp:  # noqa: S310 — localhost
-            models = [m.get("name") for m in json.loads(resp.read()).get("models", [])]
-        ready = True
-    except Exception:  # noqa: BLE001 — Ollama läuft nicht
-        models, ready = [], False
-    out.append({"id": "ollama", "label": "Ollama (lokales LLM, kostenlos)", "ready": ready,
-                "paid": False, "models": models, "live_verified": False,
-                "hint": "" if ready else "Ollama installieren (ollama.com) und z. B. `ollama pull qwen2.5:7b`."})
+    from . import ollama as ol
+    st = ol.status()
+    out.append({"id": "ollama", "label": "Ollama (lokales LLM, kostenlos)",
+                "ready": bool(st["reachable"] and st["model"]), "paid": False,
+                "models": [m["name"] for m in st["models"]], "model": st["model"], "live_verified": False,
+                "hint": "" if st["reachable"] and st["model"] else
+                (st.get("hint") or st["model_reason"] + ". " + st["recommendation"].get("command", ""))})
     out.append({"id": "anthropic", "label": "Claude (kostenpflichtig)", "ready": bool(secret("ANTHROPIC_API_KEY")),
                 "paid": True, "cost_per_message_usd": COST["anthropic"], "live_verified": False})
     out.append({"id": "openai", "label": "OpenAI (kostenpflichtig)", "ready": bool(secret("OPENAI_API_KEY")),

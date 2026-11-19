@@ -20,9 +20,11 @@ def test_rule_planner_understands_examples():
     assert steps[0] == {"tool": "find_highlights", "args": {"count": 5, "focus": "funny"}}
     steps, notes = planner.rule_plan("Füge animierte gelbe Untertitel hinzu.", "project", 4)
     assert {"tool": "change_caption_style", "args": {"style": "karaoke"}} in steps
-    assert any("Brand-Kit" in n for n in notes)            # Farbe ehrlich nicht unterstützt
+    assert {"tool": "set_caption_appearance", "args": {"color": "gelb"}} in steps   # seit Final: echte Farbe
     steps, notes = planner.rule_plan("Zoome beim Schreien auf mein Gesicht.", "project", 4)
-    assert steps == [] and any("Zoom" in n for n in notes)
+    assert steps[0]["tool"] == "zoom_scene" and steps[0]["args"]["focus"] == "face"
+    steps, notes = planner.rule_plan("Verfolge die Person mit der Kamera", "project", 4)
+    assert steps == [] and any("Tracking" in n for n in notes)
     steps, _ = planner.rule_plan("Erstelle aus dem Video drei Versionen mit unterschiedlichen Hooks.", "project", 4)
     assert steps == [{"tool": "generate_hook_variants", "args": {"count": 3}}]
     steps, _ = planner.rule_plan("Entferne langweilige Pausen, aber lass die Pointe vollständig.", "project", 4)
