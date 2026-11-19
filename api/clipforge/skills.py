@@ -149,6 +149,8 @@ def _register(found: dict, source: dict, rejected: list[str]) -> dict:
     api = int(meta.get("clipforge-api") or CLIPFORGE_SKILL_API) if str(meta.get("clipforge-api") or "1").isdigit() else 0
     if api != CLIPFORGE_SKILL_API:
         warnings.append(f"Für ClipForge-Skill-API {api} geschrieben (aktuell {CLIPFORGE_SKILL_API}).")
+    requires = [re.sub(r"[^a-z0-9-]+", "-", r.lower()).strip("-")[:63]
+                for r in re.split(r"[,\s]+", meta.get("requires") or meta.get("depends-on") or "") if r.strip()][:10]
     digest = hashlib.sha256(b"".join(found["files"][k] for k in sorted(found["files"]))).hexdigest()[:16]
     dest = os.path.join(_dir(), name)
     tmp = dest + ".new"
@@ -167,7 +169,9 @@ def _register(found: dict, source: dict, rejected: list[str]) -> dict:
     entry = {
         "name": name, "description": (meta.get("description") or body.strip().split("\n")[0])[:300],
         "version": meta.get("version") or digest, "digest": digest, "license": lic,
-        "tools": [t for t in tools if t not in unknown], "source": source,
+        "tools": [t for t in tools if t not in unknown], "source": source, "requires": requires,
+        "author": (meta.get("author") or "")[:80] or None, "clipforge_api": api,
+        "imported_by": _current_user(),
         "files": sorted(found["files"]), "rejected": rejected[:100], "warnings": warnings,
         "enabled": False, "blocked": bool(unknown or not lic),
         "imported_at": now_iso(), "previous_digest": old["digest"] if old else None,
@@ -234,6 +238,21 @@ def _import_dir(root: str, source: dict, repo_license: dict | None = None) -> li
     return out
 
 
+def _current_user() -> str | None:
+    try:
+        from .studio.workspace import current
+        return current()
+    except Exception:  # noqa: BLE001 — lokaler Modus ohne Konten
+        return None
+
+
+def missing_requirements(skill: dict, items: list[dict] | None = None) -> list[str]:
+    """Benötigte Skills, die fehlen oder nicht aktiviert sind."""
+    items = items if items is not None else list_skills()
+    on = {x["name"] for x in items if x.get("enabled") and not x.get("blocked")}
+    return [r for r in skill.get("requires") or [] if r not in on]
+
+
 def set_enabled(name: str, enabled: bool) -> dict:
     items = list_skills()
     s = next((x for x in items if x["name"] == name), None)
@@ -241,6 +260,15 @@ def set_enabled(name: str, enabled: bool) -> dict:
         raise StudioError("skill_not_found", "Skill nicht gefunden.", 404)
     if enabled and s.get("blocked"):
         raise StudioError("skill_blocked", "Dieser Skill ist gesperrt: " + " ".join(s["warnings"]), 409)
+    missing = missing_requirements(s, items) if enabled else []
+    if missing:
+        raise StudioError("skill_requirements", "Zuerst diese Skills importieren/aktivieren: "
+                          + ", ".join(missing), 409, {"missing": missing})
+    if not enabled:
+        dependents = [x["name"] for x in items if x.get("enabled") and name in (x.get("requires") or [])]
+        if dependents:
+            raise StudioError("skill_requirements", "Wird noch gebraucht von: " + ", ".join(dependents), 409,
+                              {"dependents": dependents})
     s["enabled"] = bool(enabled)
     _write_index(items)
     return s
@@ -265,8 +293,9 @@ def read_skill(name: str) -> dict:
 def planner_context() -> str:
     """Text aller aktivierten Skills für den LLM-Planer (gekürzt)."""
     parts, total = [], 0
-    for s in list_skills():
-        if not s.get("enabled") or s.get("blocked"):
+    items = list_skills()
+    for s in items:
+        if not s.get("enabled") or s.get("blocked") or missing_requirements(s, items):
             continue
         try:
             with open(os.path.join(_dir(), s["name"], "SKILL.md"), encoding="utf-8", errors="replace") as fh:

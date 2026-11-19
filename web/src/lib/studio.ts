@@ -676,7 +676,16 @@ export const studio = {
   startLive: (id: string, body: Record<string, unknown>) => post<{ task: Task }>(`/streams/${id}/live`, body).then((d) => d.task),
   liveState: (id: string) =>
     get<{
-      state: { messages: number; elapsed: number; chat_connected: boolean; chat_error: string | null; events: { id: string; event: number; start: number; end: number; reason: string; status: string; file?: string }[] } | null;
+      state: {
+        messages: number;
+        elapsed: number;
+        chat_connected: boolean;
+        chat_error: string | null;
+        pending?: number;
+        skipped?: number;
+        youtube?: { connected: boolean; error: string | null; polls: number; quota_units_used: number } | null;
+        events: { id: string; event: number; start: number; end: number; reason: string; status: string; file?: string; queue_position?: number; note?: string }[];
+      } | null;
       availability: Record<string, { realtime: boolean; note?: string; verified?: string }>;
     }>(`/streams/${id}/live`),
   liveClipUrl: (id: string, lid: string) => `${API_BASE}/api/studio/streams/${id}/live/${lid}`,
@@ -685,7 +694,7 @@ export const studio = {
     post<{ thumbnails: { file: string; t: number; score: number; reasons: string[] }[] }>(`/projects/${id}/renders/${renderId}/thumbnails`).then((d) => d.thumbnails),
   thumbnailUrl: (id: string, renderId: string, file: string) => `${API_BASE}/api/studio/projects/${id}/renders/${renderId}/thumbnails/${file}`,
   skills: () =>
-    get<{ skills: { name: string; description: string; version: string; license: string | null; enabled: boolean; blocked: boolean; warnings: string[]; rejected: string[]; tools: string[]; source: { type: string; repo?: string; commit?: string; name?: string }; changed: boolean }[] }>(
+    get<{ skills: { name: string; description: string; version: string; license: string | null; enabled: boolean; blocked: boolean; warnings: string[]; rejected: string[]; tools: string[]; source: { type: string; repo?: string; commit?: string; name?: string }; changed: boolean; requires?: string[]; author?: string | null; imported_by?: string | null }[] }>(
       "/skills",
     ).then((d) => d.skills),
   importSkillGithub: (url: string, path: string) => post<{ skills: unknown[] }>("/skills/import/github", { url, path }),

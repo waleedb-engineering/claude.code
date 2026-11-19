@@ -155,18 +155,32 @@ class StreamService:
     # ------------------------------------------------------------ Live
     LIVE_STATUS = {
         "twitch_chat": {"realtime": True, "verified": "gegen IRC-Testserver (Protokoll), nicht live"},
-        "youtube_chat": {"realtime": False, "note": "nur VOD mit Chat-Export (Live-API noch nicht angebunden)"},
+        "youtube_chat": {"realtime": True, "verified": "gegen nachgebildeten API-Server; echte API braucht "
+                         "YouTube-API-Schlüssel (Kontingent ~5 Einheiten je Abfrage)",
+                         "note": "nur öffentliche Live-Streams per API-Schlüssel; private brauchen OAuth"},
         "kick_chat": {"realtime": False, "note": "keine stabile öffentliche Chat-Schnittstelle"},
         "video": {"realtime": True, "note": "nur eigene, wachsende OBS-Aufnahme (lokaler Modus)"},
     }
 
     def start_live(self, sid: str, *, channel: str | None, recording: str | None,
-                   started_at: float | None, chat_delay: float, threshold: float) -> dict:
+                   started_at: float | None, chat_delay: float, threshold: float,
+                   youtube: str | None = None, youtube_interval: float = 10.0) -> dict:
         import time as _time
         from ..auth import accounts_mode
         meta = self.load(sid)
-        if not channel and not recording:
-            raise StudioError("validation_error", "Twitch-Kanal und/oder OBS-Aufnahme angeben.")
+        if not channel and not recording and not youtube:
+            raise StudioError("validation_error", "Twitch-Kanal, YouTube-Live-Video und/oder OBS-Aufnahme angeben.")
+        if youtube:
+            from ..studio.credentials import secret
+            from .live import youtube_video_id
+            try:
+                youtube = youtube_video_id(youtube)
+            except ValueError as exc:
+                raise StudioError("validation_error", str(exc)) from exc
+            if not secret("YOUTUBE_API_KEY") and getattr(self, "yt_factory", None) is None:
+                raise StudioError("credential_not_set",
+                                  "Für YouTube-Live-Chat einen YouTube-Data-API-Schlüssel hinterlegen "
+                                  "(Einrichtung → Konten & Schlüssel, kostenlos mit Tageskontingent).", 409)
         if recording:
             if accounts_mode():
                 raise StudioError("feature_disabled",
@@ -190,8 +204,9 @@ class StreamService:
             os.path.getctime(recording) if recording else _time.time())
         task = self.tasks.submit("stream_live", None, {
             "stream_id": sid, "channel": channel, "recording": recording, "t0": t0,
+            "youtube": youtube, "youtube_interval": youtube_interval,
             "chat_delay": chat_delay, "threshold": threshold})
-        meta["live"] = {"task_id": task["id"], "status": "running", "channel": channel,
+        meta["live"] = {"task_id": task["id"], "status": "running", "channel": channel, "youtube": youtube,
                         "recording": bool(recording), "started": now_iso()}
         self._save(meta)
         return task
@@ -202,11 +217,21 @@ class StreamService:
         from .live import LiveSession
         p = task["params"]
         sid = p["stream_id"]
+        yt_key = None
+        if p.get("youtube"):
+            from ..studio.credentials import secret
+            yt_key = secret("YOUTUBE_API_KEY")
+        yf = getattr(self, "yt_factory", None)
+        if yf is None and p.get("youtube"):
+            from .live import YouTubeLiveChatReader
+            interval = float(p.get("youtube_interval") or 10.0)
+            yf = (lambda vid, cb: YouTubeLiveChatReader(vid, cb, yt_key or "", min_interval=interval))
         session = LiveSession(self.dir(sid), channel=p.get("channel"), recording=p.get("recording"),
                               recording_started_at=p["t0"], chat_delay=p["chat_delay"],
-                              threshold=p["threshold"], reader_factory=getattr(self, "reader_factory", None))
-        if session.reader:
-            session.reader.start()
+                              threshold=p["threshold"], reader_factory=getattr(self, "reader_factory", None),
+                              youtube=p.get("youtube"), yt_factory=yf)
+        for reader in session.readers():
+            reader.start()
         try:
             while not should_cancel():
                 session.tick()
@@ -227,7 +252,8 @@ class StreamService:
         if msgs:
             write_json_atomic(os.path.join(self.dir(sid), "chat.json"),
                               [[round(m.t, 2), m.user, m.text, m.emotes] for m in msgs])
-            meta["chat"] = {"format": "twitch_irc_live", "messages": len(msgs),
+            meta["chat"] = {"format": "youtube_live_api" if p.get("youtube") and not p.get("channel")
+                            else "twitch_irc_live", "messages": len(msgs),
                             "first": msgs[0].t, "last": msgs[-1].t, "users": len({m.user for m in msgs})}
         if p.get("recording") and os.path.isfile(p["recording"]):
             from ..ffmpeg_utils import probe

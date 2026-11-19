@@ -52,7 +52,7 @@ export default function StreamDetailPage() {
   const [preview, setPreview] = useState<Record<string, string>>({});
   const [opts, setOpts] = useState({ reframe_mode: "smart", remove_silence: true });
   const [jobId, setJobId] = useState<string | null>(null);
-  const [live, setLive] = useState({ channel: "", recording_path: "" });
+  const [live, setLive] = useState({ channel: "", recording_path: "", youtube_video: "" });
   const [liveState, setLiveState] = useState<Awaited<ReturnType<typeof studio.liveState>> | null>(null);
 
   const load = useCallback(async () => {
@@ -481,12 +481,23 @@ export default function StreamDetailPage() {
           <>
             <p className="text-sm text-emerald-300">
               ● {liveState?.state ? `${liveState.state.messages} ${t("st.messages")} · ${fmt(liveState.state.elapsed)}` : "…"}
-              {liveState?.state && !liveState.state.chat_connected ? ` · Chat getrennt (${liveState.state.chat_error ?? "…"})` : ""}
+              {liveState?.state && meta.live?.channel && !liveState.state.chat_connected ? ` · Twitch-Chat getrennt (${liveState.state.chat_error ?? "…"})` : ""}
+              {liveState?.state?.pending ? ` · ${liveState.state.pending} in der Warteschlange` : ""}
+              {liveState?.state?.skipped ? ` · ${liveState.state.skipped} übersprungen (Warteschlange voll)` : ""}
             </p>
+            {liveState?.state?.youtube && (
+              <p className="text-xs text-neutral-400">
+                YouTube: {liveState.state.youtube.connected ? "verbunden" : "nicht verbunden"} · {liveState.state.youtube.polls} Abfragen · ~
+                {liveState.state.youtube.quota_units_used} Kontingent-Einheiten
+                {liveState.state.youtube.error ? ` · ${liveState.state.youtube.error}` : ""}
+              </p>
+            )}
             <ul className="space-y-2 text-xs text-neutral-300">
               {(liveState?.state?.events ?? []).map((ev) => (
                 <li key={ev.id}>
-                  {ev.id} · {fmt(ev.start)}–{fmt(ev.end)} · {ev.status} · {ev.reason}
+                  {ev.id} · {fmt(ev.start)}–{fmt(ev.end)} · {ev.status}
+                  {ev.queue_position ? ` (Platz ${ev.queue_position})` : ""} · {ev.reason}
+                  {ev.note ? ` · ${ev.note}` : ""}
                   {ev.file && <video src={studio.liveClipUrl(id, ev.id)} controls className="mt-1 max-h-48 rounded" />}
                 </li>
               ))}
@@ -507,17 +518,22 @@ export default function StreamDetailPage() {
             </button>
           </>
         ) : (
-          <div className="grid gap-2 sm:grid-cols-3">
+          <div className="grid gap-2 sm:grid-cols-4">
+            <input aria-label={t("st.youtubeLive")} placeholder={t("st.youtubeLive")} className={inputCls} value={live.youtube_video} onChange={(e) => setLive({ ...live, youtube_video: e.target.value })} />
             <input aria-label={t("st.channel")} placeholder={t("st.channel")} className={inputCls} value={live.channel} onChange={(e) => setLive({ ...live, channel: e.target.value })} />
             <input aria-label={t("st.recording")} placeholder={t("st.recording")} className={inputCls} value={live.recording_path} onChange={(e) => setLive({ ...live, recording_path: e.target.value })} />
             <button
               type="button"
               className={primaryCls}
-              disabled={!live.channel && !live.recording_path}
+              disabled={!live.channel && !live.recording_path && !live.youtube_video}
               onClick={async () => {
                 setError(null);
                 try {
-                  await studio.startLive(id, { channel: live.channel || null, recording_path: live.recording_path || null });
+                  await studio.startLive(id, {
+                    channel: live.channel || null,
+                    recording_path: live.recording_path || null,
+                    youtube_video: live.youtube_video || null,
+                  });
                   await load();
                 } catch (e) {
                   setError(errorMessage(e));

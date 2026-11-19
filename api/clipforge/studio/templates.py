@@ -25,12 +25,20 @@ _lock = threading.RLock()
 
 def _t(tid, name_de, name_en, desc, *, aspect="9:16", style="clean", captions="karaoke",
        transition="cut", tdur=0.4, beat=False, music=0.25, speed=1.0, media="motion",
-       duration=45, platform="generic", headlines=True, structure=()):
+       duration=45, platform="generic", headlines=True, structure=(), cap_pos="bottom",
+       cap_color=None, cap_hl=None, cap_size=1.0, loudnorm=False, hook_zoom=None):
+    caps = {"style": captions, "position": cap_pos, "size": cap_size}
+    if cap_color:
+        caps["color"] = cap_color
+    if cap_hl:
+        caps["highlight_color"] = cap_hl
     return {
         "id": tid, "builtin": True, "name": name_de, "name_en": name_en, "description": desc,
         "settings": {
             "aspect_ratio": aspect, "style": style,
-            "captions": {"style": captions},
+            "captions": caps,
+            "audio": {"loudnorm": loudnorm},
+            **({"hook_zoom": hook_zoom} if hook_zoom else {}),
             "transitions": {"style": transition, "duration": tdur},
             "music": {"volume": music, "ducking": True, "beat_sync": beat},
             "voice": {"speed": speed},
@@ -91,6 +99,31 @@ BUILTIN = [
        captions="bold", transition="wipe", tdur=0.3, music=0.2, duration=40,
        structure=[("hook", "Schlagzeile"), ("body", "Was ist passiert?"),
                   ("body", "Warum ist es wichtig?"), ("cta", "Meinung in die Kommentare")]),
+    _t("twitch_clip", "Twitch-Clip", "Twitch clip",
+       "Stream-Highlight: Originalton, Gesichts-Zoom im Einstieg, große Untertitel oben, normalisierte Lautheit.",
+       captions="bold", transition="cut", music=0.0, duration=30, headlines=False, platform="tiktok",
+       cap_pos="top", cap_color="#ffffff", cap_hl="#9146ff", cap_size=1.15, loudnorm=True,
+       hook_zoom={"factor": 1.3, "focus": "face", "ramp": True},
+       structure=[("hook", "Reaktion / Höhepunkt zuerst"), ("body", "Was davor passiert ist"),
+                  ("cta", "Live auf Twitch folgen")]),
+    _t("youtube_shorts", "YouTube Shorts", "YouTube Shorts",
+       "Unter 60 s, schneller Einstieg, Karaoke-Untertitel in der Mitte, −14 LUFS.",
+       captions="karaoke", transition="smooth", tdur=0.25, music=0.2, duration=45, speed=1.05,
+       platform="youtube_shorts", cap_pos="middle", cap_hl="#ff3030", loudnorm=True,
+       structure=[("hook", "Ergebnis zuerst zeigen"), ("body", "Kurz erklären"), ("body", "Beweis/Beispiel"),
+                  ("cta", "Abonnieren")]),
+    _t("interview", "Interview", "Interview",
+       "Ruhige Schnitte, Originalton, dezente Untertitel unten, Zoom auf die sprechende Person.",
+       captions="minimal", transition="cut", music=0.0, duration=60, headlines=False, loudnorm=True,
+       hook_zoom={"factor": 1.2, "focus": "face", "ramp": False},
+       structure=[("hook", "Stärkstes Zitat"), ("body", "Frage"), ("body", "Antwort"),
+                  ("cta", "Ganzes Interview")]),
+    _t("cinematic", "Cinematic Edit", "Cinematic edit",
+       "Breitwand-Balken, langsame Überblendungen, langsamer Zoom, Musik im Vordergrund.",
+       style="cinematic", captions="minimal", transition="dissolve", tdur=0.8, music=0.45, beat=True,
+       duration=40, speed=0.95, cap_size=0.9, loudnorm=True,
+       hook_zoom={"factor": 1.15, "focus": "center", "ramp": True},
+       structure=[("hook", "Stimmungsbild"), ("body", "Aufbau"), ("body", "Höhepunkt"), ("cta", "Ausklang")]),
     _t("faceless", "Ohne Sprecher (faceless)", "Faceless",
        "Stimme + Bilder/Motion, kein sichtbarer Sprecher.",
        captions="karaoke", transition="auto", tdur=0.4, music=0.25, duration=45,
@@ -131,7 +164,33 @@ def _clean_settings(raw: dict) -> dict:
         out["style"] = raw["style"]
     cap = raw.get("captions") or {}
     if isinstance(cap, dict) and cap.get("style") in CAPTION_STYLES:
-        out["captions"] = {"style": cap["style"]}
+        from .projects import _HEX, CAPTION_FONTS, CAPTION_POSITIONS
+        c = {"style": cap["style"]}
+        if cap.get("position") in CAPTION_POSITIONS:
+            c["position"] = cap["position"]
+        if cap.get("font") in CAPTION_FONTS:
+            c["font"] = cap["font"]
+        for k in ("color", "highlight_color"):
+            if _HEX.match(str(cap.get(k) or "")):
+                c[k] = cap[k]
+        try:
+            c["size"] = min(1.6, max(0.6, float(cap.get("size", 1.0))))
+        except (TypeError, ValueError):
+            pass
+        out["captions"] = c
+    au = raw.get("audio") or {}
+    if isinstance(au, dict) and "loudnorm" in au:
+        out["audio"] = {"loudnorm": bool(au["loudnorm"])}
+    hz = raw.get("hook_zoom")
+    if isinstance(hz, dict):
+        try:
+            f = min(2.5, max(1.0, float(hz.get("factor", 1.0))))
+        except (TypeError, ValueError):
+            f = 1.0
+        if f > 1.0:
+            from .projects import ZOOM_FOCUS
+            out["hook_zoom"] = {"factor": f, "focus": hz.get("focus") if hz.get("focus") in ZOOM_FOCUS else "center",
+                                "ramp": bool(hz.get("ramp", False))}
     tr = raw.get("transitions") or {}
     if isinstance(tr, dict) and tr.get("style") in TRANSITIONS:
         try:
@@ -220,7 +279,8 @@ def from_project(project: dict) -> dict:
             "aspect_ratio": project.get("aspect_ratio"), "style": project.get("style"),
             "captions": project.get("captions"), "transitions": project.get("transitions"),
             "music": project.get("music"), "voice": project.get("voice"),
-            "visuals": project.get("visuals"),
+            "visuals": project.get("visuals"), "audio": project.get("audio"),
+            "hook_zoom": next((sc.get("zoom") for sc in project.get("scenes", []) if sc.get("kind") == "hook"), None),
             "options": {k: (project.get("options") or {}).get(k)
                         for k in ("media_type", "duration_target", "platform")},
         }),
@@ -236,7 +296,7 @@ def apply_template(project: dict, template: dict) -> dict:
     for key in ("aspect_ratio", "style"):
         if key in s:
             p[key] = s[key]
-    for key in ("captions", "transitions", "music", "voice", "visuals"):
+    for key in ("captions", "transitions", "music", "voice", "visuals", "audio"):
         if key in s:
             p[key] = {**(p.get(key) or {}), **s[key]}
     opts = {**(p.get("options") or {}), **s.get("options", {})}
@@ -250,6 +310,11 @@ def apply_template(project: dict, template: dict) -> dict:
         if not p.get("scenes"):
             p["scenes"] = [normalize_scene({"kind": x["kind"], "text": x["hint"],
                                             "headline": x["hint"][:60]}) for x in structure]
+    if s.get("hook_zoom") and p.get("scenes"):
+        scenes = [dict(x) for x in p["scenes"]]
+        hook = next((x for x in scenes if x.get("kind") == "hook"), scenes[0])
+        hook["zoom"] = dict(s["hook_zoom"])
+        p["scenes"] = scenes
     p["options"] = opts
     p["template_id"] = template["id"]
     return migrate(p)

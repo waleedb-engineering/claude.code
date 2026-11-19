@@ -65,7 +65,10 @@ export default function SkillsSection() {
           <li key={s.name} className="space-y-1 py-2">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <span className="text-neutral-100">
-                {s.name} <span className="text-xs text-neutral-500">v{s.version} · {s.license ?? "keine Lizenz"} · {s.source.repo ?? s.source.name}{s.source.commit ? `@${s.source.commit}` : ""}</span>
+                {s.name} <span className="text-xs text-neutral-500">v{s.version} · {s.license ?? "keine Lizenz"} · {s.source.repo ?? s.source.name}{s.source.commit ? `@${s.source.commit}` : ""}
+                  {s.author ? ` · von ${s.author}` : ""}
+                  {s.requires && s.requires.length ? ` · benötigt: ${s.requires.join(", ")}` : ""}
+                  {s.imported_by ? ` · importiert von ${s.imported_by}` : ""}</span>
               </span>
               <span className="flex gap-2">
                 <button type="button" className={btnCls} disabled={busy || s.blocked} onClick={() => void run(() => studio.toggleSkill(s.name, !s.enabled))}>

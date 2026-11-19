@@ -199,6 +199,8 @@ class AgentExecute(BaseModel):
 
 class StreamLive(BaseModel):
     channel: str | None = None
+    youtube_video: str | None = Field(default=None, max_length=200)
+    youtube_interval: float = Field(default=10, ge=5, le=120)
     recording_path: str | None = None
     recording_started_at: float | None = None
     chat_delay: float = Field(default=5, ge=0, le=30)
@@ -908,6 +910,7 @@ def init_studio(app: FastAPI, registry, youtube_status=None,
     @r.post("/streams/{sid}/live", status_code=202)
     def stream_live(sid: str, req: StreamLive) -> dict:
         return {"task": streams.start_live(sid, channel=req.channel, recording=req.recording_path,
+                                           youtube=req.youtube_video, youtube_interval=req.youtube_interval,
                                            started_at=req.recording_started_at,
                                            chat_delay=req.chat_delay, threshold=req.threshold)}
 

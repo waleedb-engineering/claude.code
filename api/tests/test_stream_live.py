@@ -101,7 +101,7 @@ def test_live_session_cuts_from_growing_recording(tmp_path):
             fake_reader["cb"]("fan", "KEKW", [])
         now = time.time() - t0
         new = s.tick(now)
-        assert s.events and s.events[0]["status"] == "queued" and new == []
+        assert s.events and s.events[0]["status"] in ("queued", "waiting_for_recording") and new == []
         deadline = time.time() + 30
         while not new and time.time() < deadline:
             time.sleep(1)

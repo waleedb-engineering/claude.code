@@ -77,3 +77,22 @@ def test_planner_receives_skill_context(monkeypatch):
     monkeypatch.setattr(planner, "LLM_CALL", lambda e, system, u, t: seen.update(system=system) or [])
     planner.llm_plan("ollama", "mach kürzer", {}, "project")
     assert "Halte Szenen unter 3 Sekunden" in seen["system"]
+
+
+def test_dependencies_and_provenance():
+    def skill(name, extra=""):
+        return f"---\nname: {name}\ndescription: {name}\nlicense: MIT\nauthor: Anna\n{extra}---\nAnleitung {name}.\n"
+    skills.import_zip(_zip({"base/SKILL.md": skill("base-cut"), "pro/SKILL.md": skill("pro-cut", "requires: base-cut\n")}),
+                      "s.zip")
+    pro = next(s for s in skills.list_skills() if s["name"] == "pro-cut")
+    assert pro["requires"] == ["base-cut"] and pro["author"] == "Anna" and pro["clipforge_api"] == 1
+    with pytest.raises(StudioError) as e:
+        skills.set_enabled("pro-cut", True)          # Abhängigkeit noch aus
+    assert e.value.details["missing"] == ["base-cut"]
+    skills.set_enabled("base-cut", True)
+    skills.set_enabled("pro-cut", True)
+    assert "pro-cut" in skills.planner_context()
+    with pytest.raises(StudioError):
+        skills.set_enabled("base-cut", False)        # wird noch gebraucht
+    skills.set_enabled("pro-cut", False)
+    skills.set_enabled("base-cut", False)

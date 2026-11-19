@@ -140,6 +140,7 @@ const DICT = {
   "ed.focus.left": ["links", "Left"],
   "ed.focus.right": ["rechts", "Right"],
   "ed.sfxClear": ["entfernen", "remove"],
+  "st.youtubeLive": ["YouTube-Live (Link/ID, API-Schlüssel nötig)", "YouTube Live (link/ID, API key required)"],
   "st.minLen": ["Min. Länge (s)", "Min length (s)"],
   "st.maxLen": ["Max. Länge (s)", "Max length (s)"],
   "st.variants": ["Varianten (Eignung = Heuristik, keine Reichweitenprognose)", "Variants (fit = heuristic, no reach prediction)"],
