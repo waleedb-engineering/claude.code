@@ -626,6 +626,9 @@ export const studio = {
     }>(`/streams/${id}/live`),
   liveClipUrl: (id: string, lid: string) => `${API_BASE}/api/studio/streams/${id}/live/${lid}`,
   cancelTask: (id: string) => post<unknown>(`/tasks/${id}/cancel`),
+  thumbnails: (id: string, renderId: string) =>
+    post<{ thumbnails: { file: string; t: number; score: number; reasons: string[] }[] }>(`/projects/${id}/renders/${renderId}/thumbnails`).then((d) => d.thumbnails),
+  thumbnailUrl: (id: string, renderId: string, file: string) => `${API_BASE}/api/studio/projects/${id}/renders/${renderId}/thumbnails/${file}`,
   skills: () =>
     get<{ skills: { name: string; description: string; version: string; license: string | null; enabled: boolean; blocked: boolean; warnings: string[]; rejected: string[]; tools: string[]; source: { type: string; repo?: string; commit?: string; name?: string }; changed: boolean }[] }>(
       "/skills",

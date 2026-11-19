@@ -1050,6 +1050,25 @@ def init_studio(app: FastAPI, registry, youtube_status=None,
                                 filename=f"clipforge_studio_{render_id}.mp4")
         return FileResponse(path, media_type="video/mp4")
 
+    @r.post("/projects/{pid}/renders/{render_id}/thumbnails")
+    def render_thumbnails(pid: str, render_id: str) -> dict:
+        from clipforge.studio import thumbnails
+        path = svc.render_file(pid, render_id)
+        out = os.path.join(svc.store.dir(pid), "renders", f"{render_id}_thumbs")
+        return {"thumbnails": thumbnails.suggest(path, out),
+                "note": "Auswahl nach Bildqualität, keine Klick-Vorhersage."}
+
+    @r.get("/projects/{pid}/renders/{render_id}/thumbnails/{name}")
+    def render_thumbnail_file(pid: str, render_id: str, name: str):
+        from clipforge.studio.storage import require_id, safe_child
+        require_id(render_id, "Render-ID")
+        if name not in ("thumb_1.jpg", "thumb_2.jpg", "thumb_3.jpg"):
+            raise StudioError("validation_error", "Ungültiger Dateiname.")
+        path = safe_child(os.path.join(svc.store.dir(pid), "renders", f"{render_id}_thumbs"), name)
+        if not os.path.isfile(path):
+            raise StudioError("not_found", "Thumbnail nicht gefunden.", 404)
+        return FileResponse(path, media_type="image/jpeg")
+
     @r.post("/projects/{pid}/export")
     def project_export(pid: str, req: ExportRequest) -> dict:
         return svc.export_to_job(pid, req.render_id)

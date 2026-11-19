@@ -465,6 +465,7 @@ const DICT = {
   "ed.voiceAuto": ["Automatisch", "Automatic"],
   "ed.voicePreview": ["Hörprobe", "Preview voice"],
   "ed.speed": ["Sprechtempo", "Speaking rate"],
+  "ed.thumbs": ["Thumbnails vorschlagen", "Suggest thumbnails"],
   "ed.sourceText": ["Original", "Original"],
   "ed.avatarLayout": ["Avatar-Position", "Avatar position"],
   "ed.avatarLayout.full": ["Vollbild", "Full frame"],

@@ -76,6 +76,7 @@ export default function EditorPage() {
   const saving = useRef<Promise<boolean> | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const saveRef = useRef<(() => Promise<boolean>) | null>(null);
+  const [thumbs, setThumbs] = useState<Record<string, { file: string; t: number; score: number; reasons: string[] }[]>>({});
 
   const applyServer = useCallback((p: Project) => {
     projectRef.current = p;
@@ -685,6 +686,35 @@ export default function EditorPage() {
                     <a href={studio.renderUrl(id, r.render_id, true)} className={btnCls}>
                       {t("ed.download")}
                     </a>
+                    {r.mode === "final" && (
+                      <button
+                        type="button"
+                        className={`${btnCls} ml-2`}
+                        onClick={async () => {
+                          try {
+                            const th = await studio.thumbnails(id, r.render_id);
+                            setThumbs((m) => ({ ...m, [r.render_id]: th }));
+                          } catch (e) {
+                            setError(errorMessage(e));
+                          }
+                        }}
+                      >
+                        🖼 {t("ed.thumbs")}
+                      </button>
+                    )}
+                    {thumbs[r.render_id] && (
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        {thumbs[r.render_id].map((th) => (
+                          <a key={th.file} href={studio.thumbnailUrl(id, r.render_id, th.file)} download title={th.reasons.join(" · ")}>
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img src={studio.thumbnailUrl(id, r.render_id, th.file)} alt={`Thumbnail ${th.t}s`} className="h-28 rounded" />
+                            <span className="block text-[10px] text-neutral-400">
+                              {th.t}s · {th.score}
+                            </span>
+                          </a>
+                        ))}
+                      </div>
+                    )}
                   </li>
                 ))}
               </ul>
