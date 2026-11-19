@@ -89,6 +89,23 @@ trap cleanup EXIT INT TERM
 # auf Ctrl+C zu warten). `setsid` macht den Prozess gleichzeitig zum Leiter
 # einer eigenen Prozessgruppe, sodass `kill -TERM "-$PID"` wirklich den
 # gesamten Baum (inkl. ggf. gespawnter Kindprozesse) beendet — keine Zombies.
+# macOS hat kein `setsid` → gleichwertiger Ersatz über Python (os.setsid + exec).
+run_detached() {
+  # `exec`: die (beim Backgrounding entstehende) Subshell wird ersetzt, damit
+  # `$!` wirklich der Gruppenleiter ist und `kill -TERM -PID` alles beendet.
+  if command -v setsid >/dev/null 2>&1; then
+    exec setsid "$@"
+  else
+    # setsid scheitert, wenn der Prozess schon Gruppenleiter ist — dann reicht das.
+    exec "$PYTHON_BIN" -c 'import os, sys
+try:
+    os.setsid()
+except OSError:
+    pass
+os.execvp(sys.argv[1], sys.argv[1:])' "$@"
+  fi
+}
+
 if port_in_use "$API_PORT"; then
   if http_ok "$API_URL/health"; then
     info "Backend-Port $API_PORT bereits belegt — antwortet auf /health, wird wiederverwendet."
@@ -99,7 +116,7 @@ if port_in_use "$API_PORT"; then
   fi
 else
   info "Starte Backend auf $API_URL …"
-  PYTHONPATH="$API_DIR" setsid "$PYTHON_BIN" -m uvicorn app:app --host 127.0.0.1 --port "$API_PORT" \
+  PYTHONPATH="$API_DIR" run_detached "$PYTHON_BIN" -m uvicorn app:app --host 127.0.0.1 --port "$API_PORT" \
     >"$REPO_ROOT/.clipforge-backend.log" 2>&1 &
   API_PID=$!
   STARTED_API=1
@@ -133,7 +150,7 @@ if port_in_use "$WEB_PORT"; then
   fi
 else
   info "Starte Frontend auf $WEB_URL …"
-  NEXT_PUBLIC_API_BASE_URL="$API_URL" PORT="$WEB_PORT" setsid npm --prefix "$WEB_DIR" run dev \
+  NEXT_PUBLIC_API_BASE_URL="$API_URL" PORT="$WEB_PORT" run_detached npm --prefix "$WEB_DIR" run dev \
     >"$REPO_ROOT/.clipforge-frontend.log" 2>&1 &
   WEB_PID=$!
   STARTED_WEB=1
@@ -172,7 +189,17 @@ WAIT_PIDS=()
 if [ "${#WAIT_PIDS[@]}" -gt 0 ]; then
   # Wartet, bis EINER der beiden Prozesse endet (Crash) ODER Ctrl+C kommt;
   # der EXIT-Trap räumt in beiden Fällen den jeweils anderen Prozess mit auf.
-  wait -n "${WAIT_PIDS[@]}"
+  if [ "${BASH_VERSINFO[0]}" -gt 4 ] || { [ "${BASH_VERSINFO[0]}" -eq 4 ] && [ "${BASH_VERSINFO[1]}" -ge 3 ]; }; then
+    wait -n "${WAIT_PIDS[@]}"
+  else
+    # macOS-Bash 3.2 kennt kein `wait -n` → warten, bis einer der Prozesse endet
+    while :; do
+      for pid in "${WAIT_PIDS[@]}"; do
+        kill -0 "$pid" 2>/dev/null || break 2
+      done
+      sleep 1
+    done
+  fi
 else
   info "Beide Server liefen bereits — nichts zu verwalten. Beende dieses Skript (Server bleiben aktiv)."
 fi
