@@ -20,6 +20,7 @@ import SceneCard from "@/components/studio/SceneCard";
 import SettingsPanel from "@/components/studio/SettingsPanel";
 import SocialCopyPanel from "@/components/studio/SocialCopyPanel";
 import AgentChat from "@/components/studio/AgentChat";
+import Timeline from "@/components/studio/Timeline";
 import { ErrorBox, Loading, Notice, Pill, btnCls, cardCls, fmtDate, inputCls, primaryCls } from "@/components/studio/ui";
 
 const AUTOSAVE_MS = 1200;
@@ -74,6 +75,7 @@ export default function EditorPage() {
   const dirty = useRef(false);
   const saving = useRef<Promise<boolean> | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const saveRef = useRef<(() => Promise<boolean>) | null>(null);
 
   const applyServer = useCallback((p: Project) => {
     projectRef.current = p;
@@ -153,6 +155,10 @@ export default function EditorPage() {
   }, [id, conflict, applyServer]);
 
   /** Wartet, bis alle lokalen Änderungen im Backend liegen (vor Render/Regeneration). */
+  useEffect(() => {
+    saveRef.current = save;
+  }, [save]);
+
   const flush = useCallback(async (): Promise<boolean> => {
     if (timer.current) clearTimeout(timer.current);
     if (saving.current) await saving.current;
@@ -214,12 +220,24 @@ export default function EditorPage() {
     setSaveState("dirty");
   }, [future]);
 
-  // Tastatur: Strg/Cmd+Z, Strg/Cmd+Shift+Z (außerhalb von Textfeldern)
+  // Tastatur: Strg/Cmd+S speichern (überall), Strg/Cmd+Z / +Shift+Z bzw. +Y außerhalb von Textfeldern
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
+      if (!(e.ctrlKey || e.metaKey)) return;
+      const key = e.key.toLowerCase();
+      if (key === "s") {
+        e.preventDefault();
+        void saveRef.current?.();
+        return;
+      }
       const tag = (e.target as HTMLElement | null)?.tagName;
       if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
-      if (!(e.ctrlKey || e.metaKey) || e.key.toLowerCase() !== "z") return;
+      if (key === "y") {
+        e.preventDefault();
+        redo();
+        return;
+      }
+      if (key !== "z") return;
       e.preventDefault();
       if (e.shiftKey) redo();
       else undo();
@@ -468,7 +486,21 @@ export default function EditorPage() {
             ) : (
               <>
                 {project.scenes.length === 0 && <p className={`${cardCls} text-sm text-neutral-300`}>{t("ed.empty")}</p>}
-                <ol className="space-y-3">
+                {project.scenes.length > 0 && (
+                  <Timeline
+                    scenes={project.scenes}
+                    onSelect={(i) => document.querySelectorAll("#scene-list > li")[i]?.scrollIntoView({ behavior: "smooth", block: "center" })}
+                    onMove={(from, to) =>
+                      setScenes((sc) => {
+                        const next = [...sc];
+                        const [moved] = next.splice(from, 1);
+                        next.splice(to, 0, moved);
+                        return next;
+                      })
+                    }
+                  />
+                )}
+                <ol id="scene-list" className="space-y-3">
                   {project.scenes.map((scene, i) => (
                     <SceneCard
                       key={scene.id}

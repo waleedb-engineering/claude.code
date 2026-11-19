@@ -111,7 +111,7 @@ test("Studio: URL auf lokale Adresse wird verständlich abgelehnt", async ({ pag
 test("Studio: Einrichtung zeigt Readiness ohne Secrets, Sprache umschaltbar", async ({ page }) => {
   await page.goto("/studio/setup");
   await expect(page.getByRole("heading", { name: "Einrichtung & Bereitschaft" })).toBeVisible();
-  await expect(page.getByText("ElevenLabs (Cloud)")).toBeVisible();
+  await expect(page.getByLabel("Provider").getByText("ElevenLabs (Cloud)")).toBeVisible();
   await expect(page.getByText("ELEVENLABS_API_KEY", { exact: true }).first()).toBeVisible();
   await expect(page.getByText("Nicht konfiguriert").first()).toBeVisible();
   await expect(page.getByText("Nicht verbunden").first()).toBeVisible();

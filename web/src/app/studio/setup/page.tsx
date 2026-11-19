@@ -8,6 +8,8 @@ import VoiceCloneSection from "@/components/studio/VoiceCloneSection";
 import AccountsSection from "@/components/studio/AccountsSection";
 import ModelsSection from "@/components/studio/ModelsSection";
 import FacesSection from "@/components/studio/FacesSection";
+import SkillsSection from "@/components/studio/SkillsSection";
+import ProviderMatrix from "@/components/studio/ProviderMatrix";
 import UsersSection from "@/components/studio/UsersSection";
 
 export default function SetupPage() {
@@ -146,6 +148,10 @@ export default function SetupPage() {
       <VoiceCloneSection />
 
       <FacesSection />
+
+      <SkillsSection />
+
+      <ProviderMatrix />
 
       {providers && (
         <section aria-labelledby="su-prov">

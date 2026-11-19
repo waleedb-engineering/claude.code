@@ -34,6 +34,11 @@ KNOWN = {
     # Stock-Medien (kostenlose Schlüssel; Lizenzen erlauben kommerzielle Nutzung)
     "pexels": ("PEXELS_API_KEY", "Pexels (Stock-Videos/-Fotos, kostenlos)",
                "https://api.pexels.com/v1/curated?per_page=1", lambda k: {"Authorization": k}),
+    # Verwaltbar und prüfbar; noch von keiner Funktion genutzt (siehe API_PROVIDER_MATRIX.md)
+    "gemini": ("GEMINI_API_KEY", "Google Gemini (noch ungenutzt)",
+               lambda k: "https://generativelanguage.googleapis.com/v1beta/models?key=" + k, lambda k: {}),
+    "huggingface": ("HF_TOKEN", "Hugging Face (Modell-Downloads, noch ungenutzt)",
+                    "https://huggingface.co/api/whoami-v2", lambda k: {"Authorization": "Bearer " + k}),
     "youtube_data": ("YOUTUBE_API_KEY", "YouTube Data API (Trends, kostenlos)",
                      lambda k: "https://www.googleapis.com/youtube/v3/videos?part=id&chart=mostPopular"
                                "&maxResults=1&regionCode=DE&key=" + k, lambda k: {}),

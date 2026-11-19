@@ -23,11 +23,26 @@ _VIDEOS: list[VideoProvider] = [FalVideo()]
 _AVATARS: list[AvatarProvider] = [FalAvatar()]
 _CLONES: list[Provider] = [ElevenLabsCloneProvider()]
 _PLACEHOLDERS: list[Provider] = [
-    PlaceholderProvider(
-        "face_swap", "face_swap", "Face Swap",
-        "Nicht verfügbar — Entscheidung offen (Identitätsprüfung und Kennzeichnung nötig), "
-        "siehe docs/WAS_ICH_BRAUCHE.md.", "studio_face_swap"),
 ]
+
+
+class _FaceSwapStatus(Provider):
+    """Statuseintrag für den autorisierten Face Swap (Logik in studio/faceswap.py)."""
+    id, kind, label = "face_swap", "face_swap", "Face Swap (fal.ai, mit Einwilligung + Kennzeichnung)"
+    paid, live_verified = True, False
+    env_keys = ("FAL_KEY",)
+    setup_hint = ("FAL_KEY setzen und Gesichtsmodelle laden (Einrichtung → Lokale KI-Modelle); "
+                  "im Online-Betrieb zusätzlich CLIPFORGE_FACE_SWAP_ONLINE=1.")
+
+    def status(self):
+        from ..faceswap import enabled
+        ok, why = enabled()
+        if not ok:
+            return "disabled", why
+        return super().status()
+
+
+_PLACEHOLDERS.append(_FaceSwapStatus())
 
 
 def all_providers() -> list[Provider]:

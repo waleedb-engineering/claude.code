@@ -178,9 +178,11 @@ def ollama_url() -> str:
 
 def llm_plan(engine: str, message: str, state: dict, kind: str) -> tuple[list[dict], str]:
     tools = [t.schema() for t in for_context(kind)]
+    from ..skills import planner_context
+    system = SYSTEM + ("\n\n" + planner_context() if planner_context() else "")
     user = f"Projektzustand:\n{json.dumps(state, ensure_ascii=False)[:6000]}\n\nBefehl: {message}"
     if LLM_CALL is not None:
-        out = LLM_CALL(engine, SYSTEM, user, tools)
+        out = LLM_CALL(engine, system, user, tools)
         return (out, "") if isinstance(out, list) else ([], str(out))
     from ..studio.credentials import secret
     if engine == "anthropic":
@@ -189,7 +191,7 @@ def llm_plan(engine: str, message: str, state: dict, kind: str) -> tuple[list[di
             raise StudioError("credential_not_set", "Kein Anthropic-Schlüssel hinterlegt.", 409)
         from ..config import get_settings
         data = _http_json("https://api.anthropic.com/v1/messages", {
-            "model": get_settings().llm_model, "max_tokens": 1024, "system": SYSTEM,
+            "model": get_settings().llm_model, "max_tokens": 1024, "system": system,
             "tools": tools, "messages": [{"role": "user", "content": user}]},
             {"x-api-key": key, "anthropic-version": "2023-06-01"})
         calls = [{"tool": b["name"], "args": b.get("input") or {}} for b in data.get("content", [])
@@ -198,7 +200,7 @@ def llm_plan(engine: str, message: str, state: dict, kind: str) -> tuple[list[di
         return calls, text.strip()
     fn_tools = [{"type": "function", "function": {"name": t["name"], "description": t["description"],
                                                   "parameters": t["input_schema"]}} for t in tools]
-    msgs = [{"role": "system", "content": SYSTEM}, {"role": "user", "content": user}]
+    msgs = [{"role": "system", "content": system}, {"role": "user", "content": user}]
     if engine == "openai":
         key = secret("OPENAI_API_KEY")
         if not key:

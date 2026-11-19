@@ -626,6 +626,18 @@ export const studio = {
     }>(`/streams/${id}/live`),
   liveClipUrl: (id: string, lid: string) => `${API_BASE}/api/studio/streams/${id}/live/${lid}`,
   cancelTask: (id: string) => post<unknown>(`/tasks/${id}/cancel`),
+  skills: () =>
+    get<{ skills: { name: string; description: string; version: string; license: string | null; enabled: boolean; blocked: boolean; warnings: string[]; rejected: string[]; tools: string[]; source: { type: string; repo?: string; commit?: string; name?: string }; changed: boolean }[] }>(
+      "/skills",
+    ).then((d) => d.skills),
+  importSkillGithub: (url: string, path: string) => post<{ skills: unknown[] }>("/skills/import/github", { url, path }),
+  importSkillZip: (file: File) => uploadFile<{ skills: unknown[] }>("/skills/import/zip", file),
+  toggleSkill: (name: string, enabled: boolean) => request<unknown>("PATCH", `/skills/${name}`, { enabled }),
+  deleteSkill: (name: string) => request<unknown>("DELETE", `/skills/${name}`),
+  providerMatrix: () =>
+    get<{ providers: { id: string; label: string; category: string; status: string; paid: boolean; cost: string; limits: string; live_verified: boolean; fallback: string }[] }>(
+      "/provider-matrix",
+    ).then((d) => d.providers),
   agentEngines: () =>
     get<{ engines: { id: string; label: string; ready: boolean; paid: boolean; hint?: string; cost_per_message_usd?: number }[] }>(
       "/agent/engines",

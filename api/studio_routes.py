@@ -164,6 +164,15 @@ class HighlightPatch(BaseModel):
     title: str | None = None
 
 
+class SkillGithub(BaseModel):
+    url: str
+    path: str = ""
+
+
+class SkillToggle(BaseModel):
+    enabled: bool
+
+
 class AgentMessage(BaseModel):
     message: str
     engine: Literal["rules", "ollama", "anthropic", "openai"] = "rules"
@@ -778,6 +787,11 @@ def init_studio(app: FastAPI, registry, youtube_status=None,
         from clipforge.studio import trends
         return trends.youtube_trends(region.upper(), category)
 
+    @r.get("/provider-matrix")
+    def provider_matrix() -> dict:
+        from clipforge.studio.provider_matrix import matrix
+        return {"providers": matrix()}
+
     @r.get("/hardware")
     def hardware_check() -> dict:
         from clipforge.studio import hardware
@@ -896,6 +910,42 @@ def init_studio(app: FastAPI, registry, youtube_status=None,
     @r.post("/agent/{kind}/{target}/undo")
     def agent_undo(kind: str, target: str) -> dict:
         return {"project": agent.undo(kind, target)}
+
+    # ------------------------------------------------------------ Skills
+    from clipforge import skills as skillreg
+
+    def _skills_admin(request: Request) -> None:
+        from clipforge.auth import accounts_mode
+        if accounts_mode() and getattr(request.state, "role", None) != "admin":
+            raise StudioError("admin_required", "Skills importieren nur Administratoren.", 403)
+
+    @r.get("/skills")
+    def skills_list() -> dict:
+        return {"skills": skillreg.list_skills(), "api_version": skillreg.CLIPFORGE_SKILL_API}
+
+    @r.get("/skills/{name}")
+    def skills_get(name: str) -> dict:
+        return skillreg.read_skill(name)
+
+    @r.post("/skills/import/github", status_code=201)
+    def skills_github(req: SkillGithub, request: Request) -> dict:
+        _skills_admin(request)
+        return {"skills": skillreg.import_github(req.url, req.path)}
+
+    @r.post("/skills/import/zip", status_code=201)
+    def skills_zip(request: Request, file: UploadFile = File(...)) -> dict:
+        _skills_admin(request)
+        raw = file.file.read(20 * 1024 * 1024 + 1)
+        return {"skills": skillreg.import_zip(raw, file.filename or "skill.zip")}
+
+    @r.patch("/skills/{name}")
+    def skills_toggle(name: str, req: SkillToggle) -> dict:
+        return {"skill": skillreg.set_enabled(name, req.enabled)}
+
+    @r.delete("/skills/{name}")
+    def skills_delete(name: str) -> dict:
+        skillreg.delete(name)
+        return {"deleted": True}
 
     # ------------------------------------------------------------ Face Swap
     @r.get("/faces")
