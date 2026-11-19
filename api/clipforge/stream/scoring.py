@@ -261,3 +261,77 @@ def dedupe(clips: list[dict], max_overlap: float = 0.4) -> list[dict]:
         if ok:
             kept.append(c)
     return kept
+
+
+# ------------------------------------------------------------ Varianten
+VARIANTS = {
+    # Name → (Faktor Vorlauf, Faktor Nachlauf, Obergrenze Länge, Bezeichnung)
+    "short": (0.5, 0.6, 30.0, "Kurz"),
+    "balanced": (1.0, 1.0, None, "Ausgewogen"),
+    "context": (2.0, 1.6, None, "Mehr Kontext"),
+}
+
+
+def suitability(c: dict, words: list | None, note: str, *, target: tuple[float, float] = (15.0, 45.0)) -> tuple[int, list[str]]:
+    """Heuristische Eignung eines Clip-Fensters für Kurzvideo (0–100).
+
+    Bewertet nur Prüfbares: Ereignis vollständig enthalten, Satzgrenzen,
+    Länge im Zielbereich, Sprechanteil, Signalstärke. KEINE Reichweiten- oder
+    Viralitätsprognose."""
+    pts, why = 0.0, []
+    start, end, t = c["start"], c["end"], c["t"]
+    dur = end - start
+    if start + 1.5 <= t <= end - 2.0:
+        pts += 25
+        why.append("Ereignis mit Vor- und Nachlauf enthalten")
+    elif start <= t <= end:
+        pts += 10
+        why.append("Ereignis knapp am Rand")
+    else:
+        why.append("Ereignis liegt außerhalb des Fensters")
+    if "Satzanfang" in note:
+        pts += 10
+        why.append("beginnt am Satzanfang")
+    if "Satzende" in note or "nicht abgeschnitten" in note:
+        pts += 10
+        why.append("endet nach vollständigem Satz")
+    lo, hi = target
+    if lo <= dur <= hi:
+        pts += 25
+        why.append(f"Länge {dur:.0f} s im Zielbereich {lo:.0f}–{hi:.0f} s")
+    else:
+        off = (lo - dur) if dur < lo else (dur - hi)
+        pts += max(0.0, 25 - off * 1.2)
+        why.append(f"Länge {dur:.0f} s außerhalb {lo:.0f}–{hi:.0f} s")
+    if words:
+        spoken = sum(max(0.0, min(w.end, end) - max(w.start, start)) for w in words
+                     if w.end > start and w.start < end)
+        ratio = spoken / dur if dur > 0 else 0
+        pts += 10 * min(1.0, ratio / 0.5)
+        why.append(f"Sprechanteil {ratio * 100:.0f} %")
+    else:
+        pts += 5
+    pts += 20 * min(1.0, float(c.get("score", 0)) / 60.0)
+    return int(round(min(100.0, pts))), why
+
+
+def clip_variants(c: dict, duration: float, words: list | None, note: str, *, pre: float, post: float,
+                  min_len: float, max_len: float) -> list[dict]:
+    out = []
+    seen = set()
+    order = ["balanced"] + [k for k in VARIANTS if k != "balanced"]
+    for name in order:
+        fp, fq, cap, label = VARIANTS[name]
+        if name == "balanced":
+            s, e, n = c["start"], c["end"], note
+        else:
+            ml = min(max_len, cap) if cap else max_len
+            s, e, n = clip_bounds(c["t"], duration, words, pre=max(2.0, pre * fp), post=max(2.0, post * fq),
+                                  min_len=min(min_len, ml), max_len=ml)
+        if (s, e) in seen:
+            continue
+        seen.add((s, e))
+        fit, why = suitability({"start": s, "end": e, "t": c["t"], "score": c["score"]}, words, n)
+        out.append({"variant": name, "label": label, "start": s, "end": e, "duration": round(e - s, 2),
+                    "suitability": fit, "suitability_reasons": why, "cut": n})
+    return sorted(out, key=lambda v: list(VARIANTS).index(v["variant"]))

@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useT } from "@/lib/i18n";
-import { errorMessage, studio, waitForTask, type Highlight, type StreamAnalysis, type StreamMeta, type Task } from "@/lib/studio";
+import { errorMessage, studio, waitForTask, type Highlight, type StreamAnalysis, type StreamEvaluation, type StreamMeta, type Task } from "@/lib/studio";
 import AgentChat from "@/components/studio/AgentChat";
 import { ErrorBox, Progress, btnCls, cardCls, inputCls, labelCls, primaryCls } from "@/components/studio/ui";
 
@@ -43,7 +43,10 @@ export default function StreamDetailPage() {
   const [error, setError] = useState<string | null>(null);
   const [upload, setUpload] = useState<number | null>(null);
   const [task, setTask] = useState<Task | null>(null);
-  const [params, setParams] = useState({ keywords: "", max_clips: 8, chat_delay: "", transcribe: true });
+  const [params, setParams] = useState({ keywords: "", max_clips: 8, chat_delay: "", transcribe: true, min_len: 12, max_len: 60 });
+  const [evaluation, setEvaluation] = useState<StreamEvaluation | null>(null);
+  const [missed, setMissed] = useState({ start: "", end: "" });
+  const [tune, setTune] = useState<Awaited<ReturnType<typeof studio.tuneStreamWeights>> | null>(null);
   const [selected, setSelected] = useState<string[]>([]);
   const [bounds, setBounds] = useState<Record<string, { start: number; end: number }>>({});
   const [preview, setPreview] = useState<Record<string, string>>({});
@@ -173,6 +176,18 @@ export default function StreamDetailPage() {
           <input id="sm" type="number" min={1} max={20} className={inputCls} value={params.max_clips} onChange={(e) => setParams({ ...params, max_clips: Number(e.target.value) })} />
         </div>
         <div>
+          <label htmlFor="smin" className={labelCls}>
+            {t("st.minLen")}
+          </label>
+          <input id="smin" type="number" min={3} max={60} className={inputCls} value={params.min_len} onChange={(e) => setParams({ ...params, min_len: Number(e.target.value) })} />
+        </div>
+        <div>
+          <label htmlFor="smax" className={labelCls}>
+            {t("st.maxLen")}
+          </label>
+          <input id="smax" type="number" min={10} max={180} className={inputCls} value={params.max_len} onChange={(e) => setParams({ ...params, max_len: Number(e.target.value) })} />
+        </div>
+        <div>
           <label htmlFor="sd" className={labelCls}>
             {t("st.delay")}
           </label>
@@ -194,6 +209,8 @@ export default function StreamDetailPage() {
                   max_clips: params.max_clips,
                   chat_delay: params.chat_delay === "" ? null : Number(params.chat_delay),
                   transcribe: params.transcribe,
+                  min_len: params.min_len,
+                  max_len: params.max_len,
                 }),
               )
             }
@@ -223,7 +240,8 @@ export default function StreamDetailPage() {
                         onChange={(e) => setSelected((s) => (e.target.checked ? [...s, h.id] : s.filter((x) => x !== h.id)))}
                       />
                       {h.id} · {fmt(h.start)}–{fmt(h.end)} · Score {h.score}
-                      {h.edited ? " · bearbeitet" : ""}
+                      {h.edited ? ` · ${h.variant && h.variant !== "manual" ? h.variant : "bearbeitet"}` : ""}
+                      {analysis.judged?.[h.id] === "hit" ? " · ✓" : analysis.judged?.[h.id] === "miss" ? " · ✗" : ""}
                     </label>
                     <span className="text-xs text-neutral-400">
                       {Object.entries(h.chat_categories).map(([k, v]) => `${k} ${v}`).join(" · ")}
@@ -236,6 +254,33 @@ export default function StreamDetailPage() {
                     ))}
                   </ul>
                   {h.text && <p className="mt-1 text-xs italic text-neutral-400">„{h.text.slice(0, 240)}“</p>}
+                  {h.variants && h.variants.length > 0 && (
+                    <div className="mt-2" role="group" aria-label={`${t("st.variants")} ${h.id}`}>
+                      <p className="text-xs text-neutral-500">{t("st.variants")}</p>
+                      <div className="mt-1 flex flex-wrap gap-2">
+                        {h.variants.map((v) => (
+                          <button
+                            key={v.variant}
+                            type="button"
+                            title={v.suitability_reasons.join(" · ")}
+                            className={`${btnCls} ${Math.abs(v.start - h.start) < 0.01 && Math.abs(v.end - h.end) < 0.01 ? "border-indigo-400" : ""}`}
+                            disabled={busy}
+                            onClick={async () => {
+                              try {
+                                await studio.patchHighlight(id, h.id, { variant: v.variant });
+                                setBounds((x) => ({ ...x, [h.id]: { start: v.start, end: v.end } }));
+                                await load();
+                              } catch (e) {
+                                setError(errorMessage(e));
+                              }
+                            }}
+                          >
+                            {v.label} · {v.duration.toFixed(0)} s · Eignung {v.suitability}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                   <div className="mt-2 flex flex-wrap items-end gap-2">
                     <div>
                       <label className={labelCls} htmlFor={`${h.id}-s`}>
@@ -275,12 +320,123 @@ export default function StreamDetailPage() {
                     >
                       ▶ {t("st.preview")}
                     </button>
+                    {(["hit", "miss"] as const).map((v) => (
+                      <button
+                        key={v}
+                        type="button"
+                        className={btnCls}
+                        aria-pressed={analysis.judged?.[h.id] === v}
+                        disabled={busy}
+                        onClick={async () => {
+                          try {
+                            await studio.judgeHighlight(id, h.id, analysis.judged?.[h.id] === v ? "clear" : v);
+                            await load();
+                          } catch (e) {
+                            setError(errorMessage(e));
+                          }
+                        }}
+                      >
+                        {t(v === "hit" ? "st.hit" : "st.miss")}
+                      </button>
+                    ))}
                   </div>
                   {preview[h.id] && <video src={preview[h.id]} controls className="mt-2 max-h-64 rounded-lg" />}
                 </li>
               );
             })}
           </ul>
+          <div className="space-y-2 border-t border-neutral-800 pt-3" aria-label={t("st.evalTitle")}>
+            <h3 className="text-sm font-semibold text-neutral-200">{t("st.evalTitle")}</h3>
+            <div className="flex flex-wrap items-end gap-2">
+              <div>
+                <label className={labelCls} htmlFor="ms">
+                  Start (s)
+                </label>
+                <input id="ms" type="number" className={`${inputCls} w-24`} value={missed.start} onChange={(e) => setMissed({ ...missed, start: e.target.value })} />
+              </div>
+              <div>
+                <label className={labelCls} htmlFor="me">
+                  Ende (s)
+                </label>
+                <input id="me" type="number" className={`${inputCls} w-24`} value={missed.end} onChange={(e) => setMissed({ ...missed, end: e.target.value })} />
+              </div>
+              <button
+                type="button"
+                className={btnCls}
+                disabled={busy || missed.start === "" || missed.end === ""}
+                onClick={async () => {
+                  try {
+                    const cur = await studio.streamLabels(id);
+                    await studio.putStreamLabels(id, [...cur.highlights, { start: Number(missed.start), end: Number(missed.end), label: "manuell" }]);
+                    setMissed({ start: "", end: "" });
+                    setEvaluation(await studio.streamEvaluation(id));
+                  } catch (e) {
+                    setError(errorMessage(e));
+                  }
+                }}
+              >
+                {t("st.addMissed")}
+              </button>
+              <button
+                type="button"
+                className={btnCls}
+                onClick={async () => {
+                  try {
+                    setEvaluation(await studio.streamEvaluation(id));
+                  } catch (e) {
+                    setError(errorMessage(e));
+                  }
+                }}
+              >
+                {t("st.evaluate")}
+              </button>
+              <button
+                type="button"
+                className={btnCls}
+                onClick={async () => {
+                  try {
+                    setTune(await studio.tuneStreamWeights(false));
+                  } catch (e) {
+                    setError(errorMessage(e));
+                  }
+                }}
+              >
+                {t("st.tune")}
+              </button>
+            </div>
+            {evaluation && (
+              <p className="text-xs text-neutral-300" data-testid="stream-eval">
+                Präzision {evaluation.precision} · Recall {evaluation.recall} · F1 {evaluation.f1} · Treffer {evaluation.tp} · Fehlalarme {evaluation.fp} · verpasst {evaluation.fn}
+                {evaluation.time_offset_mean_s != null ? ` · Ø Abweichung ${evaluation.time_offset_mean_s} s` : ""}
+                {evaluation.event_fully_contained != null ? ` · vollständig enthalten ${Math.round(evaluation.event_fully_contained * 100)} %` : ""}
+                <br />
+                <span className="text-neutral-500">{evaluation.note}</span>
+              </p>
+            )}
+            {tune && (
+              <div className="text-xs text-neutral-300">
+                {tune.cases} Streams · F1 Standard {tune.f1_default} · getunt {tune.f1_tuned} · Kreuzprüfung {tune.f1_leave_one_out ?? "–"} · Faktoren{" "}
+                {Object.entries(tune.best_group_factors).map(([k, v]) => `${k} ×${v}`).join(", ")}
+                {!tune.applied && (
+                  <button
+                    type="button"
+                    className={`${btnCls} ml-2`}
+                    onClick={async () => {
+                      try {
+                        setTune(await studio.tuneStreamWeights(true));
+                      } catch (e) {
+                        setError(errorMessage(e));
+                      }
+                    }}
+                  >
+                    {t("st.tuneApply")}
+                  </button>
+                )}
+                {tune.applied && " · übernommen (gilt für neue Analysen)"}
+              </div>
+            )}
+            {analysis.weights_source && <p className="text-xs text-neutral-500">Gewichte: {analysis.weights_source}</p>}
+          </div>
           <div className="flex flex-wrap items-end gap-3 border-t border-neutral-800 pt-3">
             <div>
               <label htmlFor="sr" className={labelCls}>

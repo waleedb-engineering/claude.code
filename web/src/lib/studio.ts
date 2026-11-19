@@ -102,6 +102,32 @@ export type Highlight = {
   top_terms: string[];
   text: string;
   edited?: boolean;
+  variant?: string;
+  variants?: ClipVariant[];
+};
+
+export type ClipVariant = {
+  variant: "short" | "balanced" | "context";
+  label: string;
+  start: number;
+  end: number;
+  duration: number;
+  suitability: number;
+  suitability_reasons: string[];
+};
+
+export type StreamEvaluation = {
+  tp: number;
+  fp: number;
+  fn: number;
+  precision: number;
+  recall: number;
+  f1: number;
+  time_offset_mean_s: number | null;
+  event_fully_contained: number | null;
+  labels: number;
+  note: string;
+  missed: { start: number; end: number; label: string }[];
 };
 
 export type StreamAnalysis = {
@@ -114,6 +140,9 @@ export type StreamAnalysis = {
   heatmap: { step: number; score: number[] };
   highlights: Highlight[];
   disclaimer: string;
+  judged?: Record<string, "hit" | "miss">;
+  weights_source?: string;
+  clip_limits?: { min_len: number; max_len: number };
 };
 
 export type AgentMessage = {
@@ -613,6 +642,18 @@ export const studio = {
     post<{ task: Task }>(`/streams/${id}/analyze`, body).then((d) => d.task),
   patchHighlight: (id: string, hid: string, body: Record<string, unknown>) =>
     request<{ highlight: Highlight }>("PATCH", `/streams/${id}/highlights/${hid}`, body).then((d) => d.highlight),
+  judgeHighlight: (id: string, hid: string, verdict: "hit" | "miss" | "clear") =>
+    post<{ labels: unknown }>(`/streams/${id}/highlights/${hid}/judge`, { verdict }),
+  streamLabels: (id: string) =>
+    get<{ highlights: { start: number; end: number; peak: number; label: string; from?: string }[] }>(`/streams/${id}/labels`),
+  putStreamLabels: (id: string, highlights: Record<string, unknown>[]) =>
+    request<unknown>("PUT", `/streams/${id}/labels`, { highlights }),
+  streamEvaluation: (id: string) => get<StreamEvaluation>(`/streams/${id}/evaluation`),
+  tuneStreamWeights: (apply: boolean) =>
+    post<{ f1_default: number; f1_tuned: number; f1_leave_one_out: number | null; cases: number; applied: boolean; best_group_factors: Record<string, number> }>(
+      "/stream-weights/tune",
+      { apply },
+    ),
   previewHighlight: (id: string, hid: string) =>
     post<{ task: Task }>(`/streams/${id}/highlights/${hid}/preview`).then((d) => d.task),
   highlightPreviewUrl: (id: string, hid: string) => `${API_BASE}/api/studio/streams/${id}/highlights/${hid}/preview`,

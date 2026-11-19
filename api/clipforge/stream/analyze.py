@@ -19,6 +19,8 @@ from ..models import Word
 from . import scoring, signals
 from .chat import ChatMessage, per_second
 
+SIGNAL_VERSION = 1
+
 
 def _transcribe_window(path: str, start: float, end: float, transcriber, settings) -> list[Word]:
     with tempfile.TemporaryDirectory() as tmp:
@@ -30,10 +32,8 @@ def _transcribe_window(path: str, start: float, end: float, transcriber, setting
     return [Word(w.text, w.start + start, w.end + start) for w in tr.words]
 
 
-def analyze(path: str, *, chat: list[ChatMessage] | None = None, transcriber=None, settings=None,
-            keywords: list[str] | None = None, chat_delay: float | None = None,
-            max_clips: int = 8, pre: float = 10.0, post: float = 8.0, max_len: float = 60.0,
-            progress=None, should_cancel=None) -> dict:
+def measure(path: str, *, progress=None, should_cancel=None) -> dict:
+    """Teurer Teil: Audio-/Video-Signale über die ganze Aufnahme (cachebar)."""
     log = progress or (lambda _m: None)
     info = probe(path)
     duration = float(info.duration or 0)
@@ -43,11 +43,33 @@ def analyze(path: str, *, chat: list[ChatMessage] | None = None, transcriber=Non
     audio = signals.audio_features(path, should_cancel) if info.has_audio else None
     log("Video-Signale werden gemessen …")
     video = signals.video_features(path, should_cancel)
+    return {"version": SIGNAL_VERSION, "duration": duration, "has_audio": bool(info.has_audio),
+            "audio": _to_lists(audio), "video": _to_lists(video)}
+
+
+def _to_lists(d: dict | None) -> dict | None:
+    if d is None:
+        return None
+    return {k: [round(float(x), 3) for x in v] for k, v in d.items()}
+
+
+def analyze(path: str, *, chat: list[ChatMessage] | None = None, transcriber=None, settings=None,
+            keywords: list[str] | None = None, chat_delay: float | None = None,
+            max_clips: int = 8, pre: float = 10.0, post: float = 8.0, max_len: float = 60.0,
+            min_len: float = 12.0, weights: dict | None = None, measured: dict | None = None,
+            variants: bool = True, progress=None, should_cancel=None) -> dict:
+    log = progress or (lambda _m: None)
+    if measured is None or measured.get("version") != SIGNAL_VERSION:
+        measured = measure(path, progress=progress, should_cancel=should_cancel)
+    else:
+        log("Gespeicherte Signal-Messung wird wiederverwendet …")
+    duration = float(measured["duration"])
+    audio, video = measured.get("audio"), measured.get("video")
     chat_ps = per_second(chat, duration) if chat else None
 
     log("Erstes Scoring (Chat/Audio/Video) …")
     tl = scoring.score_timeline(duration, chat=chat_ps, audio=audio, video=video,
-                                keywords=keywords, chat_delay=chat_delay)
+                                keywords=keywords, chat_delay=chat_delay, weights=weights)
     first = scoring.pick_candidates(tl, chat=chat_ps, max_count=max_clips * 2)
 
     words: list[Word] = []
@@ -74,25 +96,32 @@ def analyze(path: str, *, chat: list[ChatMessage] | None = None, transcriber=Non
         if words:
             log("Zweites Scoring mit Transkript …")
             tl = scoring.score_timeline(duration, chat=chat_ps, audio=audio, video=video,
-                                        words=words, keywords=keywords, chat_delay=tl["chat_delay"])
+                                        words=words, keywords=keywords, chat_delay=tl["chat_delay"],
+                                        weights=weights)
     cands = scoring.pick_candidates(tl, chat=chat_ps, max_count=max_clips * 2)
     clips = []
     for c in cands:
-        start, end, note = scoring.clip_bounds(c.t, duration, words, pre=pre, post=post, max_len=max_len)
+        start, end, note = scoring.clip_bounds(c.t, duration, words, pre=pre, post=post,
+                                               min_len=min_len, max_len=max_len)
         text = " ".join(w.text for w in words if start <= w.start <= end).strip()
-        clips.append({"t": c.t, "start": start, "end": end, "score": c.score,
+        clips.append({"t": c.t, "start": start, "end": end, "score": c.score, "_note": note,
                       "components": c.components, "reasons": c.reasons + [f"Schnitt: {note}"],
                       "chat_categories": c.chat_categories, "top_terms": c.top_terms,
                       "text": text[:600]})
     clips = scoring.dedupe(clips)[:max_clips]
     for i, c in enumerate(clips):
         c["id"] = f"h{i + 1:02d}"
+        note = c.pop("_note")
+        if variants:
+            c["variants"] = scoring.clip_variants(c, duration, words, note, pre=pre, post=post,
+                                                  min_len=min_len, max_len=max_len)
     step = max(1, tl["n"] // 600)  # Heatmap höchstens ~600 Punkte
     return {
         "duration": round(duration, 2), "signals": tl["signals"], "weights":
             {k: round(v, 3) for k, v in tl["weights"].items()},
         "chat_delay": tl["chat_delay"], "chat_delay_note": tl["chat_delay_note"],
         "chat_messages": len(chat or []), "transcribed_windows": transcribed,
+        "clip_limits": {"min_len": min_len, "max_len": max_len, "pre": pre, "post": post},
         "heatmap": {"step": step, "score": [round(float(x), 1) for x in tl["score"][::step]]},
         "highlights": clips,
         "disclaimer": "Rangfolge aus messbaren Signalen — keine Viralitäts-Vorhersage.",

@@ -155,6 +155,7 @@ class StreamAnalyze(BaseModel):
     pre: float = Field(default=10, ge=2, le=30)
     post: float = Field(default=8, ge=2, le=30)
     max_len: float = Field(default=60, ge=10, le=180)
+    min_len: float = Field(default=12, ge=3, le=60)
     transcribe: bool = True
 
 
@@ -162,6 +163,19 @@ class HighlightPatch(BaseModel):
     start: float | None = None
     end: float | None = None
     title: str | None = None
+    variant: Literal["short", "balanced", "context"] | None = None
+
+
+class StreamLabels(BaseModel):
+    highlights: list[dict] = Field(default_factory=list, max_length=500)
+
+
+class HighlightJudge(BaseModel):
+    verdict: Literal["hit", "miss", "clear"]
+
+
+class StreamTune(BaseModel):
+    apply: bool = False
 
 
 class SkillGithub(BaseModel):
@@ -848,7 +862,37 @@ def init_studio(app: FastAPI, registry, youtube_status=None,
 
     @r.patch("/streams/{sid}/highlights/{hid}")
     def stream_highlight(sid: str, hid: str, req: HighlightPatch) -> dict:
-        return {"highlight": streams.update_highlight(sid, hid, req.start, req.end, req.title)}
+        return {"highlight": streams.update_highlight(sid, hid, req.start, req.end, req.title, req.variant)}
+
+    @r.post("/streams/{sid}/highlights/{hid}/judge")
+    def stream_judge(sid: str, hid: str, req: HighlightJudge) -> dict:
+        return {"labels": streams.judge_highlight(sid, hid, req.verdict)}
+
+    @r.get("/streams/{sid}/labels")
+    def stream_labels(sid: str) -> dict:
+        return streams.labels(sid)
+
+    @r.put("/streams/{sid}/labels")
+    def stream_labels_put(sid: str, req: StreamLabels) -> dict:
+        return streams.set_labels(sid, req.highlights)
+
+    @r.get("/streams/{sid}/evaluation")
+    def stream_evaluation(sid: str) -> dict:
+        return streams.evaluation(sid)
+
+    @r.post("/stream-weights/tune")
+    def stream_tune(req: StreamTune) -> dict:
+        return streams.tune(apply=req.apply)
+
+    @r.get("/stream-weights")
+    def stream_weights() -> dict:
+        from clipforge.stream.scoring import DEFAULT_WEIGHTS
+        return {"default": DEFAULT_WEIGHTS, "tuned": streams.tuned_weights()}
+
+    @r.delete("/stream-weights")
+    def stream_weights_reset() -> dict:
+        streams.reset_weights()
+        return {"reset": True}
 
     @r.post("/streams/{sid}/highlights/{hid}/preview", status_code=202)
     def stream_preview(sid: str, hid: str) -> dict:

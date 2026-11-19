@@ -5,6 +5,8 @@ Speicher je Benutzerbereich: <studio>/streams/<id>/
   source.<ext>   Video (Upload/OBS-Aufnahme)
   chat.json      normierter Chat (aus dem importierten Export)
   analysis.json  Ergebnis inkl. Heatmap und Highlights (manuell korrigierbar)
+  signals.json   gecachte Audio-/Video-Messung (neu bei neuem Video)
+  labels.json    vom Nutzer markierte echte Highlights (Auswertung/Tuning)
   previews/      schnelle Vorschauen je Highlight
 
 Gerenderte Highlights werden als normaler ClipForge-Job angelegt — damit
@@ -101,6 +103,9 @@ class StreamService:
         if ext not in VIDEO_EXT:
             raise StudioError("file_type_not_allowed", f"Videoformat '{ext}' wird nicht unterstützt.", 415)
         dest = os.path.join(self.dir(sid), f"source{ext}")
+        for old in ("signals.json",):
+            if os.path.exists(os.path.join(self.dir(sid), old)):
+                os.remove(os.path.join(self.dir(sid), old))
         size = save_upload(fileobj, dest, limit_mb * 1024 * 1024)
         from ..ffmpeg_utils import probe
         try:
@@ -263,9 +268,12 @@ class StreamService:
                  "pre": max(2.0, min(30.0, float(params.get("pre") or 10))),
                  "post": max(2.0, min(30.0, float(params.get("post") or 8))),
                  "max_len": max(10.0, min(180.0, float(params.get("max_len") or 60))),
+                 "min_len": max(3.0, min(60.0, float(params.get("min_len") or 12))),
                  "transcribe": bool(params.get("transcribe", True))}
         if clean["chat_delay"] is not None:
             clean["chat_delay"] = max(0.0, min(30.0, float(clean["chat_delay"])))
+        if clean["min_len"] > clean["max_len"]:
+            raise StudioError("validation_error", "Mindestlänge darf nicht größer als die Maximallänge sein.")
         meta = self.load(sid)
         meta["status"] = "analyzing"
         self._save(meta)
@@ -285,9 +293,17 @@ class StreamService:
         from ..config import get_settings
         p = task["params"]
         sid = p["stream_id"]
+        sig_path = os.path.join(self.dir(sid), "signals.json")
+        tuned = self.tuned_weights()
         try:
+            measured = read_json(sig_path, None)
+            if not isinstance(measured, dict) or measured.get("version") != analyze_mod.SIGNAL_VERSION:
+                measured = analyze_mod.measure(self.source_path(sid), progress=progress,
+                                               should_cancel=should_cancel)
+                write_json_atomic(sig_path, measured)
             result = analyze_mod.analyze(
-                self.source_path(sid), chat=self._chat(sid),
+                self.source_path(sid), chat=self._chat(sid), measured=measured,
+                weights=tuned["weights"] if tuned else None, min_len=p.get("min_len", 12.0),
                 transcriber=self._transcriber() if p.get("transcribe") else None,
                 settings=get_settings(), keywords=p.get("keywords"), chat_delay=p.get("chat_delay"),
                 max_clips=p["max_clips"], pre=p["pre"], post=p["post"], max_len=p["max_len"],
@@ -301,6 +317,7 @@ class StreamService:
                 raise
             raise StudioError("analysis_failed", f"Analyse fehlgeschlagen ({type(exc).__name__}).", 500) from exc
         result["analyzed_at"] = now_iso()
+        result["weights_source"] = "eigene Auswertung" if tuned else "Standard"
         result["params"] = {k: v for k, v in p.items() if k != "stream_id"}
         write_json_atomic(os.path.join(self.dir(sid), "analysis.json"), result)
         meta = self.load(sid)
@@ -318,8 +335,8 @@ class StreamService:
         return {k: v for k, v in data.items() if not k.startswith("_")}
 
     def update_highlight(self, sid: str, hid: str, start: float | None, end: float | None,
-                         title: str | None) -> dict:
-        """Manuelle Korrektur der Grenzen (Ein-/Ausstieg) oder des Titels."""
+                         title: str | None, variant: str | None = None) -> dict:
+        """Manuelle Korrektur der Grenzen (Ein-/Ausstieg), Variante oder Titel."""
         path = os.path.join(self.dir(sid), "analysis.json")
         data = read_json(path, None)
         if not isinstance(data, dict):
@@ -327,11 +344,16 @@ class StreamService:
         h = next((x for x in data["highlights"] if x["id"] == hid), None)
         if h is None:
             raise StudioError("highlight_not_found", "Highlight nicht gefunden.", 404)
+        if variant is not None:
+            v = next((x for x in h.get("variants") or [] if x["variant"] == variant), None)
+            if v is None:
+                raise StudioError("validation_error", "Diese Variante gibt es für das Highlight nicht.")
+            start, end = v["start"], v["end"]
         s = h["start"] if start is None else float(start)
         e = h["end"] if end is None else float(end)
         if not (0 <= s < e <= data["duration"] + 0.01) or e - s < 3 or e - s > 180:
             raise StudioError("validation_error", "Ungültige Grenzen (3–180 s innerhalb der Aufnahme).")
-        h.update(start=round(s, 2), end=round(e, 2), edited=True)
+        h.update(start=round(s, 2), end=round(e, 2), edited=True, variant=variant or "manual")
         if title is not None:
             h["title"] = title.strip()[:120]
         words = data.get("_words") or []
@@ -445,3 +467,101 @@ class StreamService:
                                                      "created_at": now_iso()}]
         self._save(meta)
         return {"job_id": job.id, "clips": len(p["ids"])}
+
+    # ---------------------------------------------- Auswertung & Tuning
+    def labels(self, sid: str) -> dict:
+        self.load(sid)
+        data = read_json(os.path.join(self.dir(sid), "labels.json"), None)
+        return data if isinstance(data, dict) else {"version": 1, "highlights": []}
+
+    def set_labels(self, sid: str, items: list[dict]) -> dict:
+        from .evaluate import load_labels
+        meta = self.load(sid)
+        try:
+            clean = load_labels({"highlights": items})
+        except ValueError as exc:
+            raise StudioError("validation_error", str(exc)) from exc
+        dur = float((meta.get("video") or {}).get("duration") or 0)
+        if dur and any(h["end"] > dur + 0.5 for h in clean):
+            raise StudioError("validation_error", "Markierung liegt hinter dem Ende der Aufnahme.")
+        if len(clean) > 500:
+            raise StudioError("validation_error", "Höchstens 500 Markierungen.")
+        data = {"version": 1, "synthetic": False, "source": meta["title"], "updated_at": now_iso(),
+                "highlights": clean}
+        write_json_atomic(os.path.join(self.dir(sid), "labels.json"), data)
+        return data
+
+    def judge_highlight(self, sid: str, hid: str, verdict: str) -> dict:
+        """Schnelles Markieren: erkanntes Highlight als echt bestätigen oder verwerfen."""
+        if verdict not in ("hit", "miss", "clear"):
+            raise StudioError("validation_error", "verdict: hit, miss oder clear.")
+        h = self._highlight(sid, hid)
+        data = read_json(os.path.join(self.dir(sid), "analysis.json"), {})
+        cur = [x for x in self.labels(sid)["highlights"] if x.get("from") != hid]
+        if verdict == "hit":
+            cur.append({"start": h["start"], "end": h["end"], "peak": h["t"], "label": h.get("title") or hid,
+                        "from": hid})
+        out = self.set_labels(sid, cur)
+        judged = dict(data.get("judged") or {})
+        if verdict == "clear":
+            judged.pop(hid, None)
+        else:
+            judged[hid] = verdict
+        data["judged"] = judged
+        write_json_atomic(os.path.join(self.dir(sid), "analysis.json"), data)
+        return out
+
+    def evaluation(self, sid: str, tolerance: float = 5.0) -> dict:
+        from .evaluate import evaluate, load_labels
+        a = read_json(os.path.join(self.dir(sid), "analysis.json"), None)
+        if not isinstance(a, dict):
+            raise StudioError("analysis_missing", "Noch keine Analyse vorhanden.", 404)
+        labels = load_labels(self.labels(sid))
+        judged = a.get("judged") or {}
+        if not labels:
+            raise StudioError("labels_missing", "Noch keine echten Highlights markiert.", 404)
+        res = evaluate(a["highlights"], labels, tolerance)
+        res["labels"] = len(labels)
+        res["judged"] = len(judged)
+        res["note"] = ("Aussagekräftig erst mit vollständig markierter Aufnahme: nicht markierte echte "
+                       "Highlights zählen sonst fälschlich als Fehlalarm.")
+        return res
+
+    def _weights_path(self) -> str:
+        return os.path.join(self._base(), "weights.json")
+
+    def tuned_weights(self) -> dict | None:
+        data = read_json(self._weights_path(), None)
+        return data if isinstance(data, dict) and isinstance(data.get("weights"), dict) else None
+
+    def tune(self, apply: bool = False) -> dict:
+        """Gewichte aus allen eigenen, markierten und gemessenen Aufnahmen schätzen."""
+        from .evaluate import load_labels, tune
+        cases = []
+        for meta in self.list():
+            d = self.dir(meta["id"])
+            measured = read_json(os.path.join(d, "signals.json"), None)
+            raw = read_json(os.path.join(d, "labels.json"), None)
+            if not isinstance(measured, dict) or not isinstance(raw, dict) or not raw.get("highlights"):
+                continue
+            cases.append({"name": meta["title"], "measured": measured, "chat": self._chat(meta["id"]),
+                          "labels": load_labels(raw)})
+        if not cases:
+            raise StudioError("labels_missing", "Keine analysierte Aufnahme mit markierten Highlights.", 404)
+        res = tune(cases)
+        res["applied"] = False
+        if apply:
+            if len(cases) < 2:
+                raise StudioError("validation_error",
+                                  "Zum Übernehmen mindestens zwei markierte Aufnahmen (sonst Überanpassung).")
+            if (res["f1_leave_one_out"] or 0) < res["f1_default"]:
+                raise StudioError("validation_error",
+                                  "Getunte Gewichte sind in der Kreuzprüfung nicht besser als der Standard.")
+            write_json_atomic(self._weights_path(), {"weights": res["weights"], "at": now_iso(),
+                                                     "cases": len(cases), "f1_loo": res["f1_leave_one_out"]})
+            res["applied"] = True
+        return res
+
+    def reset_weights(self) -> None:
+        if os.path.exists(self._weights_path()):
+            os.remove(self._weights_path())

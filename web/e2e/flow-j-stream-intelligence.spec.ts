@@ -61,6 +61,13 @@ test("Streams: VOD + Chat → Highlights mit Begründung → Vorschau", async ({
     await expect(page.getByText(/Chat-Aktivität: \+\d+ Punkte/).first()).toBeVisible();
     await page.getByRole("button", { name: "▶ Vorschau" }).first().click();
     await expect(page.locator("video").first()).toBeVisible({ timeout: 60_000 });
+    // Variante wählen, als echt markieren, auswerten
+    await page.getByRole("button", { name: /^Mehr Kontext · \d+ s · Eignung \d+$/ }).first().click();
+    await expect(page.getByText(/ · context$/).first()).toBeVisible();
+    await page.getByRole("button", { name: "✓ echtes Highlight" }).first().click();
+    await expect(page.getByText(/ · ✓$/).first()).toBeVisible();
+    await page.getByRole("button", { name: "Auswerten" }).click();
+    await expect(page.getByTestId("stream-eval")).toContainText(/Treffer 1/);
   } finally {
     await fetch(`${API_URL}/api/studio/streams/${sid}`, { method: "DELETE", headers: { "X-ClipForge-Token": process.env.E2E_API_TOKEN ?? "e2e-local-token-0123456789abcdef" } });
   }
