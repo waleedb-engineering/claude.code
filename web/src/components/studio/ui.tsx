@@ -17,6 +17,7 @@ export const labelCls = "mb-1 block text-xs font-medium text-neutral-300";
 const TABS: { href: string; key: TKey }[] = [
   { href: "/studio", key: "nav.dashboard" },
   { href: "/studio/create", key: "nav.create" },
+  { href: "/studio/streams", key: "nav.streams" },
   { href: "/studio/automations", key: "nav.automations" },
   { href: "/studio/analytics", key: "nav.analytics" },
   { href: "/studio/ideas", key: "nav.ideas" },

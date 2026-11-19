@@ -46,6 +46,7 @@ class StreamService:
         tasks.register("stream_analyze", self._task_analyze)
         tasks.register("stream_render", self._task_render)
         tasks.register("stream_preview", self._task_preview)
+        tasks.register("stream_live", self._task_live)
 
     # ------------------------------------------------------------ Ablage
     def _base(self) -> str:
@@ -139,7 +140,119 @@ class StreamService:
         meta = self.load(sid)
         if not meta.get("video"):
             raise StudioError("source_missing", "Bitte zuerst das Video hochladen.", 409)
+        if meta["video"].get("external"):  # lokale OBS-Aufnahme aus dem Live-Modus
+            path = meta["video"]["external"]
+            if not os.path.isfile(path):
+                raise StudioError("source_missing", "Die OBS-Aufnahme wurde verschoben oder gelöscht.", 409)
+            return path
         return os.path.join(self.dir(sid), meta["video"]["file"])
+
+    # ------------------------------------------------------------ Live
+    LIVE_STATUS = {
+        "twitch_chat": {"realtime": True, "verified": "gegen IRC-Testserver (Protokoll), nicht live"},
+        "youtube_chat": {"realtime": False, "note": "nur VOD mit Chat-Export (Live-API noch nicht angebunden)"},
+        "kick_chat": {"realtime": False, "note": "keine stabile öffentliche Chat-Schnittstelle"},
+        "video": {"realtime": True, "note": "nur eigene, wachsende OBS-Aufnahme (lokaler Modus)"},
+    }
+
+    def start_live(self, sid: str, *, channel: str | None, recording: str | None,
+                   started_at: float | None, chat_delay: float, threshold: float) -> dict:
+        import time as _time
+        from ..auth import accounts_mode
+        meta = self.load(sid)
+        if not channel and not recording:
+            raise StudioError("validation_error", "Twitch-Kanal und/oder OBS-Aufnahme angeben.")
+        if recording:
+            if accounts_mode():
+                raise StudioError("feature_disabled",
+                                  "Lokale Aufnahmepfade sind im Online-Betrieb gesperrt.", 403)
+            recording = os.path.abspath(os.path.expanduser(recording))
+            if os.path.splitext(recording)[1].lower() not in VIDEO_EXT or not os.path.isfile(recording):
+                raise StudioError("source_missing", "OBS-Aufnahme nicht gefunden (Videodatei, am besten MKV).", 404)
+        if channel:
+            from .live import _CHANNEL
+            if not _CHANNEL.match(channel.lower().lstrip("#")):
+                raise StudioError("validation_error", "Ungültiger Twitch-Kanalname.")
+        running = meta.get("live") or {}
+        if running.get("task_id") and running.get("status") == "running":
+            try:
+                if self.tasks.get(running["task_id"])["status"] in ("queued", "running"):
+                    raise StudioError("live_running", "Für diese Quelle läuft schon eine Live-Sitzung.", 409)
+            except StudioError as exc:
+                if exc.code == "live_running":
+                    raise
+        t0 = float(started_at) if started_at else (
+            os.path.getctime(recording) if recording else _time.time())
+        task = self.tasks.submit("stream_live", None, {
+            "stream_id": sid, "channel": channel, "recording": recording, "t0": t0,
+            "chat_delay": chat_delay, "threshold": threshold})
+        meta["live"] = {"task_id": task["id"], "status": "running", "channel": channel,
+                        "recording": bool(recording), "started": now_iso()}
+        self._save(meta)
+        return task
+
+    def _task_live(self, task: dict, progress, should_cancel) -> dict:
+        import time as _time
+        from ..studio.tasks import TaskCanceled
+        from .live import LiveSession
+        p = task["params"]
+        sid = p["stream_id"]
+        session = LiveSession(self.dir(sid), channel=p.get("channel"), recording=p.get("recording"),
+                              recording_started_at=p["t0"], chat_delay=p["chat_delay"],
+                              threshold=p["threshold"], reader_factory=getattr(self, "reader_factory", None))
+        if session.reader:
+            session.reader.start()
+        try:
+            while not should_cancel():
+                session.tick()
+                progress(f"Live: {sum(session.counts.values())} Nachrichten, "
+                         f"{len(session.events)} Highlights")
+                _time.sleep(getattr(self, "live_interval", 2.0))
+            raise TaskCanceled()
+        finally:
+            session.close()
+            self._finish_live(sid, p)
+
+    def _finish_live(self, sid: str, p: dict) -> None:
+        """Chat übernehmen und (lokal) die Aufnahme als Quelle verknüpfen —
+        danach ist die volle VOD-Analyse mit allen Signalen möglich."""
+        from .live import chat_from_jsonl
+        msgs = chat_from_jsonl(os.path.join(self.dir(sid), "chat_live.jsonl"))
+        meta = self.load(sid)
+        if msgs:
+            write_json_atomic(os.path.join(self.dir(sid), "chat.json"),
+                              [[round(m.t, 2), m.user, m.text, m.emotes] for m in msgs])
+            meta["chat"] = {"format": "twitch_irc_live", "messages": len(msgs),
+                            "first": msgs[0].t, "last": msgs[-1].t, "users": len({m.user for m in msgs})}
+        if p.get("recording") and os.path.isfile(p["recording"]):
+            from ..ffmpeg_utils import probe
+            try:
+                info = probe(p["recording"])
+                meta["video"] = {"external": p["recording"], "file": None,
+                                 "original_name": os.path.basename(p["recording"]),
+                                 "duration": round(info.duration or 0, 2), "width": info.width,
+                                 "height": info.height, "has_audio": info.has_audio}
+                meta["status"] = "ready"
+            except Exception:  # noqa: BLE001 — Aufnahme evtl. noch offen
+                pass
+        live = meta.get("live") or {}
+        live["status"] = "stopped"
+        live["stopped"] = now_iso()
+        meta["live"] = live
+        self._save(meta)
+
+    def live_state(self, sid: str) -> dict:
+        self.load(sid)
+        return {"state": read_json(os.path.join(self.dir(sid), "live_state.json"), None),
+                "availability": self.LIVE_STATUS}
+
+    def live_clip_path(self, sid: str, lid: str) -> str:
+        if not (len(lid) == 3 and lid[0] == "l" and lid[1:].isdigit()):
+            raise StudioError("validation_error", "Ungültige Live-Clip-ID.")
+        path = os.path.join(self.dir(sid), "live_clips", f"{lid}.mp4")
+        if not os.path.isfile(path):
+            raise StudioError("clip_not_found", "Live-Clip nicht gefunden.", 404)
+        return path
 
     # ---------------------------------------------------------- Analyse
     def start_analyze(self, sid: str, params: dict) -> dict:

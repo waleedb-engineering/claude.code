@@ -164,6 +164,14 @@ class HighlightPatch(BaseModel):
     title: str | None = None
 
 
+class StreamLive(BaseModel):
+    channel: str | None = None
+    recording_path: str | None = None
+    recording_started_at: float | None = None
+    chat_delay: float = Field(default=5, ge=0, le=30)
+    threshold: float = Field(default=3.0, ge=1.5, le=10)
+
+
 class StreamRender(BaseModel):
     ids: list[str] = Field(min_length=1, max_length=20)
     reframe_mode: Literal["smart", "center", "face"] = "smart"
@@ -826,6 +834,20 @@ def init_studio(app: FastAPI, registry, youtube_status=None,
         if not os.path.isfile(path):
             raise StudioError("preview_missing", "Vorschau noch nicht erstellt.", 404)
         return FileResponse(path, media_type="video/mp4")
+
+    @r.post("/streams/{sid}/live", status_code=202)
+    def stream_live(sid: str, req: StreamLive) -> dict:
+        return {"task": streams.start_live(sid, channel=req.channel, recording=req.recording_path,
+                                           started_at=req.recording_started_at,
+                                           chat_delay=req.chat_delay, threshold=req.threshold)}
+
+    @r.get("/streams/{sid}/live")
+    def stream_live_state(sid: str) -> dict:
+        return streams.live_state(sid)
+
+    @r.get("/streams/{sid}/live/{lid}")
+    def stream_live_clip(sid: str, lid: str):
+        return FileResponse(streams.live_clip_path(sid, lid), media_type="video/mp4")
 
     @r.post("/streams/{sid}/render", status_code=202)
     def stream_render(sid: str, req: StreamRender) -> dict:

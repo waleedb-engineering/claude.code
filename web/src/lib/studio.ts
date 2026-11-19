@@ -76,6 +76,46 @@ export type LocalModel = {
   installed: boolean;
 };
 
+export type StreamMeta = {
+  id: string;
+  title: string;
+  platform: "twitch" | "youtube" | "kick" | "obs" | "upload";
+  status: string;
+  created_at: string;
+  how_to_get: string;
+  video: { original_name: string; duration: number; width: number; height: number } | null;
+  chat: { format: string; messages: number; users: number } | null;
+  live?: { task_id: string; status: string; channel: string | null } | null;
+  jobs?: { job_id: string; highlights: string[] }[];
+  error?: string;
+};
+
+export type Highlight = {
+  id: string;
+  t: number;
+  start: number;
+  end: number;
+  score: number;
+  reasons: string[];
+  components: Record<string, number>;
+  chat_categories: Record<string, number>;
+  top_terms: string[];
+  text: string;
+  edited?: boolean;
+};
+
+export type StreamAnalysis = {
+  duration: number;
+  signals: string[];
+  weights: Record<string, number>;
+  chat_delay: number;
+  chat_delay_note: string;
+  chat_messages: number;
+  heatmap: { step: number; score: number[] };
+  highlights: Highlight[];
+  disclaimer: string;
+};
+
 export type CaptionStyleId = "minimal" | "bold" | "karaoke" | "dynamic" | "none";
 
 export type Project = {
@@ -545,6 +585,30 @@ export const studio = {
     get<{ engines: { id: string; label: string; paid: boolean; ready: boolean | Record<string, boolean> }[] }>(
       "/translation/engines",
     ),
+  streams: () => get<{ streams: StreamMeta[] }>("/streams").then((d) => d.streams),
+  createStream: (body: Record<string, unknown>) => post<{ stream: StreamMeta }>("/streams", body).then((d) => d.stream),
+  stream: (id: string) => get<{ stream: StreamMeta; analysis: StreamAnalysis | null }>(`/streams/${id}`),
+  deleteStream: (id: string) => request<{ deleted: boolean }>("DELETE", `/streams/${id}`),
+  uploadStreamVideo: (id: string, file: File, onProgress?: (f: number) => void) =>
+    uploadFile<{ stream: StreamMeta }>(`/streams/${id}/video`, file, onProgress),
+  uploadStreamChat: (id: string, file: File) => uploadFile<{ stream: StreamMeta }>(`/streams/${id}/chat`, file),
+  analyzeStream: (id: string, body: Record<string, unknown>) =>
+    post<{ task: Task }>(`/streams/${id}/analyze`, body).then((d) => d.task),
+  patchHighlight: (id: string, hid: string, body: Record<string, unknown>) =>
+    request<{ highlight: Highlight }>("PATCH", `/streams/${id}/highlights/${hid}`, body).then((d) => d.highlight),
+  previewHighlight: (id: string, hid: string) =>
+    post<{ task: Task }>(`/streams/${id}/highlights/${hid}/preview`).then((d) => d.task),
+  highlightPreviewUrl: (id: string, hid: string) => `${API_BASE}/api/studio/streams/${id}/highlights/${hid}/preview`,
+  renderHighlights: (id: string, body: Record<string, unknown>) =>
+    post<{ task: Task }>(`/streams/${id}/render`, body).then((d) => d.task),
+  startLive: (id: string, body: Record<string, unknown>) => post<{ task: Task }>(`/streams/${id}/live`, body).then((d) => d.task),
+  liveState: (id: string) =>
+    get<{
+      state: { messages: number; elapsed: number; chat_connected: boolean; chat_error: string | null; events: { id: string; event: number; start: number; end: number; reason: string; status: string; file?: string }[] } | null;
+      availability: Record<string, { realtime: boolean; note?: string; verified?: string }>;
+    }>(`/streams/${id}/live`),
+  liveClipUrl: (id: string, lid: string) => `${API_BASE}/api/studio/streams/${id}/live/${lid}`,
+  cancelTask: (id: string) => post<unknown>(`/tasks/${id}/cancel`),
   hardware: () =>
     get<{ system: string; nvidia_gpus: { name: string; vram_gb: number }[]; apple_silicon: boolean; ram_gb: number | null; local_ai_video: string; note: string; free_alternatives: string[]; paid_alternative: string }>(
       "/hardware",
