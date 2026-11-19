@@ -116,6 +116,23 @@ export type StreamAnalysis = {
   disclaimer: string;
 };
 
+export type AgentMessage = {
+  id: string;
+  at: string;
+  role: "user" | "assistant";
+  text: string;
+  engine?: string;
+  notes?: string[];
+  cost_usd?: number;
+  plan?: {
+    status: "pending" | "done" | "partial" | "discarded" | "empty";
+    needs_confirmation: boolean;
+    steps: { tool: string; args: Record<string, unknown>; label: string; confirm: boolean; cost: string }[];
+    results?: { tool: string; ok: boolean; change?: string; error?: string; task_id?: string }[];
+    undone?: boolean;
+  };
+};
+
 export type CaptionStyleId = "minimal" | "bold" | "karaoke" | "dynamic" | "none";
 
 export type Project = {
@@ -609,6 +626,17 @@ export const studio = {
     }>(`/streams/${id}/live`),
   liveClipUrl: (id: string, lid: string) => `${API_BASE}/api/studio/streams/${id}/live/${lid}`,
   cancelTask: (id: string) => post<unknown>(`/tasks/${id}/cancel`),
+  agentEngines: () =>
+    get<{ engines: { id: string; label: string; ready: boolean; paid: boolean; hint?: string; cost_per_message_usd?: number }[] }>(
+      "/agent/engines",
+    ),
+  agentHistory: (kind: string, id: string) => get<{ messages: AgentMessage[] }>(`/agent/${kind}/${id}`).then((d) => d.messages),
+  agentSend: (kind: string, id: string, message: string, engine: string, confirmCost = false) =>
+    post<{ message: AgentMessage }>(`/agent/${kind}/${id}`, { message, engine, confirm_cost: confirmCost }).then((d) => d.message),
+  agentExecute: (kind: string, id: string, entryId: string, confirm = false) =>
+    post<{ message: AgentMessage }>(`/agent/${kind}/${id}/${entryId}/execute`, { confirm }).then((d) => d.message),
+  agentDiscard: (kind: string, id: string, entryId: string) => post<unknown>(`/agent/${kind}/${id}/${entryId}/discard`),
+  agentUndo: (kind: string, id: string) => post<{ project: Project }>(`/agent/${kind}/${id}/undo`),
   hardware: () =>
     get<{ system: string; nvidia_gpus: { name: string; vram_gb: number }[]; apple_silicon: boolean; ram_gb: number | null; local_ai_video: string; note: string; free_alternatives: string[]; paid_alternative: string }>(
       "/hardware",

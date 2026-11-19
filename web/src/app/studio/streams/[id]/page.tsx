@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useT } from "@/lib/i18n";
 import { errorMessage, studio, waitForTask, type Highlight, type StreamAnalysis, type StreamMeta, type Task } from "@/lib/studio";
+import AgentChat from "@/components/studio/AgentChat";
 import { ErrorBox, Progress, btnCls, cardCls, inputCls, labelCls, primaryCls } from "@/components/studio/ui";
 
 function fmt(s: number): string {
@@ -314,6 +315,8 @@ export default function StreamDetailPage() {
           </div>
         </section>
       )}
+
+      {meta.video && <AgentChat kind="stream" targetId={id} onChanged={() => void load()} />}
 
       <section className={`${cardCls} space-y-3`}>
         <h2 className="text-sm font-semibold text-neutral-200">{t("st.live")}</h2>

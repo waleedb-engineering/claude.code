@@ -164,6 +164,16 @@ class HighlightPatch(BaseModel):
     title: str | None = None
 
 
+class AgentMessage(BaseModel):
+    message: str
+    engine: Literal["rules", "ollama", "anthropic", "openai"] = "rules"
+    confirm_cost: bool = False
+
+
+class AgentExecute(BaseModel):
+    confirm: bool = False
+
+
 class StreamLive(BaseModel):
     channel: str | None = None
     recording_path: str | None = None
@@ -282,6 +292,8 @@ class Studio:
         self.automations = AutomationService(self.service, registry=registry)
         from clipforge.stream.service import StreamService
         self.streams = StreamService(self.service.tasks, registry=registry)
+        from clipforge.agent.service import AgentService
+        self.agent = AgentService(self.service, self.streams)
         self.youtube_status = youtube_status or (lambda: {})
         self.youtube_upload_service = youtube_upload_service
         self.worker = Worker(self.tick)
@@ -853,6 +865,37 @@ def init_studio(app: FastAPI, registry, youtube_status=None,
     def stream_render(sid: str, req: StreamRender) -> dict:
         body = req.model_dump()
         return {"task": streams.start_render(sid, body.pop("ids"), body)}
+
+    # ------------------------------------------------------------ Editor-Agent
+    agent = studio.agent
+
+    @r.get("/agent/engines")
+    def agent_engines() -> dict:
+        from clipforge.agent import planner
+        from clipforge.agent.tools import TOOLS
+        return {"engines": planner.engines(),
+                "tools": [{"name": t.name, "context": t.context, "description": t.description,
+                           "confirm": t.confirm} for t in TOOLS.values()]}
+
+    @r.get("/agent/{kind}/{target}")
+    def agent_history(kind: str, target: str) -> dict:
+        return {"messages": agent.history(kind, target)}
+
+    @r.post("/agent/{kind}/{target}", status_code=201)
+    def agent_message(kind: str, target: str, req: AgentMessage) -> dict:
+        return {"message": agent.plan(kind, target, req.message, req.engine, req.confirm_cost)}
+
+    @r.post("/agent/{kind}/{target}/{entry_id}/execute")
+    def agent_execute(kind: str, target: str, entry_id: str, req: AgentExecute) -> dict:
+        return {"message": agent.execute(kind, target, entry_id, req.confirm)}
+
+    @r.post("/agent/{kind}/{target}/{entry_id}/discard")
+    def agent_discard(kind: str, target: str, entry_id: str) -> dict:
+        return {"message": agent.discard(kind, target, entry_id)}
+
+    @r.post("/agent/{kind}/{target}/undo")
+    def agent_undo(kind: str, target: str) -> dict:
+        return {"project": agent.undo(kind, target)}
 
     # ------------------------------------------------------------ Face Swap
     @r.get("/faces")

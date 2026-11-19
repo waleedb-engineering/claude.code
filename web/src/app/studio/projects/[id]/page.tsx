@@ -19,6 +19,7 @@ import {
 import SceneCard from "@/components/studio/SceneCard";
 import SettingsPanel from "@/components/studio/SettingsPanel";
 import SocialCopyPanel from "@/components/studio/SocialCopyPanel";
+import AgentChat from "@/components/studio/AgentChat";
 import { ErrorBox, Loading, Notice, Pill, btnCls, cardCls, fmtDate, inputCls, primaryCls } from "@/components/studio/ui";
 
 const AUTOSAVE_MS = 1200;
@@ -698,6 +699,13 @@ export default function EditorPage() {
             </section>
           </div>
 
+          <div className="space-y-5">
+          <AgentChat
+            kind="project"
+            targetId={id}
+            beforeExecute={flush}
+            onChanged={() => void refresh(true)}
+          />
           <SettingsPanel
             project={project}
             media={view?.media ?? []}
@@ -718,6 +726,7 @@ export default function EditorPage() {
               }
             }}
           />
+          </div>
         </div>
       )}
     </div>
