@@ -79,3 +79,4 @@ cd api && python -m clipforge.stream.evaluate /tmp/bench --max-clips 25 --json /
 | F1 synthetisch, `explain` vs. `rank` | 0,833 / 0,833 (3×10 min), 0,913 / 0,913 (60 min) — kein Unterschied messbar |
 | CPU-Kodierung libx264 1080p, 10 s Testbild | 4,4 s (2,27× Echtzeit) |
 | Hardware-Encoder | NVENC/QSV/VAAPI im FFmpeg-Build gelistet, Probelauf scheitert (keine GPU) → nicht genutzt |
+| 3-h-Stream 360p (66 Ereignisse, synthetisch) | Messung 133 s (81×), RAM ≤ 148 MB FFmpeg; F1 0,47 mit max. 20 Highlights, 0,90 mit 80 → Obergrenze auf 60 angehoben |

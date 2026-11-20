@@ -153,7 +153,7 @@ class StreamCreate(BaseModel):
 class StreamAnalyze(BaseModel):
     keywords: list[str] = Field(default_factory=list, max_length=20)
     chat_delay: float | None = Field(default=None, ge=0, le=30)
-    max_clips: int = Field(default=8, ge=1, le=20)
+    max_clips: int = Field(default=8, ge=1, le=60)
     pre: float = Field(default=10, ge=2, le=30)
     post: float = Field(default=8, ge=2, le=30)
     max_len: float = Field(default=60, ge=10, le=180)

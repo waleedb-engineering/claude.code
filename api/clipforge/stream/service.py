@@ -290,7 +290,7 @@ class StreamService:
         self.source_path(sid)
         clean = {"keywords": [str(k)[:40] for k in (params.get("keywords") or [])][:20],
                  "chat_delay": params.get("chat_delay"),
-                 "max_clips": max(1, min(20, int(params.get("max_clips") or 8))),
+                 "max_clips": max(1, min(60, int(params.get("max_clips") or 8))),
                  "pre": max(2.0, min(30.0, float(params.get("pre") or 10))),
                  "post": max(2.0, min(30.0, float(params.get("post") or 8))),
                  "max_len": max(10.0, min(180.0, float(params.get("max_len") or 60))),

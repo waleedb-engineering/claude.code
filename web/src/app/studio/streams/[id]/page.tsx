@@ -173,7 +173,7 @@ export default function StreamDetailPage() {
           <label htmlFor="sm" className={labelCls}>
             {t("st.maxClips")}
           </label>
-          <input id="sm" type="number" min={1} max={20} className={inputCls} value={params.max_clips} onChange={(e) => setParams({ ...params, max_clips: Number(e.target.value) })} />
+          <input id="sm" type="number" min={1} max={60} className={inputCls} value={params.max_clips} onChange={(e) => setParams({ ...params, max_clips: Number(e.target.value) })} />
         </div>
         <div>
           <label htmlFor="smin" className={labelCls}>

@@ -134,3 +134,16 @@ def test_labels_evaluation_variants_and_tuning_api(tmp_path):
     r = client.post("/api/studio/stream-weights/tune", json={}).json()
     assert r["cases"] == 2 and r["f1_leave_one_out"] is not None and r["applied"] is False
     assert client.get("/api/studio/stream-weights").json()["tuned"] is None
+
+
+def test_long_streams_allow_more_highlights(tmp_path):
+    """3-h-Benchmark: bei 66 Ereignissen begrenzte die alte Obergrenze (20) den Recall."""
+    client, _ = make_client(str(tmp_path))
+    sid = client.post("/api/studio/streams", json={"title": "L", "platform": "obs",
+                                                   "rights_confirmed": True}).json()["stream"]["id"]
+    with open(_stream(str(tmp_path / "v.mp4")), "rb") as fh:
+        client.post(f"/api/studio/streams/{sid}/video", files={"file": ("v.mp4", fh, "video/mp4")})
+    assert client.post(f"/api/studio/streams/{sid}/analyze", json={"max_clips": 61}).status_code == 422
+    t = wait_task(client, client.post(f"/api/studio/streams/{sid}/analyze",
+                                      json={"max_clips": 60, "transcribe": False}).json()["task"]["id"])
+    assert t["status"] == "succeeded" and t["params"]["max_clips"] == 60

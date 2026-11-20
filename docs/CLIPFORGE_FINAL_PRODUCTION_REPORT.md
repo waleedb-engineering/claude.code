@@ -114,7 +114,7 @@ Gemessen auf 4 vCPU, 15 GB RAM, ohne GPU (`BENCHMARKS.md`):
 |---|---|
 | 10-min-Stream 360p (×3) | 7,5 s Messung je Datei (80×), F1 0,833 synthetisch |
 | 60-min-Stream 720p | 94–117 s (31–38×), F1 0,913 (25 Clips) |
-| 3-h-Stream 360p | siehe Nachtrag unten |
+| 3-h-Stream 360p | 133 s Messung (**81×** Echtzeit), RAM Python 70 MB / FFmpeg 148 MB; 66 Ereignisse: F1 0,904 ohne Obergrenze (siehe Nachtrag) |
 | Stream ohne Chat | im 10-min-Satz enthalten (Recall 1,0) |
 | verzögerter Chat | im Satz enthalten (3–7 s); Verzögerung per Kreuzkorrelation |
 | beschädigte Eingaben | Tests (Video, Chat) |
@@ -178,6 +178,16 @@ nach Abschnitt 39 der Anforderung **nicht erreicht**.
 
 ---
 
-### Nachtrag: 3-h-Benchmark
+### Nachtrag: 3-h-Benchmark (synthetisch, 360p, 66 Ereignisse, 17 Störer)
 
-(wird nach Abschluss der Messung ergänzt)
+| | Ergebnis |
+|---|---|
+| Erzeugung des Testvideos | 21 min (nur Testaufbau) |
+| Signal-Messung | 132,8 s = 81× Echtzeit; Spitzen-RAM Python 70 MB, FFmpeg 148 MB |
+| max. 20 Highlights (bisherige Obergrenze) | P 1,00 · R 0,30 · F1 0,47 — die **Obergrenze** begrenzt, nicht die Erkennung |
+| max. 80 Highlights (nur CLI) | P 0,83 · R 1,00 · F1 0,90 · Ø Abweichung 1,8 s · Ereignis immer vollständig |
+| `explain` vs. `rank` | identisch (F1 0,465 bei 20) |
+
+Folge: Obergrenze für Highlights je Analyse von 20 auf **60** angehoben (API, UI,
+Test `test_long_streams_allow_more_highlights`). Gerendert werden weiterhin höchstens
+20 Clips je Auftrag. Alles synthetisch — kein Qualitätsnachweis für echte Streams.
