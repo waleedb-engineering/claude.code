@@ -989,6 +989,20 @@ def init_studio(app: FastAPI, registry, youtube_status=None,
     # ------------------------------------------------------------ Editor-Agent
     agent = studio.agent
 
+    @r.get("/system/hwaccel")
+    def system_hwaccel(benchmark: bool = False) -> dict:
+        from clipforge import hwaccel
+        from clipforge.studio.tasks import check_disk_space
+        out = {**hwaccel.detect(), "selected": hwaccel.selected_encoder(),
+               "setting": os.environ.get("CLIPFORGE_HWACCEL", "off")}
+        try:
+            out["disk"] = check_disk_space()
+        except StudioError as exc:
+            out["disk"] = {"error": exc.message, **(exc.details or {})}
+        if benchmark:
+            out["benchmark"] = hwaccel.benchmark(5, "1280x720")
+        return out
+
     @r.get("/agent/ollama")
     def agent_ollama() -> dict:
         from clipforge.agent import ollama

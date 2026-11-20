@@ -25,6 +25,32 @@ class TaskCanceled(Exception):
     pass
 
 
+# Aufgaben, die große Dateien schreiben → vorher freien Speicher prüfen
+HEAVY_KINDS = {"render", "ingest", "stream_analyze", "stream_render", "stream_preview", "stream_live",
+               "bg_remove", "face_swap", "rerender", "batch"}
+
+
+def check_disk_space(path: str | None = None) -> dict:
+    """Bricht ab, bevor ein Job die Platte füllt (CLIPFORGE_MIN_FREE_MB, Standard 1024)."""
+    import shutil
+    from .storage import studio_dir
+    try:
+        min_mb = max(0, int(os.environ.get("CLIPFORGE_MIN_FREE_MB", "1024")))
+    except ValueError:
+        min_mb = 1024
+    target = path or studio_dir()
+    try:
+        free_mb = shutil.disk_usage(target).free // (1024 * 1024)
+    except OSError:
+        return {"free_mb": None, "min_mb": min_mb}
+    if free_mb < min_mb:
+        raise StudioError("disk_space_low",
+                          f"Zu wenig freier Speicher ({free_mb} MB frei, mindestens {min_mb} MB nötig). "
+                          "Alte Renders/Caches löschen oder Speicher freigeben.", 507,
+                          {"free_mb": free_mb, "min_mb": min_mb})
+    return {"free_mb": free_mb, "min_mb": min_mb}
+
+
 class TaskManager:
     def __init__(self, base: str | None = None, max_workers: int | None = None) -> None:
         self._base = base  # None → je Benutzerbereich (siehe workspace.py)
@@ -101,6 +127,8 @@ class TaskManager:
                 return self.submit(kind, project_id, params, idempotency_key, run_inline)
         if kind not in self._handlers:
             raise StudioError("task_kind_unknown", f"Unbekannte Aufgabe '{kind}'.", 400)
+        if kind in HEAVY_KINDS:
+            check_disk_space()
         with self._lock:
             if idempotency_key:
                 existing = self.find_by_key(idempotency_key)

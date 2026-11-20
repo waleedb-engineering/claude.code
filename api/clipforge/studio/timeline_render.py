@@ -13,6 +13,7 @@ from __future__ import annotations
 import os
 
 from ..ffmpeg_utils import filter_path, probe
+from ..hwaccel import encode_args
 from .audio import run_ffmpeg
 from .errors import StudioError
 from .projects import IMAGE_EXT, resolve_music
@@ -159,7 +160,7 @@ def composite(tl: dict, project_dir: str, out_path: str, *, base: str | None, to
         aout = "[abase]"
     tmp = out_path + ".tl.mp4"
     args += ["-filter_complex", ";".join(filters), "-map", vout, "-map", aout,
-             "-c:v", "libx264", "-preset", preset, "-crf", str(crf), "-pix_fmt", "yuv420p", "-r", str(fps),
+             *encode_args(preset, crf), "-pix_fmt", "yuv420p", "-r", str(fps),
              "-c:a", "aac", "-b:a", audio_bitrate, "-ar", "44100", "-t", f"{total:.3f}",
              "-movflags", "+faststart", tmp]
     run_ffmpeg(args, "Timeline zusammensetzen")

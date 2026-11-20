@@ -917,8 +917,9 @@ class StudioRenderer:
                            f"duration=first:normalize=0[afx]")
             amap = "[afx]"
         tmp = out_path + ".part.mp4"
+        from ..hwaccel import encode_args
         cmd += ["-filter_complex", ";".join(filters), "-map", "[v]", "-map", amap,
-                "-c:v", "libx264", "-preset", self.preset, "-crf", self.crf,
+                *encode_args(self.preset, self.crf),
                 "-pix_fmt", "yuv420p", "-r", str(self.fps),
                 "-c:a", "aac", "-b:a", "96k" if self.preview else "160k", "-ar", "44100",
                 "-t", f"{total:.3f}", "-movflags", "+faststart", tmp]
