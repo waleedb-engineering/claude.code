@@ -454,7 +454,8 @@ export default function StreamDetailPage() {
                 {t("st.reframe")}
               </label>
               <select id="sr" className={inputCls} value={opts.reframe_mode} onChange={(e) => setOpts({ ...opts, reframe_mode: e.target.value })}>
-                <option value="smart">Smart (Gesicht/Bewegung)</option>
+                <option value="smart">Smart (fester Fokus)</option>
+                <option value="track">Gesicht verfolgen (geglättet)</option>
                 <option value="face">Gesicht</option>
                 <option value="center">Mitte</option>
               </select>

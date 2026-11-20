@@ -428,7 +428,7 @@ class StreamService:
         if not ids:
             raise StudioError("validation_error", "Bitte mindestens ein Highlight wählen.")
         opts = {"reframe_mode": options.get("reframe_mode") if options.get("reframe_mode") in
-                ("smart", "center", "face") else "smart",
+                ("smart", "center", "face", "track") else "smart",
                 "remove_silence": bool(options.get("remove_silence", True)),
                 "caption_mode": "karaoke" if options.get("caption_mode", "karaoke") == "karaoke" else "standard",
                 "caption_style": options.get("caption_style") if options.get("caption_style") in

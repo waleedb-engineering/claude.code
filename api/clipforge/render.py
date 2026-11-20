@@ -142,9 +142,10 @@ def _render_with_silence(
     # select/setpts staucht Video, aselect/asetpts staucht Audio identisch
     # -> Bild und Ton bleiben synchron. Einfachanführungszeichen schützen
     # die Kommas im between()-Ausdruck im Filtergraph.
+    # Crop VOR select: ein dynamischer (Tracking-)Crop rechnet in Quellzeit
     vf = (
-        f"select='{expr}',setpts=N/FRAME_RATE/TB,"
-        f"{crop_filter},ass={_escape_ass_path(ass_path)}"
+        f"{crop_filter},select='{expr}',setpts=N/FRAME_RATE/TB,"
+        f"ass={_escape_ass_path(ass_path)}"
     )
     af = f"aselect='{expr}',asetpts=N/SR/TB"
     cmd = [
@@ -179,8 +180,8 @@ def _render_with_silence_smoothed(
     """
     expr = select_expr(keeps)
     v_chain = (
-        f"[0:v]select='{expr}',setpts=N/FRAME_RATE/TB,"
-        f"{crop_filter},ass={_escape_ass_path(ass_path)}[v]"
+        f"[0:v]{crop_filter},select='{expr}',setpts=N/FRAME_RATE/TB,"
+        f"ass={_escape_ass_path(ass_path)}[v]"
     )
     a_chain = audio_smoothing_filter(keeps, fade=0.015)
     filter_complex = f"{v_chain};{a_chain}"
@@ -219,6 +220,7 @@ def render_clip(
     reframe_mode: str = "smart",
     brand_overrides: dict | None = None,
     progress: LogFn | None = None,
+    focus_points: list | None = None,
 ) -> RenderInfo:
     """Rendert einen einzelnen Clip. Gibt RenderInfo zurück.
 
@@ -243,7 +245,7 @@ def render_clip(
         media = probe(video_path)
         crop_filter, reframe_info = plan_reframe(
             video_path, clip.start, clip.end,
-            media.width, media.height, out_w, out_h, reframe_mode,
+            media.width, media.height, out_w, out_h, reframe_mode, focus_points,
         )
     except Exception as exc:  # noqa: BLE001 — Reframe darf Export nie blocken
         from .reframe import center_crop_filter

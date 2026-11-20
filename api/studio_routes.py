@@ -217,7 +217,7 @@ class StreamLive(BaseModel):
 
 class StreamRender(BaseModel):
     ids: list[str] = Field(min_length=1, max_length=20)
-    reframe_mode: Literal["smart", "center", "face"] = "smart"
+    reframe_mode: Literal["smart", "center", "face", "track"] = "smart"
     remove_silence: bool = True
     caption_mode: Literal["karaoke", "standard"] = "karaoke"
     caption_style: Literal["clean", "high_energy"] = "high_energy"
