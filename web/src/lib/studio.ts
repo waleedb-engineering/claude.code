@@ -247,6 +247,24 @@ export type Project = {
   updated_at: string;
 };
 
+export type LibraryItem = {
+  id: string;
+  name: string;
+  file: string;
+  media_type: "video" | "image" | "audio";
+  kind: string;
+  tags: string[];
+  sha256: string;
+  bytes: number;
+  duration?: number;
+  width?: number | null;
+  height?: number | null;
+  provenance: { source: string; author: string | null; url: string | null; license: { name: string | null; url: string | null } };
+  created_at: string;
+  usage: { project_id: string; media: string; at: string }[];
+  duplicate?: boolean;
+};
+
 export type ProjectSummary = {
   id: string;
   title: string;
@@ -809,6 +827,17 @@ export const studio = {
       "Idempotency-Key": idempotencyKey,
     }),
   project: (id: string) => get<ProjectView>(`/projects/${id}`),
+  library: (q = "", kind = "", tag = "") =>
+    get<{ items: LibraryItem[]; tags: string[]; kinds: string[] }>(
+      `/library?q=${encodeURIComponent(q)}${kind ? `&kind=${kind}` : ""}${tag ? `&tag=${encodeURIComponent(tag)}` : ""}`,
+    ),
+  libraryUpload: (file: File, fields: Record<string, string>, onProgress?: (f: number) => void) =>
+    uploadFile<{ item: LibraryItem }>("/library", file, onProgress, fields).then((d) => d.item),
+  libraryPatch: (id: string, body: Record<string, unknown>) =>
+    request<{ item: LibraryItem }>("PATCH", `/library/${id}`, body).then((d) => d.item),
+  libraryDelete: (id: string, force = false) => request<{ deleted: boolean }>("DELETE", `/library/${id}${force ? "?force=true" : ""}`),
+  libraryFileUrl: (id: string) => `${API_BASE}/api/studio/library/${id}/file`,
+  libraryUse: (id: string, projectId: string) => post<{ media: MediaItem }>(`/library/${id}/use`, { project_id: projectId }),
   timelineOps: (id: string, ops: TimelineOp[], expectedVersion: number) =>
     post<{ project: Project; results: Record<string, string>[] }>(`/projects/${id}/timeline/ops`, { ops, expected_version: expectedVersion }),
   patchProject: (id: string, patch: Record<string, unknown>) =>

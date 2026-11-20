@@ -219,7 +219,7 @@ export default function TimelineEditor(props: {
       <div className="flex flex-wrap gap-2">
         {(["split", "duplicate", "delete", "ripple_delete", "group", "ungroup"] as const).map((op) => (
           <button key={op} type="button" className={btnCls} disabled={!selected.length || (op === "group" && selected.length < 2)} onClick={() => void act(op)}>
-            {{ split: "✂ Teilen (S)", duplicate: "⧉ Duplizieren (Strg+D)", delete: "🗑 Löschen (Entf)", ripple_delete: "⇤ Ripple-Löschen (⇧Entf)", group: "Gruppieren", ungroup: "Gruppe lösen" }[op]}
+            {{ split: "✂ Teilen (S)", duplicate: "⧉ Kopie (Strg+D)", delete: "🗑 Element entfernen (Entf)", ripple_delete: "⇤ Entfernen + Lücke schließen (⇧Entf)", group: "Gruppieren", ungroup: "Gruppe lösen" }[op]}
           </button>
         ))}
         {(["video", "overlay", "audio", "caption"] as TrackKind[]).map((k) => (

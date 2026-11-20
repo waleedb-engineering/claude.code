@@ -174,6 +174,17 @@ class TimelineOps(BaseModel):
     expected_version: int | None = None
 
 
+class LibraryPatch(BaseModel):
+    name: str | None = None
+    tags: list[str] | None = None
+    kind: str | None = None
+    provenance: dict | None = None
+
+
+class LibraryUse(BaseModel):
+    project_id: str
+
+
 class StreamLabels(BaseModel):
     highlights: list[dict] = Field(default_factory=list, max_length=500)
 
@@ -742,6 +753,46 @@ def init_studio(app: FastAPI, registry, youtube_status=None,
     @r.post("/projects/{pid}/media", status_code=201)
     def media_upload(pid: str, file: UploadFile = File(...)) -> dict:
         return svc.upload_media(pid, file.filename or "", file.file)
+
+    # ------------------------------------------------------------ Mediathek
+    @r.get("/library")
+    def library_list(q: str = "", kind: str | None = None, tag: str | None = None) -> dict:
+        from clipforge.studio import library
+        items = library.search(q, kind, tag)
+        tags = sorted({t for e in library.search() for t in e["tags"]})
+        return {"items": items, "tags": tags, "kinds": library.KINDS}
+
+    @r.post("/library", status_code=201)
+    def library_add(file: UploadFile = File(...), kind: str | None = Form(default=None),
+                    tags: str = Form(default=""), source: str = Form(default="upload"),
+                    author: str = Form(default=""), url: str = Form(default=""),
+                    license_name: str = Form(default=""), license_url: str = Form(default="")) -> dict:
+        return {"item": svc.library_upload(file.filename or "", file.file, kind=kind or None, tags=tags,
+                                           provenance={"source": source, "author": author, "url": url,
+                                                       "license": {"name": license_name, "url": license_url}})}
+
+    @r.patch("/library/{eid}")
+    def library_patch(eid: str, req: LibraryPatch) -> dict:
+        from clipforge.studio import library
+        return {"item": library.update(eid, {k: v for k, v in req.model_dump().items() if v is not None})}
+
+    @r.delete("/library/{eid}")
+    def library_delete(eid: str, force: bool = False) -> dict:
+        from clipforge.studio import library
+        return library.delete(eid, force)
+
+    @r.get("/library/{eid}/file")
+    def library_file(eid: str):
+        from clipforge.studio import library
+        return FileResponse(library.file_path(eid))
+
+    @r.post("/library/{eid}/use")
+    def library_use(eid: str, req: LibraryUse) -> dict:
+        return svc.library_use(eid, req.project_id)
+
+    @r.post("/projects/{pid}/media/{name}/to-library", status_code=201)
+    def media_to_library(pid: str, name: str) -> dict:
+        return {"item": svc.library_from_project(pid, name)}
 
     @r.get("/projects/{pid}/media/{name}")
     def media_file(pid: str, name: str):

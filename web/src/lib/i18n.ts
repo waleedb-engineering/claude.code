@@ -46,6 +46,7 @@ const DICT = {
   "nav.ideas": ["Ideen", "Ideas"],
   "nav.trends": ["Trends", "Trends"],
   "nav.streams": ["Streams", "Streams"],
+  "nav.brand": ["Marke", "Brand kit"],
   "st.title": ["Stream Intelligence", "Stream intelligence"],
   "st.hint": [
     "Findet Highlights in deinen Streams aus Chat, Ton, Bild und Sprache — mit Begründung. Keine Viralitäts-Vorhersage.",
