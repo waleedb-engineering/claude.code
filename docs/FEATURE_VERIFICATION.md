@@ -1,4 +1,4 @@
-# Verifizierte Funktionsmatrix — ClipForge 3.0 (Abnahme 20.11.2026)
+# Verifizierte Funktionsmatrix — ClipForge (Stand Production-Runde 21.11.2026)
 
 **A** real getestet und funktionierend · **B** implementiert, externer Live-Test
 fehlt · **C** teilweise implementiert · **D** nicht implementiert · **E** extern
@@ -27,7 +27,8 @@ Pfade relativ zu `api/clipforge/` (Backend), `web/src/` (Frontend), Tests in `ap
 | Pipeline auf langen Aufnahmen (60 min 720p) | A | – | `BENCHMARKS.md` (30,7× Echtzeit, ≤ 440 MB) | synthetisch | 3-h-Messung auf dem Mac |
 | Fehlende/defekte Daten | A | `stream/service.py` | `test_missing_and_broken_data` | – | – |
 | Transkript nur in Kandidaten-Fenstern | A (Logik) / B (Whisper) | `stream/analyze.py` | Mock-Whisper im API-Test | echtes faster-whisper nicht in CI (Modell-Download gesperrt) | Lauf mit echtem Modell auf dem Mac |
-| YAMNet-Audioereignisse | E | – | – | Modell-Hosts (TF-Hub/Kaggle) gesperrt | ONNX-Export lokal, dann auswerten |
+| Audio-Ereignisse (Lachen, Jubel, Applaus, Schreien, Musik, Sprache, Stille) — akustische Heuristik | A (Funktion) / Qualität unbelegt | `stream/audio_events.py` | `test_audio_events` (synthetische Signale + eSpeak-Sprache; Ranking-Test) | nicht trainiert, an synthetischen Signalen abgestimmt; Standard nur „erklärend“, weil auf den Testsätzen keine F1-Verbesserung messbar war | Auswertung an markierten echten Streams (`--compare-audio-events`) |
+| Trainiertes Audio-Modell (YAMNet/PANNs) | E | – | – | Modell-Hosts (TF-Hub, Kaggle, Zenodo, Hugging Face) gesperrt | ONNX-Export lokal + Prüfsumme |
 | Render der Highlights als Job (9:16, Captions, Reframe) | A | `stream/service._task_render` | API-Test (ffprobe) | – | – |
 | Live: Twitch-IRC | B | `stream/live.TwitchChatReader` | lokaler IRC-Testserver | Twitch-Host hier nicht auflösbar | einmal live gegen öffentlichen Kanal |
 | Live: YouTube Data API (liveChatMessages) | B | `stream/live.YouTubeLiveChatReader` | `test_stream_live_youtube` (nachgebildete API) | API-Schlüssel nötig, nur öffentliche Streams | Test mit eigenem Schlüssel + Live-Stream |
@@ -42,20 +43,24 @@ Pfade relativ zu `api/clipforge/` (Backend), `web/src/` (Frontend), Tests in `ap
 |---|---|---|---|---|---|
 | Regel-Planer (de/en), Validierung, Undo, Bestätigung | A | `agent/planner.py`, `tools.py`, `service.py` | `test_editor_agent`, `test_agent_tools_final`, E2E Flow K | feste Sprachmuster | – |
 | Neue Werkzeuge: Zoom, Untertitel-Aussehen, Musik, SFX, Lautheit, Titel, Thumbnail, Clip-Varianten | A | `agent/tools.py` | `test_agent_tools_final` (+ Render) | Musik/SFX nur aus vorhandenen Dateien | – |
-| Ollama: Status, Modellwahl, Hardware-Empfehlung, Probelauf, Fallback | B | `agent/ollama.py`, Einrichtung | nachgebildeter Ollama-Server | kein echtes Modell getestet | `ollama pull qwen2.5:7b`, Probelauf |
-| Claude / OpenAI als Planer | B | `agent/planner.llm_plan` | nachgebildete Antworten | kostenpflichtig, nicht live getestet | nach Freigabe 1 Testnachricht |
-| Objektverfolgung (Tracking), freie Keyframes | D | – | Chat antwortet ehrlich | – | eigener Ausbauschritt |
-| Übersetzen per Chat | D (im Chat) / A (Workflow) | `studio/translate.py` | `test_translation` | nur über Workflow „Video übersetzen“ | – |
+| Ollama: Status, Modellwahl, Hardware-Empfehlung, Probelauf, Fallback | B | `agent/ollama.py`, Einrichtung | nachgebildeter Ollama-Server | **kein echtes Modell getestet** (Registry gesperrt) | `ollama pull qwen2.5:7b`, Probelauf |
+| Claude / OpenAI / Gemini als Planer | B | `agent/planner.llm_plan`, `_gemini` | nachgebildete Antworten | kostenpflichtig bzw. tarifabhängig, nicht live getestet; Gemini nie ohne Bestätigung | nach Freigabe je 1 Testnachricht |
+| Gesprächsgedächtnis je Projekt + Zusammenfassung | A (Logik) / B (mit LLM) | `planner.memory_context` | `test_project_memory_and_gemini`, `test_memory_summarizes_long_history` | – | – |
+| Timeline-, Split-Screen- und Übersetzungs-Werkzeuge im Agenten | A (Timeline/Split-Screen) / B (Übersetzung) | `agent/tools.py` | `test_timeline_tools_via_agent_and_ops_api` | Übersetzung legt Projekt an; Argos-Modell lokal nötig | Argos-Modell installieren, Lauf prüfen |
+| Antwort-Streaming der LLMs | D | – | – | Planer liefert vollständige Pläne | – |
 
 ## Editor und Renderer
 
 | Funktion | St. | Ort | Nachweis | Einschränkung | Nächster Schritt |
 |---|---|---|---|---|---|
 | Szenen-Editor, Autosave, Versionen, Undo/Redo, Konflikte | A | Editor-Seite, `studio/projects.py` | `test_studio_api`, E2E Flow I | – | – |
-| Timeline (Spuransicht), Tastenkürzel | A (UI) | `components/studio/Timeline.tsx` | E2E-Suite | Bearbeitung szenenbasiert | – |
-| Mehrspur-Bearbeitung (freie Spuren, Drag & Drop, Snapping) | C | – | – | Musik + SFX je Szene statt freier Spuren | größerer Editor-Umbau mit Schema-Migration |
+| Szenen-Timeline (Reihenfolge), Tastenkürzel | A (UI) | `components/studio/Timeline.tsx` | E2E-Suite | – | – |
+| Mehrspur-Timeline: Video-/Overlay-/Audio-/Text-Spuren, Ziehen, Einrasten, Trimmen, Teilen, Slip, Ripple-Löschen, Kopie, Gruppen, Stumm/Sperren/Ausblenden, Zoom, Abspielkopf, Undo/Redo | A | `studio/timeline.py`, `timeline_render.py`, `components/studio/TimelineEditor.tsx` | `test_timeline` (Ops + Pixel-/Ton-Render), E2E Flow L | Vorschau zeigt den letzten Render (keine Echtzeit-Komposition im Browser) | Live-Vorschau im Browser |
+| Keyframes x/y/Skalierung/Drehung/Deckkraft/Lautstärke mit linear/ease-in/-out/-in-out | A | `timeline.keyframe_expr` | Ausdruck == Python-Kurve (alle Easings), Render-Pixeltest | Zuschnitt und Unschärfe nur statisch, nicht animierbar | Zuschnitt-/Unschärfe-Keyframes |
+| Alte Projekte unverändert lesbar/renderbar | A | `projects.migrate` | `test_overlay_on_scene_project_and_old_projects_unchanged` | – | – |
 | Punch-in-Zoom (statisch/einfahrend, Fokus) | A | `studio/render._zoom_chain` | `test_zoom_caption_layout…` (Pixelprüfung) | Fokus fest je Szene | – |
-| Dynamischer Gesichts-Crop mit Glättung (Stream-Clips) | A | `reframe.py` (Smart-Reframe) | `test_reframe` | Haar-Kaskade, ein Fokus je Clip | YuNet-Tracking mit Glättung |
+| Gesichts-Tracking mit Glättung (Totzone, Tempolimit, Lücken halten, Motivbindung), manuelle Fokuspunkte | A (synthetisch) | `reframe.track_faces/smooth_track/plan_tracking` | `test_tracking` (bewegtes Gesicht bleibt mittig, Haar + YuNet; Tracking + Pausenentfernung synchron) | nur horizontal; Testgesicht synthetisch bewegt | Prüfung an echten Facecam-Aufnahmen |
+| Fix OpenCV 5 (keine Haar-Kaskaden → Smart-Reframe fiel still auf Mitte) | A | `requirements.txt` (<5), Detektorkette | `test_tracking` | – | – |
 | Split-Screen (Gameplay unten) | A | `studio/render.render_segment` | `test_split_screen…` | – | – |
 | Untertitel: Karaoke/Wort-Hervorhebung, Position, Schrift, Farben, Größe | A | `captions.py`, `render._caption_layout` | `test_render_effects`, `test_captions` | Schriften aus Whitelist | – |
 | Musik, Ducking, Beat-Sync | A | `studio/render._final_pass` | `test_ducking…`, `test_music_video…` | – | – |
@@ -84,10 +89,21 @@ Pfade relativ zu `api/clipforge/` (Backend), `web/src/` (Frontend), Tests in `ap
 | Konten, getrennte Arbeitsbereiche, Admin-Rollen | A | `auth`, `studio/workspace.py` | `test_auth_accounts` | – | – |
 | Persistenz JSON (atomar, Versionen, Recovery) | A | `studio/storage.py`, `tasks.py` | `test_storage`, `test_restore`, `test_cancel` | keine Transaktionen über Prozesse | SQLite bei Mehrprozess-Betrieb (`STORAGE_EVALUATION.md`) |
 | Docker, CI (Linux + Windows), macOS-Start | A (CI) / B (macOS) | `Dockerfile`, `.github/workflows/ci.yml`, `scripts/start_local.sh` | CI grün | macOS nur vom Nutzer geprüft, nicht in CI | macOS-Runner in CI |
-| Oberfläche: Dashboard, Create, Streams, Editor, Publishing, Analytics, Einrichtung | A (Abläufe) / C (Design) | `web/src/app/` | 22 Playwright-Tests | keine eigene Mediathek-Seite (Medien je Projekt); kein vollständiges Redesign | Mediathek-Seite, Design-Durchgang |
+| Hauptnavigation Dashboard · Erstellen · Streams · Editor · Mediathek · Clips · Publishing · Analytics · Einstellungen; Erste Schritte | A (Abläufe) / C (Design) | `components/Nav.tsx`, `Onboarding.tsx` | 24 Playwright-Tests | kein vollständiges visuelles Redesign | Design-Durchgang |
+| Mediathek (Tags, Suche, Herkunft/Lizenz, Duplikate, Nutzung, sicheres Löschen, je Benutzer) | A | `studio/library.py`, `/studio/library` | `test_library`, E2E Flow M | keine Vorschaubilder für Videos (erstes Bild per Browser) | – |
+| Speicherplatz-Prüfung vor schweren Aufgaben | A | `tasks.check_disk_space` | `test_operations` | – | – |
+| Hardware-Kodierung (VideoToolbox/NVENC/QSV/VAAPI) | A (Erkennung/Fallback) / E (Kodierung) | `clipforge/hwaccel.py` | `test_operations`, echte Probeläufe | keine GPU in der Testumgebung; Standard CPU | Messung auf dem Mac (VideoToolbox) |
 | Vercel-Preview | E | – | – | Backend (Python/FFmpeg) dort nicht lauffähig; Check scheitert schon auf der Basis | Eigentümer-Entscheidung |
 
-## Gesamturteil
+## Gesamturteil (Production-Runde)
+
+Neu real belegt: Mehrspur-Timeline mit Keyframes (UI, Agent, Render), Gesichts-
+Tracking, Mediathek, Speicherplatz-Schutz, Encoder-Prüfung. Weiterhin **nicht**
+belegt: Qualität auf echten Streams, echte LLM-/Cloud-/Plattform-Anbindungen,
+trainierte Audio-Modelle, Hardware-Kodierung. → nicht „produktionsreif“ im Sinne
+der Abnahmekriterien; siehe `CLIPFORGE_FINAL_PRODUCTION_REPORT.md`.
+
+## Gesamturteil (3.0)
 
 Die lokalen, selbst bereitgestellten Abläufe (VOD + Chat → Highlights → Varianten
 → Clips → Editor/Agent → Export) sind real getestet und funktionieren. **Nicht

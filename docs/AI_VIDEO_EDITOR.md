@@ -29,6 +29,12 @@ stellt die Version vor der Ausführung wieder her
 |---|---|
 | get_project_state, trim_scene, split_scene, merge_scenes, move_scene, delete_scene, set_scene_text, remove_silence, change_caption_style, **set_caption_appearance** (Farbe, Hervorhebung, Schrift, Position, Größe), add_transition, adjust_audio (Lautstärken, Sprechtempo, Ducking), **zoom_scene** (Punch-in, Fokus Gesicht/Mitte/Seiten, statisch/einfahrend), **list_audio**, **add_background_music**, **add_sound_effect**, **normalize_loudness**, generate_hook_variants, **generate_title**, **generate_thumbnail**, render_preview, export_video (Bestätigung) | find_highlights, list_highlights, trim_clip, **list_clip_variants**, **set_clip_variant** (kurz/ausgewogen/mehr Kontext), render_clips (Bestätigung) |
 
+**Mehrspur-Timeline** (Production-Runde): timeline_state, timeline_add_media,
+timeline_add_text, timeline_edit (move/trim/split/slip/delete/ripple_delete/
+duplicate), timeline_keyframe, timeline_track; außerdem create_split_screen und
+translate_video (Bestätigung). Die Werkzeuge rufen dieselbe Funktion
+(`timeline.apply_op`) wie die Editor-Oberfläche auf.
+
 Jedes Werkzeug ändert echte Projektfelder, die der Renderer nutzt (Belege:
 `test_render_effects.py` prüft Zoom-Bildausschnitt, Caption-Layout, Soundeffekt-
 Position und Lautheit per FFmpeg).
@@ -45,10 +51,22 @@ Beispielbefehle (Regel-Planer, getestet):
 | „Normalisiere die Lautheit“ | normalize_loudness |
 | „Schlag mir einen Titel vor“ / „Erstelle ein Thumbnail“ | generate_title / generate_thumbnail |
 | „Clip 3 mit mehr Kontext“ / „Clip 2 in der kürzeren Variante“ | set_clip_variant |
+| „Use white captions and highlight important words in yellow.“ | set_caption_appearance(color white, highlight yellow) |
+| „Leg das Logo oben rechts drüber und blende es ein“ | timeline_add_media(overlay, top_right, fade) |
+| „Text „Abonnieren!“ von 2 bis 5 Sekunden oben in gelb“ | timeline_add_text |
+| „Make a split-screen version with gameplay below the facecam.“ | create_split_screen |
+| „Translate the video to German and generate a suitable voiceover.“ | translate_video(de, dub) |
 
-Ehrlich **nicht** verfügbar (der Chat sagt das): durchgehende Objektverfolgung
-(Tracking), freie Keyframes, B-Roll per Chat (im Editor über „B-Roll vorschlagen“),
-Übersetzen per Chat (Workflow „Video übersetzen“).
+Ehrlich **nicht** verfügbar (der Chat sagt das): Objektverfolgung im Editor-Chat
+(Gesichts-Tracking gibt es als Render-Modus `track` für Clips), B-Roll per Chat
+(im Editor über „B-Roll vorschlagen“), Zoom auf einen exakten Moment innerhalb
+einer Szene (Zoom gilt je Szene; dafür Timeline-Keyframes).
+
+**Gedächtnis:** LLM-Planer erhalten die letzten Wechsel wörtlich und ältere als
+Zusammenfassung (ausgeführte Werkzeuge, frühere Wünsche), je Projekt.
+**Gemini** ist als dritter Cloud-Planer angebunden (offizielle generateContent-
+API); weil der Preis vom Google-Tarif abhängt, verlangt jede Nachricht eine
+ausdrückliche Bestätigung — es wird kein Betrag erfunden.
 
 ## Planer
 

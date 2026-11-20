@@ -266,3 +266,15 @@ freien Mehrspur-Schnitte).
   (wirken beim Rendern; Render-Bericht listet sie unter `captions.layout`).
 - **Mediathek** nur je Projekt; keine globale Mediathek-Seite.
 - **JSON-Persistenz** ohne prozessübergreifende Transaktionen (`STORAGE_EVALUATION.md`).
+
+
+## Production-Runde (21.11.2026)
+
+- **Timeline-Vorschau** zeigt den letzten Render; neue Spuren/Keyframes sieht man erst nach „Vorschau rendern“.
+- **Keyframes** für Zuschnitt und Unschärfe fehlen (beide nur statisch).
+- **Audio-Ereignisse** sind eine Heuristik ohne Training; Standard „nur erklärend“.
+- **Tracking** nur horizontal (Hochformat aus Querformat); kein Objekt-Tracking jenseits von Gesichtern.
+- **OpenCV ≥ 5** hat keine Haar-Kaskaden: Abhängigkeit auf < 5 begrenzt; mit YuNet-Modell funktioniert die Gesichtserkennung auch ohne Haar.
+- **Gemini/Claude/OpenAI/Ollama** nicht live getestet; LLM-Antworten werden nicht gestreamt.
+- **Hardware-Kodierung** nur nach echtem Probelauf, hier ohne GPU nicht nutzbar; Standard CPU.
+- **Übersetzung per Chat** legt ein neues Projekt an; Argos-Sprachmodell muss lokal installiert sein.
