@@ -249,3 +249,20 @@ Stream-Quellen haben kein eigenes Budget → dort nur Regeln/Ollama.
 ### Timeline ist eine Übersicht
 Spuren werden angezeigt; bearbeitet wird weiterhin szenenbasiert (keine
 freien Mehrspur-Schnitte).
+
+
+## ClipForge 3.0 — Abnahmerunde (20.11.2026)
+
+- **Stream-Qualität nur synthetisch gemessen** (`BENCHMARKS.md`); echte Streams fehlen.
+- **„max. Clips“ begrenzt den Recall** bei langen Streams (Standard 8) — für mehrstündige
+  Aufnahmen höher stellen.
+- **Live-Chats nie gegen die echten Plattformen** getestet (Twitch-Host nicht auflösbar,
+  kein YouTube-Schlüssel). YouTube-Live nur öffentliche Streams (kein OAuth).
+- **Ollama/LLM-Planer** nur gegen nachgebildete Server; Fallback auf Regeln greift automatisch.
+- **Zoom-Fokus** fest je Szene (Haar-Kaskade für „Gesicht“); kein Tracking, keine Keyframes.
+- **Lautheitsnormalisierung** ist opt-in (bestehende Projekte klingen unverändert);
+  zweiter Durchgang kostet ~15 % Renderzeit.
+- **Untertitel-Vorschaubild** im Editor zeigt nur den Stil, nicht Farbe/Position
+  (wirken beim Rendern; Render-Bericht listet sie unter `captions.layout`).
+- **Mediathek** nur je Projekt; keine globale Mediathek-Seite.
+- **JSON-Persistenz** ohne prozessübergreifende Transaktionen (`STORAGE_EVALUATION.md`).

@@ -9,19 +9,26 @@
 4. Skill-Registry (nur Markdown), Provider-Matrix
 5. Editor: Timeline, Tastenkürzel, Thumbnail-Vorschläge
 
+## Abnahmerunde (erledigt)
+
+Auswertung/Tuning, synthetischer Testsatz, Varianten, Signal-Cache, Zoom,
+Untertitel-Aussehen, Soundeffekte, Lautheit, 10 neue Agent-Werkzeuge,
+Ollama-Status/Fallback, YouTube-Live-Chat (Data API), Live-Warteschlange,
+4 neue Vorlagen, Skill-Abhängigkeiten — siehe `CLIPFORGE_3_FINAL_REPORT.md`.
+
 ## Nächste Schritte (priorisiert)
 
 | Prio | Aufgabe | Voraussetzung |
 |---|---|---|
-| 1 | Auswertung mit echten eigenen VODs + Chat-Exporten, Gewichte justieren | 2–3 echte Streams vom Nutzer |
-| 2 | Ollama live testen (z. B. qwen2.5:7b) und Prompt/Tool-Schema nachschärfen | Ollama auf dem Mac |
-| 3 | Twitch-IRC einmal live gegen einen echten Kanal | Netzzugang, öffentlicher Kanal |
-| 4 | Punch-in-Zoom als Renderer-Effekt (dann auch per Chat steuerbar) | – |
-| 5 | Audio-Ereignis-Klassifikation (YAMNet, Apache-2.0) für Lachen/Jubel/Schreie | ONNX-Export prüfen |
-| 6 | YouTube-Live-Chat über die Data API (liveChatMessages) | API-Schlüssel, Kontingent |
-| 7 | Mehrspur-Timeline (freie Audio-/B-Roll-Spuren) | größerer Editor-Umbau |
-| 8 | Cloud-Anbieter live verifizieren (fal.ai, ElevenLabs, Claude, Plattformen) | Freigabe bezahlter Tests |
-| 9 | Persistenz auf SQLite/PostgreSQL bei Mehrbenutzer-Last | Entscheidung Hosting |
+| 1 | Echte VODs markieren, auswerten, Gewichte schätzen | 2–3 eigene Streams + Chat-Exporte |
+| 2 | Ollama, faster-whisper, Twitch-IRC auf dem Mac prüfen | Mac, Netz |
+| 3 | YouTube-Live-Chat gegen echte API | API-Schlüssel, eigener öffentlicher Stream |
+| 4 | YAMNet als ONNX | lokaler Export, Prüfsumme |
+| 5 | Mediathek-Seite, Design-Durchgang | – |
+| 6 | Mehrspur-Timeline (freie Spuren, Keyframes) | Schema-Migration |
+| 7 | Hardware-Beschleunigung | Messung auf Zielrechner |
+| 8 | Cloud-Anbieter + Publishing live | Freigabe bezahlter Tests / Veröffentlichung |
+| 9 | SQLite/PostgreSQL | Mehrbenutzer-Hosting |
 
 ## Bewusst nicht geplant
 
