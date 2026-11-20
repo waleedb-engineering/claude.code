@@ -196,7 +196,7 @@ class SkillToggle(BaseModel):
 
 class AgentMessage(BaseModel):
     message: str
-    engine: Literal["rules", "ollama", "anthropic", "openai"] = "rules"
+    engine: Literal["rules", "ollama", "anthropic", "openai", "gemini"] = "rules"
     confirm_cost: bool = False
 
 

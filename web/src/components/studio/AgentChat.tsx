@@ -18,7 +18,7 @@ type Props = {
 export default function AgentChat({ kind, targetId, beforeExecute, onChanged }: Props) {
   const t = useT();
   const [msgs, setMsgs] = useState<AgentMessage[]>([]);
-  const [engines, setEngines] = useState<{ id: string; label: string; ready: boolean; paid: boolean; hint?: string; cost_per_message_usd?: number }[]>([]);
+  const [engines, setEngines] = useState<{ id: string; label: string; ready: boolean; paid: boolean; hint?: string; cost_per_message_usd?: number | null; model?: string }[]>([]);
   const [engine, setEngine] = useState("rules");
   const [text, setText] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
@@ -58,7 +58,11 @@ export default function AgentChat({ kind, targetId, beforeExecute, onChanged }: 
     setError(null);
     let confirmCost = false;
     if (current?.paid) {
-      confirmCost = window.confirm(`${current.label}: ca. ${current.cost_per_message_usd ?? "?"} USD je Nachricht (Projektbudget). Senden?`);
+      confirmCost = window.confirm(
+        current.cost_per_message_usd != null
+          ? `${current.label}: ca. ${current.cost_per_message_usd} USD je Nachricht (Projektbudget). Senden?`
+          : `${current.label}: Kosten hängen von deinem Anbieter-Tarif ab (evtl. Gratis-Kontingent). Senden?`,
+      );
       if (!confirmCost) return;
     }
     setBusy(t("ag.thinking"));

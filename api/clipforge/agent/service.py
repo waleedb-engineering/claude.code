@@ -60,6 +60,7 @@ class AgentService:
             raise StudioError("validation_error", "Bitte einen Befehl eingeben.")
         self._path(kind, target)
         ctx = Ctx(self.svc, self.streams, kind, target)
+        memory = planner.memory_context(self.history(kind, target))
         self._append(kind, target, {"role": "user", "text": message})
         state = self._state(ctx)
         cost = planner.COST.get(engine)
@@ -72,6 +73,10 @@ class AgentService:
             text = ""
         else:
             rid = None
+            if engine in planner.PAID_UNKNOWN and not confirm_cost:
+                raise StudioError("cost_confirmation_required",
+                                  f"{engine}: Kosten hängen vom Tarif ab (evtl. Gratis-Kontingent). Bitte bestätigen.",
+                                  402, {"estimated_usd": None})
             if cost > 0:
                 if not confirm_cost:
                     raise StudioError("cost_confirmation_required",
@@ -85,7 +90,7 @@ class AgentService:
                 ledger = CostLedger(pdir, self.svc.store.load(target).get("budget_limit_usd") or 0.0)
                 rid = ledger.reserve(cost, f"Editor-Agent ({engine})")
             try:
-                calls, text = planner.llm_plan(engine, message, state, kind)
+                calls, text = planner.llm_plan(engine, message, state, kind, memory)
                 if rid:
                     ledger.commit(rid, cost, engine, "agent")
             except ProviderError as exc:

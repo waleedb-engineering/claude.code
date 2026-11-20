@@ -103,7 +103,7 @@ def test_agent_edits_project_like_the_editor_and_can_undo(tmp_path, monkeypatch)
         res = client.post(f"/api/studio/agent/project/{pid}/{m['id']}/execute", json={}).json()["message"]
         assert res["plan"]["status"] == "partial" and "gibt es nicht" in res["plan"]["results"][0]["error"]
         eng = client.get("/api/studio/agent/engines").json()
-        assert {e["id"] for e in eng["engines"]} == {"rules", "ollama", "anthropic", "openai"}
+        assert {e["id"] for e in eng["engines"]} == {"rules", "ollama", "anthropic", "openai", "gemini"}
     finally:
         clear_env()
 

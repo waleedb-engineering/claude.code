@@ -749,7 +749,7 @@ export const studio = {
     }>("/agent/ollama"),
   ollamaTest: () => post<{ ok: boolean; stage: string; message: string; model?: string; seconds?: number }>("/agent/ollama/test"),
   agentEngines: () =>
-    get<{ engines: { id: string; label: string; ready: boolean; paid: boolean; hint?: string; cost_per_message_usd?: number }[] }>(
+    get<{ engines: { id: string; label: string; ready: boolean; paid: boolean; hint?: string; cost_per_message_usd?: number | null; model?: string }[] }>(
       "/agent/engines",
     ),
   agentHistory: (kind: string, id: string) => get<{ messages: AgentMessage[] }>(`/agent/${kind}/${id}`).then((d) => d.messages),

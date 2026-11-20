@@ -27,7 +27,42 @@ NUM = {"eins": 1, "ein": 1, "einen": 1, "eine": 1, "zwei": 2, "drei": 3, "vier":
 ORD = {"erste": 1, "ersten": 1, "zweite": 2, "zweiten": 2, "dritte": 3, "dritten": 3, "vierte": 4,
        "vierten": 4, "fünfte": 5, "fünften": 5, "letzte": -1, "letzten": -1, "first": 1,
        "second": 2, "third": 3, "last": -1}
-COST = {"rules": 0.0, "ollama": 0.0, "anthropic": 0.01, "openai": 0.005}  # Richtwert je Nachricht
+COST = {"rules": 0.0, "ollama": 0.0, "anthropic": 0.01, "openai": 0.005, "gemini": 0.0}  # Richtwert je Nachricht
+# Preis hängt vom Tarif ab (Gratis-Kontingent möglich) → nie ohne ausdrückliche Bestätigung,
+# aber kein erfundener Betrag
+PAID_UNKNOWN = {"gemini"}
+MEMORY_RECENT = 6
+
+
+def memory_context(history: list[dict]) -> str:
+    """Gesprächsgedächtnis je Projekt: letzte Wechsel wörtlich, Älteres zusammengefasst."""
+    turns = [h for h in history if h.get("role") in ("user", "assistant")]
+    if not turns:
+        return ""
+    recent, older = turns[-MEMORY_RECENT * 2:], turns[:-MEMORY_RECENT * 2]
+    lines = []
+    if older:
+        done: dict[str, int] = {}
+        asks = []
+        for h in older:
+            if h["role"] == "user":
+                asks.append(h.get("text", "")[:60])
+            for st in ((h.get("plan") or {}).get("steps") or []):
+                if (h.get("plan") or {}).get("status") == "executed":
+                    done[st["tool"]] = done.get(st["tool"], 0) + 1
+        lines.append(f"Zusammenfassung früherer Schritte ({len(older)} Nachrichten): "
+                     + (", ".join(f"{k}×{v}" for k, v in done.items()) or "keine ausgeführten Änderungen")
+                     + (f"; frühere Wünsche u. a.: {' | '.join(asks[-3:])}" if asks else ""))
+    for h in recent:
+        if h["role"] == "user":
+            lines.append(f"Nutzer: {h.get('text', '')[:200]}")
+        else:
+            plan = h.get("plan") or {}
+            steps = ", ".join(f"{st['tool']}({json.dumps(st.get('args', {}), ensure_ascii=False)[:80]})"
+                              for st in plan.get("steps") or [])
+            lines.append(f"Assistent: {steps or h.get('text', '')[:120]} [{plan.get('status', '')}"
+                         f"{', rückgängig' if plan.get('undone') else ''}]")
+    return "\n".join(lines)[-3000:]
 
 # Test-Hook: (engine, system, message, tools) -> list[{"tool":…, "args":…}] | str
 LLM_CALL = None
@@ -283,11 +318,13 @@ def ollama_url() -> str:
     return url
 
 
-def llm_plan(engine: str, message: str, state: dict, kind: str) -> tuple[list[dict], str]:
+def llm_plan(engine: str, message: str, state: dict, kind: str, memory: str = "") -> tuple[list[dict], str]:
     tools = [t.schema() for t in for_context(kind)]
     from ..skills import planner_context
     system = SYSTEM + ("\n\n" + planner_context() if planner_context() else "")
-    user = f"Projektzustand:\n{json.dumps(state, ensure_ascii=False)[:6000]}\n\nBefehl: {message}"
+    user = (f"Projektzustand:\n{json.dumps(state, ensure_ascii=False)[:6000]}\n\n"
+            + (f"Bisheriger Verlauf in diesem Projekt:\n{memory}\n\n" if memory else "")
+            + f"Befehl: {message}")
     if LLM_CALL is not None:
         out = LLM_CALL(engine, system, user, tools)
         return (out, "") if isinstance(out, list) else ([], str(out))
@@ -305,6 +342,8 @@ def llm_plan(engine: str, message: str, state: dict, kind: str) -> tuple[list[di
                  if b.get("type") == "tool_use"]
         text = " ".join(b.get("text", "") for b in data.get("content", []) if b.get("type") == "text")
         return calls, text.strip()
+    if engine == "gemini":
+        return _gemini(system, user, tools)
     fn_tools = [{"type": "function", "function": {"name": t["name"], "description": t["description"],
                                                   "parameters": t["input_schema"]}} for t in tools]
     msgs = [{"role": "system", "content": system}, {"role": "user", "content": user}]
@@ -343,6 +382,43 @@ def llm_plan(engine: str, message: str, state: dict, kind: str) -> tuple[list[di
     return calls, str(msg.get("content") or "").strip()
 
 
+def _gemini_schema(schema: dict) -> dict:
+    """Gemini verlangt bei Arrays ein 'items'-Schema."""
+    props = {}
+    for name, spec in (schema.get("properties") or {}).items():
+        spec = dict(spec)
+        if spec.get("type") == "array" and "items" not in spec:
+            spec["items"] = {"type": "integer" if name == "clips" else "string"}
+        props[name] = spec
+    out = {"type": "object", "properties": props}
+    if schema.get("required"):
+        out["required"] = schema["required"]
+    return out
+
+
+def gemini_model() -> str:
+    return os.environ.get("CLIPFORGE_GEMINI_MODEL", "gemini-2.0-flash")
+
+
+def _gemini(system: str, user: str, tools: list[dict]) -> tuple[list[dict], str]:
+    from ..studio.credentials import secret
+    key = secret("GEMINI_API_KEY")
+    if not key:
+        raise StudioError("credential_not_set", "Kein Gemini-Schlüssel hinterlegt.", 409)
+    decls = [{"name": t["name"], "description": t["description"],
+              "parameters": _gemini_schema(t["input_schema"])} for t in tools]
+    data = _http_json(f"https://generativelanguage.googleapis.com/v1beta/models/{gemini_model()}:generateContent", {
+        "systemInstruction": {"parts": [{"text": system}]},
+        "contents": [{"role": "user", "parts": [{"text": user}]}],
+        "tools": [{"functionDeclarations": decls}],
+        "generationConfig": {"temperature": 0}}, {"x-goog-api-key": key})
+    parts = ((data.get("candidates") or [{}])[0].get("content") or {}).get("parts") or []
+    calls = [{"tool": p["functionCall"].get("name"), "args": p["functionCall"].get("args") or {}}
+             for p in parts if isinstance(p.get("functionCall"), dict)]
+    text = " ".join(p.get("text", "") for p in parts if p.get("text"))
+    return calls, text.strip()
+
+
 def engines() -> list[dict]:
     from ..studio.credentials import secret
     out = [{"id": "rules", "label": "Regelbasiert (lokal, kostenlos)", "ready": True, "paid": False,
@@ -354,8 +430,14 @@ def engines() -> list[dict]:
                 "models": [m["name"] for m in st["models"]], "model": st["model"], "live_verified": False,
                 "hint": "" if st["reachable"] and st["model"] else
                 (st.get("hint") or st["model_reason"] + ". " + st["recommendation"].get("command", ""))})
+    from ..config import get_settings
     out.append({"id": "anthropic", "label": "Claude (kostenpflichtig)", "ready": bool(secret("ANTHROPIC_API_KEY")),
-                "paid": True, "cost_per_message_usd": COST["anthropic"], "live_verified": False})
+                "paid": True, "cost_per_message_usd": COST["anthropic"], "live_verified": False,
+                "model": get_settings().llm_model})
     out.append({"id": "openai", "label": "OpenAI (kostenpflichtig)", "ready": bool(secret("OPENAI_API_KEY")),
-                "paid": True, "cost_per_message_usd": COST["openai"], "live_verified": False})
+                "paid": True, "cost_per_message_usd": COST["openai"], "live_verified": False,
+                "model": os.environ.get("CLIPFORGE_OPENAI_AGENT_MODEL", "gpt-4o-mini")})
+    out.append({"id": "gemini", "label": "Gemini (Kosten je nach Google-Tarif)", "ready": bool(secret("GEMINI_API_KEY")),
+                "paid": True, "cost_per_message_usd": None, "live_verified": False, "model": gemini_model(),
+                "note": "Preis abhängig vom Tarif (Gratis-Kontingent möglich) — jede Nachricht braucht Bestätigung."})
     return out

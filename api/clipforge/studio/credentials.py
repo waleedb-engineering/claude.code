@@ -35,7 +35,7 @@ KNOWN = {
     "pexels": ("PEXELS_API_KEY", "Pexels (Stock-Videos/-Fotos, kostenlos)",
                "https://api.pexels.com/v1/curated?per_page=1", lambda k: {"Authorization": k}),
     # Verwaltbar und prüfbar; noch von keiner Funktion genutzt (siehe API_PROVIDER_MATRIX.md)
-    "gemini": ("GEMINI_API_KEY", "Google Gemini (noch ungenutzt)",
+    "gemini": ("GEMINI_API_KEY", "Google Gemini (KI-Assistent, optional)",
                lambda k: "https://generativelanguage.googleapis.com/v1beta/models?key=" + k, lambda k: {}),
     "huggingface": ("HF_TOKEN", "Hugging Face (Modell-Downloads, noch ungenutzt)",
                     "https://huggingface.co/api/whoami-v2", lambda k: {"Authorization": "Bearer " + k}),

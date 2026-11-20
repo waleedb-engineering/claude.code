@@ -215,3 +215,54 @@ def test_timeline_tools_via_agent_and_ops_api(tmp_path):
     assert bad.status_code == 400
     out = client.post(f"/api/studio/agent/project/{pid}", json={"message": "x"}).json()["message"]
     assert out["plan"]["status"] == "empty"
+
+
+def test_project_memory_and_gemini(tmp_path, monkeypatch):
+    """Gedächtnis je Projekt geht an den LLM-Planer; Gemini braucht Bestätigung + Schlüssel.
+    Gemini-Antworten sind hier NACHGEBILDET (kein echter Aufruf)."""
+    seen = {}
+
+    def fake(engine, system, user, tools):
+        seen["user"] = user
+        return [{"tool": "change_caption_style", "args": {"style": "bold"}}]
+    monkeypatch.setattr(planner, "LLM_CALL", fake)
+    client, _ = make_client(str(tmp_path))
+    r = client.post("/api/studio/projects", json={"workflow": "script", "script": SCRIPT})
+    pid = r.json()["project"]["id"]
+    wait_task(client, r.json()["task_id"])
+    _run(client, pid, "Mach die Untertitel oben")
+    monkeypatch.setenv("CLIPFORGE_OLLAMA_URL", "http://127.0.0.1:9")
+    r = client.post(f"/api/studio/agent/project/{pid}", json={"message": "Jetzt fetter", "engine": "gemini"})
+    assert r.status_code == 402 and "Tarif" in r.text              # nie still bezahlt
+    r = client.post(f"/api/studio/agent/project/{pid}", json={"message": "Jetzt fetter", "engine": "gemini",
+                                                                "confirm_cost": True})
+    assert r.status_code == 201, r.text
+    msg = r.json()["message"]
+    assert msg["plan"]["steps"][0]["tool"] == "change_caption_style"
+    assert "Bisheriger Verlauf" in seen["user"] and "Mach die Untertitel oben" in seen["user"]
+    assert "set_caption_appearance" in seen["user"]
+    # echter Gemini-Pfad ohne Test-Hook: Antwortformat parsen (nachgebildete HTTP-Antwort)
+    monkeypatch.setattr(planner, "LLM_CALL", None)
+    monkeypatch.setattr("clipforge.studio.credentials.secret", lambda n: "k" if n == "GEMINI_API_KEY" else None)
+    sent = {}
+
+    def http(url, body, headers, timeout=60):
+        sent.update(url=url, body=body, headers=headers)
+        return {"candidates": [{"content": {"parts": [
+            {"functionCall": {"name": "render_clips", "args": {"clips": [1, 2]}}}, {"text": "ok"}]}}]}
+    monkeypatch.setattr(planner, "_http_json", http)
+    calls, text = planner.llm_plan("gemini", "rendere 1 und 2", {}, "stream")
+    assert calls == [{"tool": "render_clips", "args": {"clips": [1, 2]}}] and text == "ok"
+    assert "key=" not in sent["url"] and sent["headers"]["x-goog-api-key"] == "k"
+    decl = next(d for d in sent["body"]["tools"][0]["functionDeclarations"] if d["name"] == "render_clips")
+    assert decl["parameters"]["properties"]["clips"]["items"] == {"type": "integer"}
+
+
+def test_memory_summarizes_long_history():
+    hist = []
+    for i in range(30):
+        hist.append({"role": "user", "text": f"Befehl {i}"})
+        hist.append({"role": "assistant", "plan": {"status": "executed", "steps": [{"tool": "trim_scene", "args": {}}]}})
+    mem = planner.memory_context(hist)
+    assert mem.startswith("Zusammenfassung früherer Schritte") and "trim_scene×" in mem
+    assert "Befehl 29" in mem and len(mem) <= 3000
