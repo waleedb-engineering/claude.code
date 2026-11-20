@@ -295,6 +295,8 @@ class StreamService:
                  "post": max(2.0, min(30.0, float(params.get("post") or 8))),
                  "max_len": max(10.0, min(180.0, float(params.get("max_len") or 60))),
                  "min_len": max(3.0, min(60.0, float(params.get("min_len") or 12))),
+                 "audio_events": params.get("audio_events") if params.get("audio_events") in
+                 ("off", "explain", "rank") else "explain",
                  "transcribe": bool(params.get("transcribe", True))}
         if clean["chat_delay"] is not None:
             clean["chat_delay"] = max(0.0, min(30.0, float(clean["chat_delay"])))
@@ -330,6 +332,7 @@ class StreamService:
             result = analyze_mod.analyze(
                 self.source_path(sid), chat=self._chat(sid), measured=measured,
                 weights=tuned["weights"] if tuned else None, min_len=p.get("min_len", 12.0),
+                audio_events_mode=p.get("audio_events", "explain"),
                 transcriber=self._transcriber() if p.get("transcribe") else None,
                 settings=get_settings(), keywords=p.get("keywords"), chat_delay=p.get("chat_delay"),
                 max_clips=p["max_clips"], pre=p["pre"], post=p["post"], max_len=p["max_len"],

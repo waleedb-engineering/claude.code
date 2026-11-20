@@ -158,6 +158,7 @@ class StreamAnalyze(BaseModel):
     post: float = Field(default=8, ge=2, le=30)
     max_len: float = Field(default=60, ge=10, le=180)
     min_len: float = Field(default=12, ge=3, le=60)
+    audio_events: Literal["off", "explain", "rank"] = "explain"
     transcribe: bool = True
 
 

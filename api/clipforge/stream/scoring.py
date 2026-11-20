@@ -20,18 +20,20 @@ DEFAULT_WEIGHTS = {
     "chat_rate": 0.15, "chat_unique": 0.08, "chat_reaction": 0.12,
     "audio_loud": 0.12, "audio_rise": 0.10, "audio_bright": 0.08,
     "video_motion": 0.10, "video_scene": 0.05,
-    "transcript": 0.15, "tension": 0.05,
+    "transcript": 0.15, "tension": 0.05, "audio_event": 0.10,
 }
 GROUP = {"chat_rate": "chat", "chat_unique": "chat", "chat_reaction": "chat",
          "audio_loud": "audio", "audio_rise": "audio", "audio_bright": "audio", "tension": "audio",
-         "video_motion": "video", "video_scene": "video", "transcript": "transcript"}
+         "video_motion": "video", "video_scene": "video", "transcript": "transcript", "audio_event": "audio"}
 LABEL = {
     "chat_rate": "Chat-Aktivität", "chat_unique": "viele verschiedene Chatter",
     "chat_reaction": "Chat-Reaktionen", "audio_loud": "Lautstärke",
     "audio_rise": "plötzlicher Lautstärkesprung", "audio_bright": "laut und hell (Schrei/Jubel-Heuristik)",
     "video_motion": "starke Bewegung im Bild", "video_scene": "Szenenwechsel",
     "transcript": "Aussage im Transkript", "tension": "Stille vor dem Ausbruch",
+    "audio_event": "Audio-Ereignis (Lachen/Jubel/Applaus/Schreien, heuristisch)",
 }
+MUSIC_DAMPING = 0.7  # laute Musik ohne andere Hinweise ist selten ein Highlight
 REACTION_PHRASES = re.compile(
     r"\b(no way|oh my god|oh mein gott|let'?s go|was zum|what the|ich glaub(e)? es nicht|"
     r"unglaublich|krass|alter|digga|hahaha+|wow+|nein+|ja+ ?!|boah+|holy|insane|bro)\b", re.I)
@@ -100,7 +102,8 @@ def transcript_series(words: list, n: int, keywords: list[str] | None = None) ->
 def score_timeline(duration: float, *, chat: dict | None = None, audio: dict | None = None,
                    video: dict | None = None, words: list | None = None,
                    keywords: list[str] | None = None, chat_delay: float | None = None,
-                   weights: dict | None = None) -> dict:
+                   weights: dict | None = None, audio_events: dict | None = None,
+                   events_in_ranking: bool = False) -> dict:
     n = max(1, int(duration) + 1)
     w = dict(DEFAULT_WEIGHTS, **(weights or {}))
 
@@ -125,6 +128,14 @@ def score_timeline(duration: float, *, chat: dict | None = None, audio: dict | N
         tension = np.zeros(n, dtype=np.float32)
         tension[1:] = (before[:-1] >= 3) * np.clip(rise[1:], 0, None)
         comp["tension"] = tension
+        if audio_events and events_in_ranking:
+            ev = np.max(np.stack([fit(audio_events[k]) for k in ("laughter", "cheering", "applause", "screaming")
+                                  if k in audio_events]), axis=0)
+            comp["audio_event"] = ev * 4.0  # Wahrscheinlichkeit 0–1 → Skala 0–4 wie die z-Werte
+            music = fit(audio_events.get("music") or [0.0] * n)
+            damp = 1.0 - MUSIC_DAMPING * np.clip(music, 0, 1)
+            for k in ("audio_loud", "audio_rise", "audio_bright", "tension"):
+                comp[k] = comp[k] * damp
         used.add("audio")
     if chat:
         rate = fit(chat["rate"]).astype(np.float32)
@@ -159,7 +170,7 @@ def score_timeline(duration: float, *, chat: dict | None = None, audio: dict | N
     score = smooth(sum(contrib.values()), 3) if contrib else np.zeros(n)
     return {"score": score, "contrib": contrib, "components": comp, "weights": norm,
             "signals": sorted(used), "chat_delay": chat_delay, "chat_delay_note": delay_note,
-            "transcript_notes": t_notes, "n": n}
+            "transcript_notes": t_notes, "n": n, "audio_events": audio_events}
 
 
 def pick_candidates(tl: dict, *, chat: dict | None = None, max_count: int = 10,
@@ -183,6 +194,12 @@ def pick_candidates(tl: dict, *, chat: dict | None = None, max_count: int = 10,
             reasons.append(f"{LABEL[k]}: +{pts:.0f} Punkte (z={z:.1f})")
         for note in tl["transcript_notes"].get(i, [])[:2]:
             reasons.append(note)
+        if tl.get("audio_events"):
+            from .audio_events import LABEL as EV_LABEL, summary
+            sm = summary(tl["audio_events"], i - 2, i + 4)
+            hits = [f"{EV_LABEL[k]} {v:.0%}" for k, v in sm.items() if v >= 0.5 and k not in ("speech",)]
+            if hits:
+                reasons.append("Audio (heuristisch): " + ", ".join(hits))
         cats, terms = {}, []
         if chat:
             lo, hi = i + d, i + d + 6

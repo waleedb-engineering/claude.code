@@ -43,7 +43,7 @@ export default function StreamDetailPage() {
   const [error, setError] = useState<string | null>(null);
   const [upload, setUpload] = useState<number | null>(null);
   const [task, setTask] = useState<Task | null>(null);
-  const [params, setParams] = useState({ keywords: "", max_clips: 8, chat_delay: "", transcribe: true, min_len: 12, max_len: 60 });
+  const [params, setParams] = useState({ keywords: "", max_clips: 8, chat_delay: "", transcribe: true, min_len: 12, max_len: 60, audio_events: "explain" });
   const [evaluation, setEvaluation] = useState<StreamEvaluation | null>(null);
   const [missed, setMissed] = useState({ start: "", end: "" });
   const [tune, setTune] = useState<Awaited<ReturnType<typeof studio.tuneStreamWeights>> | null>(null);
@@ -193,6 +193,16 @@ export default function StreamDetailPage() {
           </label>
           <input id="sd" type="number" min={0} max={30} className={inputCls} value={params.chat_delay} onChange={(e) => setParams({ ...params, chat_delay: e.target.value })} />
         </div>
+        <div>
+          <label htmlFor="sae" className={labelCls}>
+            {t("st.audioEvents")}
+          </label>
+          <select id="sae" className={inputCls} value={params.audio_events} onChange={(e) => setParams({ ...params, audio_events: e.target.value })}>
+            <option value="explain">{t("st.aeExplain")}</option>
+            <option value="rank">{t("st.aeRank")}</option>
+            <option value="off">{t("st.aeOff")}</option>
+          </select>
+        </div>
         <label className="flex items-center gap-2 text-sm text-neutral-300 sm:col-span-3">
           <input type="checkbox" checked={params.transcribe} onChange={(e) => setParams({ ...params, transcribe: e.target.checked })} />
           {t("st.transcribe")}
@@ -211,6 +221,7 @@ export default function StreamDetailPage() {
                   transcribe: params.transcribe,
                   min_len: params.min_len,
                   max_len: params.max_len,
+                  audio_events: params.audio_events,
                 }),
               )
             }
