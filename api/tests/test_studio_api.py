@@ -376,7 +376,8 @@ def test_editor_persistence_conflicts_and_render_restart():
         assert saved["scenes"][0]["voice_text"] == "Anders gesprochen"
         assert saved["scenes"][0]["visual_prompt"] == "Kaffeetasse im Morgenlicht"
         assert saved["scenes"][0]["duration"] == 5.5
-        assert saved["captions"] == {"style": "bold", "use_brand": False}
+        assert {k: saved["captions"][k] for k in ("style", "use_brand")} == {"style": "bold", "use_brand": False}
+        assert saved["captions"]["position"] == "bottom"  # neue Felder mit Standardwerten
         assert saved["music"]["volume"] == 0.4 and saved["music"]["ducking"] is False
         stale = client.patch(f"/api/studio/projects/{pid}", json={"expected_version": v, "title": "Alt"})
         assert stale.status_code == 409 and _err(stale) == "version_conflict"

@@ -1,7 +1,7 @@
 "use client";
 
 import { useT, type TKey } from "@/lib/i18n";
-import { TRANSITION_IDS, type MediaItem, type Scene } from "@/lib/studio";
+import { TRANSITION_IDS, type MediaItem, type Scene, type ZoomFocus } from "@/lib/studio";
 import BrollPicker from "./BrollPicker";
 import { btnCls, cardCls, inputCls, labelCls } from "./ui";
 
@@ -257,6 +257,56 @@ export default function SceneCard(p: Props) {
               value={s.pause_after}
               onChange={(e) => p.onChange({ pause_after: Number(e.target.value) || 0 })}
             />
+          </div>
+          <div>
+            <label htmlFor={`${id}-zoom`} className={labelCls}>
+              {t("ed.zoom")}
+            </label>
+            <div className="flex gap-1">
+              <select
+                id={`${id}-zoom`}
+                className={inputCls}
+                value={s.zoom ? String(s.zoom.factor) : "1"}
+                onChange={(e) => {
+                  const f = Number(e.target.value);
+                  p.onChange({ zoom: f > 1 ? { factor: f, focus: s.zoom?.focus ?? "face", ramp: s.zoom?.ramp ?? false } : undefined });
+                }}
+              >
+                {["1", "1.2", "1.4", "1.6", "2"].map((f) => (
+                  <option key={f} value={f}>
+                    {f === "1" ? t("ed.zoomOff") : `${f}×`}
+                  </option>
+                ))}
+              </select>
+              {s.zoom && (
+                <select
+                  aria-label={t("ed.zoomFocus")}
+                  className={inputCls}
+                  value={s.zoom.focus}
+                  onChange={(e) => p.onChange({ zoom: { ...s.zoom!, focus: e.target.value as ZoomFocus } })}
+                >
+                  {(["face", "center", "top", "bottom", "left", "right"] as const).map((f) => (
+                    <option key={f} value={f}>
+                      {t(`ed.focus.${f}` as TKey)}
+                    </option>
+                  ))}
+                </select>
+              )}
+            </div>
+            {s.zoom && (
+              <label className="mt-1 flex items-center gap-1 text-xs text-neutral-400">
+                <input type="checkbox" checked={s.zoom.ramp} onChange={(e) => p.onChange({ zoom: { ...s.zoom!, ramp: e.target.checked } })} />
+                {t("ed.zoomRamp")}
+              </label>
+            )}
+            {s.sfx && s.sfx.length > 0 && (
+              <p className="mt-1 text-xs text-neutral-400">
+                SFX: {s.sfx.map((x) => `${x.track.split(":")[1]} @${x.at}s`).join(", ")}{" "}
+                <button type="button" className="underline" onClick={() => p.onChange({ sfx: [] })}>
+                  {t("ed.sfxClear")}
+                </button>
+              </p>
+            )}
           </div>
           <div>
             <label htmlFor={`${id}-headline`} className={labelCls}>

@@ -47,7 +47,12 @@ export type Scene = {
   visual: SceneVisual;
   audio_source?: { start: number; end: number };
   words?: { text: string; start: number; end: number }[];
+  zoom?: { factor: number; focus: ZoomFocus; ramp: boolean };
+  sfx?: { track: string; at: number; volume: number }[];
 };
+
+export type ZoomFocus = "center" | "face" | "top" | "bottom" | "left" | "right";
+export const CAPTION_FONTS = ["Arial", "Helvetica", "Verdana", "Impact", "Georgia", "DejaVu Sans", "Liberation Sans"] as const;
 
 export type TransitionId =
   | "auto" | "cut" | "fade" | "fadeblack" | "zoom" | "slide" | "slideup" | "smooth" | "wipe" | "dissolve" | "circle";
@@ -76,6 +81,92 @@ export type LocalModel = {
   installed: boolean;
 };
 
+export type StreamMeta = {
+  id: string;
+  title: string;
+  platform: "twitch" | "youtube" | "kick" | "obs" | "upload";
+  status: string;
+  created_at: string;
+  how_to_get: string;
+  video: { original_name: string; duration: number; width: number; height: number } | null;
+  chat: { format: string; messages: number; users: number } | null;
+  live?: { task_id: string; status: string; channel: string | null } | null;
+  jobs?: { job_id: string; highlights: string[] }[];
+  error?: string;
+};
+
+export type Highlight = {
+  id: string;
+  t: number;
+  start: number;
+  end: number;
+  score: number;
+  reasons: string[];
+  components: Record<string, number>;
+  chat_categories: Record<string, number>;
+  top_terms: string[];
+  text: string;
+  edited?: boolean;
+  variant?: string;
+  variants?: ClipVariant[];
+};
+
+export type ClipVariant = {
+  variant: "short" | "balanced" | "context";
+  label: string;
+  start: number;
+  end: number;
+  duration: number;
+  suitability: number;
+  suitability_reasons: string[];
+};
+
+export type StreamEvaluation = {
+  tp: number;
+  fp: number;
+  fn: number;
+  precision: number;
+  recall: number;
+  f1: number;
+  time_offset_mean_s: number | null;
+  event_fully_contained: number | null;
+  labels: number;
+  note: string;
+  missed: { start: number; end: number; label: string }[];
+};
+
+export type StreamAnalysis = {
+  duration: number;
+  signals: string[];
+  weights: Record<string, number>;
+  chat_delay: number;
+  chat_delay_note: string;
+  chat_messages: number;
+  heatmap: { step: number; score: number[] };
+  highlights: Highlight[];
+  disclaimer: string;
+  judged?: Record<string, "hit" | "miss">;
+  weights_source?: string;
+  clip_limits?: { min_len: number; max_len: number };
+};
+
+export type AgentMessage = {
+  id: string;
+  at: string;
+  role: "user" | "assistant";
+  text: string;
+  engine?: string;
+  notes?: string[];
+  cost_usd?: number;
+  plan?: {
+    status: "pending" | "done" | "partial" | "discarded" | "empty";
+    needs_confirmation: boolean;
+    steps: { tool: string; args: Record<string, unknown>; label: string; confirm: boolean; cost: string }[];
+    results?: { tool: string; ok: boolean; change?: string; error?: string; task_id?: string }[];
+    undone?: boolean;
+  };
+};
+
 export type CaptionStyleId = "minimal" | "bold" | "karaoke" | "dynamic" | "none";
 
 export type Project = {
@@ -96,7 +187,16 @@ export type Project = {
   transitions: { style: TransitionId; duration: number };
   template_id?: string;
   music: { track: string | null; volume: number; ducking: boolean; beat_sync: boolean };
-  captions: { style: CaptionStyleId; use_brand: boolean };
+  captions: {
+    style: CaptionStyleId;
+    use_brand: boolean;
+    position?: "bottom" | "middle" | "top";
+    font?: string | null;
+    color?: string | null;
+    highlight_color?: string | null;
+    size?: number;
+  };
+  audio?: { loudnorm: boolean; target_lufs: number };
   visuals: {
     image_provider: string;
     gameplay_media: string | null;
@@ -545,6 +645,89 @@ export const studio = {
     get<{ engines: { id: string; label: string; paid: boolean; ready: boolean | Record<string, boolean> }[] }>(
       "/translation/engines",
     ),
+  streams: () => get<{ streams: StreamMeta[] }>("/streams").then((d) => d.streams),
+  createStream: (body: Record<string, unknown>) => post<{ stream: StreamMeta }>("/streams", body).then((d) => d.stream),
+  stream: (id: string) => get<{ stream: StreamMeta; analysis: StreamAnalysis | null }>(`/streams/${id}`),
+  deleteStream: (id: string) => request<{ deleted: boolean }>("DELETE", `/streams/${id}`),
+  uploadStreamVideo: (id: string, file: File, onProgress?: (f: number) => void) =>
+    uploadFile<{ stream: StreamMeta }>(`/streams/${id}/video`, file, onProgress),
+  uploadStreamChat: (id: string, file: File) => uploadFile<{ stream: StreamMeta }>(`/streams/${id}/chat`, file),
+  analyzeStream: (id: string, body: Record<string, unknown>) =>
+    post<{ task: Task }>(`/streams/${id}/analyze`, body).then((d) => d.task),
+  patchHighlight: (id: string, hid: string, body: Record<string, unknown>) =>
+    request<{ highlight: Highlight }>("PATCH", `/streams/${id}/highlights/${hid}`, body).then((d) => d.highlight),
+  judgeHighlight: (id: string, hid: string, verdict: "hit" | "miss" | "clear") =>
+    post<{ labels: unknown }>(`/streams/${id}/highlights/${hid}/judge`, { verdict }),
+  streamLabels: (id: string) =>
+    get<{ highlights: { start: number; end: number; peak: number; label: string; from?: string }[] }>(`/streams/${id}/labels`),
+  putStreamLabels: (id: string, highlights: Record<string, unknown>[]) =>
+    request<unknown>("PUT", `/streams/${id}/labels`, { highlights }),
+  streamEvaluation: (id: string) => get<StreamEvaluation>(`/streams/${id}/evaluation`),
+  tuneStreamWeights: (apply: boolean) =>
+    post<{ f1_default: number; f1_tuned: number; f1_leave_one_out: number | null; cases: number; applied: boolean; best_group_factors: Record<string, number> }>(
+      "/stream-weights/tune",
+      { apply },
+    ),
+  previewHighlight: (id: string, hid: string) =>
+    post<{ task: Task }>(`/streams/${id}/highlights/${hid}/preview`).then((d) => d.task),
+  highlightPreviewUrl: (id: string, hid: string) => `${API_BASE}/api/studio/streams/${id}/highlights/${hid}/preview`,
+  renderHighlights: (id: string, body: Record<string, unknown>) =>
+    post<{ task: Task }>(`/streams/${id}/render`, body).then((d) => d.task),
+  startLive: (id: string, body: Record<string, unknown>) => post<{ task: Task }>(`/streams/${id}/live`, body).then((d) => d.task),
+  liveState: (id: string) =>
+    get<{
+      state: {
+        messages: number;
+        elapsed: number;
+        chat_connected: boolean;
+        chat_error: string | null;
+        pending?: number;
+        skipped?: number;
+        youtube?: { connected: boolean; error: string | null; polls: number; quota_units_used: number } | null;
+        events: { id: string; event: number; start: number; end: number; reason: string; status: string; file?: string; queue_position?: number; note?: string }[];
+      } | null;
+      availability: Record<string, { realtime: boolean; note?: string; verified?: string }>;
+    }>(`/streams/${id}/live`),
+  liveClipUrl: (id: string, lid: string) => `${API_BASE}/api/studio/streams/${id}/live/${lid}`,
+  cancelTask: (id: string) => post<unknown>(`/tasks/${id}/cancel`),
+  thumbnails: (id: string, renderId: string) =>
+    post<{ thumbnails: { file: string; t: number; score: number; reasons: string[] }[] }>(`/projects/${id}/renders/${renderId}/thumbnails`).then((d) => d.thumbnails),
+  thumbnailUrl: (id: string, renderId: string, file: string) => `${API_BASE}/api/studio/projects/${id}/renders/${renderId}/thumbnails/${file}`,
+  skills: () =>
+    get<{ skills: { name: string; description: string; version: string; license: string | null; enabled: boolean; blocked: boolean; warnings: string[]; rejected: string[]; tools: string[]; source: { type: string; repo?: string; commit?: string; name?: string }; changed: boolean; requires?: string[]; author?: string | null; imported_by?: string | null }[] }>(
+      "/skills",
+    ).then((d) => d.skills),
+  importSkillGithub: (url: string, path: string) => post<{ skills: unknown[] }>("/skills/import/github", { url, path }),
+  importSkillZip: (file: File) => uploadFile<{ skills: unknown[] }>("/skills/import/zip", file),
+  toggleSkill: (name: string, enabled: boolean) => request<unknown>("PATCH", `/skills/${name}`, { enabled }),
+  deleteSkill: (name: string) => request<unknown>("DELETE", `/skills/${name}`),
+  providerMatrix: () =>
+    get<{ providers: { id: string; label: string; category: string; status: string; paid: boolean; cost: string; limits: string; live_verified: boolean; fallback: string }[] }>(
+      "/provider-matrix",
+    ).then((d) => d.providers),
+  ollamaStatus: () =>
+    get<{
+      reachable: boolean;
+      version: string | null;
+      models: { name: string; size_gb: number; tool_calling: boolean }[];
+      model: string | null;
+      model_reason: string;
+      hint?: string;
+      hardware: { os: string; arch: string; cpus: number; ram_gb: number | null; apple_silicon: boolean; nvidia_gpu: boolean };
+      recommendation: { model?: string; download_gb?: number; reason?: string; acceleration?: string; command?: string; note?: string };
+    }>("/agent/ollama"),
+  ollamaTest: () => post<{ ok: boolean; stage: string; message: string; model?: string; seconds?: number }>("/agent/ollama/test"),
+  agentEngines: () =>
+    get<{ engines: { id: string; label: string; ready: boolean; paid: boolean; hint?: string; cost_per_message_usd?: number }[] }>(
+      "/agent/engines",
+    ),
+  agentHistory: (kind: string, id: string) => get<{ messages: AgentMessage[] }>(`/agent/${kind}/${id}`).then((d) => d.messages),
+  agentSend: (kind: string, id: string, message: string, engine: string, confirmCost = false) =>
+    post<{ message: AgentMessage }>(`/agent/${kind}/${id}`, { message, engine, confirm_cost: confirmCost }).then((d) => d.message),
+  agentExecute: (kind: string, id: string, entryId: string, confirm = false) =>
+    post<{ message: AgentMessage }>(`/agent/${kind}/${id}/${entryId}/execute`, { confirm }).then((d) => d.message),
+  agentDiscard: (kind: string, id: string, entryId: string) => post<unknown>(`/agent/${kind}/${id}/${entryId}/discard`),
+  agentUndo: (kind: string, id: string) => post<{ project: Project }>(`/agent/${kind}/${id}/undo`),
   hardware: () =>
     get<{ system: string; nvidia_gpus: { name: string; vram_gb: number }[]; apple_silicon: boolean; ram_gb: number | null; local_ai_video: string; note: string; free_alternatives: string[]; paid_alternative: string }>(
       "/hardware",

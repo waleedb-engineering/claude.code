@@ -78,3 +78,22 @@ def test_youtube_trends_from_api(monkeypatch):
         trends.youtube_trends("Deutschland")
     st = trends.status()["platforms"]
     assert st["tiktok"]["available"] is False and "Keine offizielle" in st["tiktok"]["note"]
+
+
+def test_thumbnail_suggestions_from_real_render(tmp_path):
+    from studio_helpers import make_client, wait_task, clear_env
+    client, _ = make_client(str(tmp_path))
+    try:
+        r = client.post("/api/studio/projects", json={"workflow": "script", "resolution": "720p",
+                        "script": "Kaffee am Morgen macht wach. Tee am Abend beruhigt. Folge für mehr."})
+        pid = r.json()["project"]["id"]
+        wait_task(client, r.json()["task_id"])
+        t = wait_task(client, client.post(f"/api/studio/projects/{pid}/render", json={"mode": "final"}).json()["task"]["id"])
+        rid = t["result"]["render_id"]
+        th = client.post(f"/api/studio/projects/{pid}/renders/{rid}/thumbnails").json()["thumbnails"]
+        assert 1 <= len(th) <= 3 and th[0]["score"] >= th[-1]["score"]
+        img = client.get(f"/api/studio/projects/{pid}/renders/{rid}/thumbnails/{th[0]['file']}")
+        assert img.status_code == 200 and img.content[:2] == b"\xff\xd8"
+        assert client.get(f"/api/studio/projects/{pid}/renders/{rid}/thumbnails/..%2Fx").status_code in (400, 404)
+    finally:
+        clear_env()

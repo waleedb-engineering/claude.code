@@ -325,7 +325,7 @@ def test_unconfigured_providers_are_reported_not_used():
         # Adapter vorhanden, aber ohne FAL_KEY bzw. ELEVENLABS_API_KEY nicht nutzbar
         assert states["fal_video"] == "not_configured" and states["fal_avatar"] == "not_configured"
         assert states["elevenlabs_clone"] == "not_configured"
-        assert states["face_swap"] == "unavailable"
+        assert states["face_swap"] == "not_configured"     # echter Anbieter, ohne FAL_KEY
         assert states["none"] == "ready"
         # Auto-Auswahl nimmt nie einen bezahlten/Mock-Provider ungefragt
         auto = select_voice("de", "calm")

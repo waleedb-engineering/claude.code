@@ -142,6 +142,79 @@ class FaceSwapRequest(BaseModel):
     confirm_cost: bool = False
 
 
+class StreamCreate(BaseModel):
+    title: str = ""
+    platform: Literal["twitch", "youtube", "kick", "obs", "upload"] = "upload"
+    rights_confirmed: bool = False
+
+
+class StreamAnalyze(BaseModel):
+    keywords: list[str] = Field(default_factory=list, max_length=20)
+    chat_delay: float | None = Field(default=None, ge=0, le=30)
+    max_clips: int = Field(default=8, ge=1, le=20)
+    pre: float = Field(default=10, ge=2, le=30)
+    post: float = Field(default=8, ge=2, le=30)
+    max_len: float = Field(default=60, ge=10, le=180)
+    min_len: float = Field(default=12, ge=3, le=60)
+    transcribe: bool = True
+
+
+class HighlightPatch(BaseModel):
+    start: float | None = None
+    end: float | None = None
+    title: str | None = None
+    variant: Literal["short", "balanced", "context"] | None = None
+
+
+class StreamLabels(BaseModel):
+    highlights: list[dict] = Field(default_factory=list, max_length=500)
+
+
+class HighlightJudge(BaseModel):
+    verdict: Literal["hit", "miss", "clear"]
+
+
+class StreamTune(BaseModel):
+    apply: bool = False
+
+
+class SkillGithub(BaseModel):
+    url: str
+    path: str = ""
+
+
+class SkillToggle(BaseModel):
+    enabled: bool
+
+
+class AgentMessage(BaseModel):
+    message: str
+    engine: Literal["rules", "ollama", "anthropic", "openai"] = "rules"
+    confirm_cost: bool = False
+
+
+class AgentExecute(BaseModel):
+    confirm: bool = False
+
+
+class StreamLive(BaseModel):
+    channel: str | None = None
+    youtube_video: str | None = Field(default=None, max_length=200)
+    youtube_interval: float = Field(default=10, ge=5, le=120)
+    recording_path: str | None = None
+    recording_started_at: float | None = None
+    chat_delay: float = Field(default=5, ge=0, le=30)
+    threshold: float = Field(default=3.0, ge=1.5, le=10)
+
+
+class StreamRender(BaseModel):
+    ids: list[str] = Field(min_length=1, max_length=20)
+    reframe_mode: Literal["smart", "center", "face"] = "smart"
+    remove_silence: bool = True
+    caption_mode: Literal["karaoke", "standard"] = "karaoke"
+    caption_style: Literal["clean", "high_energy"] = "high_energy"
+
+
 class ApplyTemplate(BaseModel):
     expected_version: int
     template_id: str
@@ -242,6 +315,10 @@ class Studio:
         self.registry = registry
         self.service = StudioService(registry=registry)
         self.automations = AutomationService(self.service, registry=registry)
+        from clipforge.stream.service import StreamService
+        self.streams = StreamService(self.service.tasks, registry=registry)
+        from clipforge.agent.service import AgentService
+        self.agent = AgentService(self.service, self.streams)
         self.youtube_status = youtube_status or (lambda: {})
         self.youtube_upload_service = youtube_upload_service
         self.worker = Worker(self.tick)
@@ -726,6 +803,11 @@ def init_studio(app: FastAPI, registry, youtube_status=None,
         from clipforge.studio import trends
         return trends.youtube_trends(region.upper(), category)
 
+    @r.get("/provider-matrix")
+    def provider_matrix() -> dict:
+        from clipforge.studio.provider_matrix import matrix
+        return {"providers": matrix()}
+
     @r.get("/hardware")
     def hardware_check() -> dict:
         from clipforge.studio import hardware
@@ -735,6 +817,192 @@ def init_studio(app: FastAPI, registry, youtube_status=None,
     def translation_engines() -> dict:
         from clipforge.studio import translate as tr
         return {"engines": tr.engines_status(), "languages": tr.LANG_NAMES}
+
+    # ---------------------------------------------------- Stream Intelligence
+    streams = studio.streams
+
+    @r.get("/streams")
+    def stream_list() -> dict:
+        return {"streams": streams.list()}
+
+    @r.post("/streams", status_code=201)
+    def stream_create(req: StreamCreate, request: Request) -> dict:
+        return {"stream": streams.create(title=req.title, platform=req.platform,
+                                         rights_confirmed=req.rights_confirmed,
+                                         user=getattr(request.state, "user", None))}
+
+    @r.get("/streams/{sid}")
+    def stream_get(sid: str) -> dict:
+        meta = streams.load(sid)
+        try:
+            analysis = streams.analysis(sid)
+        except StudioError:
+            analysis = None
+        return {"stream": meta, "analysis": analysis}
+
+    @r.delete("/streams/{sid}")
+    def stream_delete(sid: str) -> dict:
+        streams.delete(sid)
+        return {"deleted": True}
+
+    @r.post("/streams/{sid}/video")
+    def stream_video(sid: str, file: UploadFile = File(...)) -> dict:
+        from clipforge.studio.service import _env_mb
+        return {"stream": streams.upload_video(sid, file.filename or "", file.file, save_upload,
+                                               _env_mb("CLIPFORGE_MAX_STREAM_UPLOAD_MB", 8192))}
+
+    @r.post("/streams/{sid}/chat")
+    def stream_chat(sid: str, file: UploadFile = File(...)) -> dict:
+        raw = file.file.read(300 * 1024 * 1024 + 1)
+        if len(raw) > 300 * 1024 * 1024:
+            raise StudioError("file_too_large", "Chat-Export größer als 300 MB.", 413)
+        return {"stream": streams.upload_chat(sid, file.filename or "", raw)}
+
+    @r.post("/streams/{sid}/analyze", status_code=202)
+    def stream_analyze(sid: str, req: StreamAnalyze) -> dict:
+        return {"task": streams.start_analyze(sid, req.model_dump())}
+
+    @r.patch("/streams/{sid}/highlights/{hid}")
+    def stream_highlight(sid: str, hid: str, req: HighlightPatch) -> dict:
+        return {"highlight": streams.update_highlight(sid, hid, req.start, req.end, req.title, req.variant)}
+
+    @r.post("/streams/{sid}/highlights/{hid}/judge")
+    def stream_judge(sid: str, hid: str, req: HighlightJudge) -> dict:
+        return {"labels": streams.judge_highlight(sid, hid, req.verdict)}
+
+    @r.get("/streams/{sid}/labels")
+    def stream_labels(sid: str) -> dict:
+        return streams.labels(sid)
+
+    @r.put("/streams/{sid}/labels")
+    def stream_labels_put(sid: str, req: StreamLabels) -> dict:
+        return streams.set_labels(sid, req.highlights)
+
+    @r.get("/streams/{sid}/evaluation")
+    def stream_evaluation(sid: str) -> dict:
+        return streams.evaluation(sid)
+
+    @r.post("/stream-weights/tune")
+    def stream_tune(req: StreamTune) -> dict:
+        return streams.tune(apply=req.apply)
+
+    @r.get("/stream-weights")
+    def stream_weights() -> dict:
+        from clipforge.stream.scoring import DEFAULT_WEIGHTS
+        return {"default": DEFAULT_WEIGHTS, "tuned": streams.tuned_weights()}
+
+    @r.delete("/stream-weights")
+    def stream_weights_reset() -> dict:
+        streams.reset_weights()
+        return {"reset": True}
+
+    @r.post("/streams/{sid}/highlights/{hid}/preview", status_code=202)
+    def stream_preview(sid: str, hid: str) -> dict:
+        return {"task": streams.start_preview(sid, hid)}
+
+    @r.get("/streams/{sid}/highlights/{hid}/preview")
+    def stream_preview_file(sid: str, hid: str):
+        path = streams.preview_path(sid, hid)
+        if not os.path.isfile(path):
+            raise StudioError("preview_missing", "Vorschau noch nicht erstellt.", 404)
+        return FileResponse(path, media_type="video/mp4")
+
+    @r.post("/streams/{sid}/live", status_code=202)
+    def stream_live(sid: str, req: StreamLive) -> dict:
+        return {"task": streams.start_live(sid, channel=req.channel, recording=req.recording_path,
+                                           youtube=req.youtube_video, youtube_interval=req.youtube_interval,
+                                           started_at=req.recording_started_at,
+                                           chat_delay=req.chat_delay, threshold=req.threshold)}
+
+    @r.get("/streams/{sid}/live")
+    def stream_live_state(sid: str) -> dict:
+        return streams.live_state(sid)
+
+    @r.get("/streams/{sid}/live/{lid}")
+    def stream_live_clip(sid: str, lid: str):
+        return FileResponse(streams.live_clip_path(sid, lid), media_type="video/mp4")
+
+    @r.post("/streams/{sid}/render", status_code=202)
+    def stream_render(sid: str, req: StreamRender) -> dict:
+        body = req.model_dump()
+        return {"task": streams.start_render(sid, body.pop("ids"), body)}
+
+    # ------------------------------------------------------------ Editor-Agent
+    agent = studio.agent
+
+    @r.get("/agent/ollama")
+    def agent_ollama() -> dict:
+        from clipforge.agent import ollama
+        return ollama.status()
+
+    @r.post("/agent/ollama/test")
+    def agent_ollama_test() -> dict:
+        from clipforge.agent import ollama
+        return ollama.test()
+
+    @r.get("/agent/engines")
+    def agent_engines() -> dict:
+        from clipforge.agent import planner
+        from clipforge.agent.tools import TOOLS
+        return {"engines": planner.engines(),
+                "tools": [{"name": t.name, "context": t.context, "description": t.description,
+                           "confirm": t.confirm} for t in TOOLS.values()]}
+
+    @r.get("/agent/{kind}/{target}")
+    def agent_history(kind: str, target: str) -> dict:
+        return {"messages": agent.history(kind, target)}
+
+    @r.post("/agent/{kind}/{target}", status_code=201)
+    def agent_message(kind: str, target: str, req: AgentMessage) -> dict:
+        return {"message": agent.plan(kind, target, req.message, req.engine, req.confirm_cost)}
+
+    @r.post("/agent/{kind}/{target}/{entry_id}/execute")
+    def agent_execute(kind: str, target: str, entry_id: str, req: AgentExecute) -> dict:
+        return {"message": agent.execute(kind, target, entry_id, req.confirm)}
+
+    @r.post("/agent/{kind}/{target}/{entry_id}/discard")
+    def agent_discard(kind: str, target: str, entry_id: str) -> dict:
+        return {"message": agent.discard(kind, target, entry_id)}
+
+    @r.post("/agent/{kind}/{target}/undo")
+    def agent_undo(kind: str, target: str) -> dict:
+        return {"project": agent.undo(kind, target)}
+
+    # ------------------------------------------------------------ Skills
+    from clipforge import skills as skillreg
+
+    def _skills_admin(request: Request) -> None:
+        from clipforge.auth import accounts_mode
+        if accounts_mode() and getattr(request.state, "role", None) != "admin":
+            raise StudioError("admin_required", "Skills importieren nur Administratoren.", 403)
+
+    @r.get("/skills")
+    def skills_list() -> dict:
+        return {"skills": skillreg.list_skills(), "api_version": skillreg.CLIPFORGE_SKILL_API}
+
+    @r.get("/skills/{name}")
+    def skills_get(name: str) -> dict:
+        return skillreg.read_skill(name)
+
+    @r.post("/skills/import/github", status_code=201)
+    def skills_github(req: SkillGithub, request: Request) -> dict:
+        _skills_admin(request)
+        return {"skills": skillreg.import_github(req.url, req.path)}
+
+    @r.post("/skills/import/zip", status_code=201)
+    def skills_zip(request: Request, file: UploadFile = File(...)) -> dict:
+        _skills_admin(request)
+        raw = file.file.read(20 * 1024 * 1024 + 1)
+        return {"skills": skillreg.import_zip(raw, file.filename or "skill.zip")}
+
+    @r.patch("/skills/{name}")
+    def skills_toggle(name: str, req: SkillToggle) -> dict:
+        return {"skill": skillreg.set_enabled(name, req.enabled)}
+
+    @r.delete("/skills/{name}")
+    def skills_delete(name: str) -> dict:
+        skillreg.delete(name)
+        return {"deleted": True}
 
     # ------------------------------------------------------------ Face Swap
     @r.get("/faces")
@@ -838,6 +1106,25 @@ def init_studio(app: FastAPI, registry, youtube_status=None,
             return FileResponse(path, media_type="video/mp4",
                                 filename=f"clipforge_studio_{render_id}.mp4")
         return FileResponse(path, media_type="video/mp4")
+
+    @r.post("/projects/{pid}/renders/{render_id}/thumbnails")
+    def render_thumbnails(pid: str, render_id: str) -> dict:
+        from clipforge.studio import thumbnails
+        path = svc.render_file(pid, render_id)
+        out = os.path.join(svc.store.dir(pid), "renders", f"{render_id}_thumbs")
+        return {"thumbnails": thumbnails.suggest(path, out),
+                "note": "Auswahl nach Bildqualität, keine Klick-Vorhersage."}
+
+    @r.get("/projects/{pid}/renders/{render_id}/thumbnails/{name}")
+    def render_thumbnail_file(pid: str, render_id: str, name: str):
+        from clipforge.studio.storage import require_id, safe_child
+        require_id(render_id, "Render-ID")
+        if name not in ("thumb_1.jpg", "thumb_2.jpg", "thumb_3.jpg"):
+            raise StudioError("validation_error", "Ungültiger Dateiname.")
+        path = safe_child(os.path.join(svc.store.dir(pid), "renders", f"{render_id}_thumbs"), name)
+        if not os.path.isfile(path):
+            raise StudioError("not_found", "Thumbnail nicht gefunden.", 404)
+        return FileResponse(path, media_type="image/jpeg")
 
     @r.post("/projects/{pid}/export")
     def project_export(pid: str, req: ExportRequest) -> dict:

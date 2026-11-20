@@ -217,3 +217,52 @@ Die lokale Budgetkontrolle reserviert geschätzte Kosten vor jedem bezahlten
 Aufruf und blockiert darüber. Sie ist **keine** Ausgabengrenze beim Anbieter:
 tatsächliche Abrechnungen können abweichen. Setze zusätzlich Limits in den
 Konten der Anbieter (fal.ai, ElevenLabs, OpenAI, Anthropic, X).
+
+---
+
+## ClipForge 3.0 — neue bekannte Grenzen
+
+### Highlight-Qualität auf echten Streams unbewiesen
+Scoring und Grenzen sind mit synthetischen Streams real getestet, aber noch
+nicht an echten mehrstündigen VODs mit echtem Chat justiert. Gewichte
+(`DEFAULT_WEIGHTS`) sind Startwerte.
+
+### Kein direkter Import von Twitch/YouTube/Kick
+Bewusst: Videos und Chat-Exporte lädt der Nutzer selbst (eigene Inhalte).
+Kick hat keine stabile öffentliche Chat-API.
+
+### Live-Modus: nur Twitch-Chat, nur eigene OBS-Aufnahme
+YouTube-/Kick-Live-Chat nicht angebunden; Live-Video nur aus lokaler Datei
+(Online-Betrieb gesperrt). IRC nur gegen lokalen Testserver geprüft.
+
+### Audio-„Schrei/Jubel“ ist eine Heuristik
+Lautstärke + spektraler Schwerpunkt, keine trainierte Klassifikation.
+
+### KI-Assistent: LLM-Engines nicht live getestet
+Ollama/Claude/OpenAI nur gegen nachgebildete Antworten; der Regel-Planer
+versteht nur die dokumentierten Satzmuster. Kein Gesichts-Zoom, keine
+Untertitel-Farben, kein Übersetzen per Chat.
+
+### Bezahlte KI im Stream-Kontext
+Stream-Quellen haben kein eigenes Budget → dort nur Regeln/Ollama.
+
+### Timeline ist eine Übersicht
+Spuren werden angezeigt; bearbeitet wird weiterhin szenenbasiert (keine
+freien Mehrspur-Schnitte).
+
+
+## ClipForge 3.0 — Abnahmerunde (20.11.2026)
+
+- **Stream-Qualität nur synthetisch gemessen** (`BENCHMARKS.md`); echte Streams fehlen.
+- **„max. Clips“ begrenzt den Recall** bei langen Streams (Standard 8) — für mehrstündige
+  Aufnahmen höher stellen.
+- **Live-Chats nie gegen die echten Plattformen** getestet (Twitch-Host nicht auflösbar,
+  kein YouTube-Schlüssel). YouTube-Live nur öffentliche Streams (kein OAuth).
+- **Ollama/LLM-Planer** nur gegen nachgebildete Server; Fallback auf Regeln greift automatisch.
+- **Zoom-Fokus** fest je Szene (Haar-Kaskade für „Gesicht“); kein Tracking, keine Keyframes.
+- **Lautheitsnormalisierung** ist opt-in (bestehende Projekte klingen unverändert);
+  zweiter Durchgang kostet ~15 % Renderzeit.
+- **Untertitel-Vorschaubild** im Editor zeigt nur den Stil, nicht Farbe/Position
+  (wirken beim Rendern; Render-Bericht listet sie unter `captions.layout`).
+- **Mediathek** nur je Projekt; keine globale Mediathek-Seite.
+- **JSON-Persistenz** ohne prozessübergreifende Transaktionen (`STORAGE_EVALUATION.md`).

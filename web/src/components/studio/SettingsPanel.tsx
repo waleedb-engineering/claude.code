@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useT } from "@/lib/i18n";
 import {
+  CAPTION_FONTS,
   TRANSITION_IDS,
   errorMessage,
   studio,
@@ -192,6 +193,88 @@ export default function SettingsPanel({ project, media, estimate, onChange, onMe
             onChange={(e) => onChange({ captions: { ...project.captions, use_brand: e.target.checked } })}
           />
           {t("ed.useBrand")}
+        </label>
+        <div className="grid grid-cols-2 gap-2">
+          <div>
+            <label htmlFor="s-cap-pos" className={labelCls}>
+              {t("ed.capPos")}
+            </label>
+            <select
+              id="s-cap-pos"
+              className={inputCls}
+              value={project.captions.position ?? "bottom"}
+              onChange={(e) => onChange({ captions: { ...project.captions, position: e.target.value as "bottom" | "middle" | "top" } })}
+            >
+              <option value="bottom">{t("ed.posBottom")}</option>
+              <option value="middle">{t("ed.posMiddle")}</option>
+              <option value="top">{t("ed.posTop")}</option>
+            </select>
+          </div>
+          <div>
+            <label htmlFor="s-cap-font" className={labelCls}>
+              {t("ed.capFont")}
+            </label>
+            <select
+              id="s-cap-font"
+              className={inputCls}
+              value={project.captions.font ?? ""}
+              onChange={(e) => onChange({ captions: { ...project.captions, font: e.target.value || null } })}
+            >
+              <option value="">{t("ed.capFontDefault")}</option>
+              {CAPTION_FONTS.map((f) => (
+                <option key={f}>{f}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label htmlFor="s-cap-color" className={labelCls}>
+              {t("ed.capColor")}
+            </label>
+            <input
+              id="s-cap-color"
+              type="color"
+              className="h-9 w-full rounded border border-neutral-700 bg-neutral-900"
+              value={project.captions.color ?? "#ffffff"}
+              onChange={(e) => onChange({ captions: { ...project.captions, color: e.target.value } })}
+            />
+          </div>
+          <div>
+            <label htmlFor="s-cap-hl" className={labelCls}>
+              {t("ed.capHighlight")}
+            </label>
+            <input
+              id="s-cap-hl"
+              type="color"
+              className="h-9 w-full rounded border border-neutral-700 bg-neutral-900"
+              value={project.captions.highlight_color ?? "#ffd400"}
+              onChange={(e) => onChange({ captions: { ...project.captions, highlight_color: e.target.value } })}
+            />
+          </div>
+          <div className="col-span-2">
+            <label htmlFor="s-cap-size" className={labelCls}>
+              {t("ed.capSize")}: {Math.round((project.captions.size ?? 1) * 100)} %
+            </label>
+            <input
+              id="s-cap-size"
+              type="range"
+              min={0.6}
+              max={1.6}
+              step={0.05}
+              className="w-full accent-indigo-400"
+              value={project.captions.size ?? 1}
+              onChange={(e) => onChange({ captions: { ...project.captions, size: Number(e.target.value) } })}
+            />
+          </div>
+        </div>
+        <p className="text-xs text-neutral-500">{t("ed.capLookNote")}</p>
+        <label className="flex items-center gap-2 text-xs text-neutral-300">
+          <input
+            type="checkbox"
+            className="accent-indigo-400"
+            checked={project.audio?.loudnorm ?? false}
+            onChange={(e) => onChange({ audio: { target_lufs: project.audio?.target_lufs ?? -14, loudnorm: e.target.checked } })}
+          />
+          {t("ed.loudnorm")}
         </label>
         <label htmlFor="s-cap-text" className="sr-only">
           Caption-Vorschautext

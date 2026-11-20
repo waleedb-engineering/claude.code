@@ -19,6 +19,8 @@ import {
 import SceneCard from "@/components/studio/SceneCard";
 import SettingsPanel from "@/components/studio/SettingsPanel";
 import SocialCopyPanel from "@/components/studio/SocialCopyPanel";
+import AgentChat from "@/components/studio/AgentChat";
+import Timeline from "@/components/studio/Timeline";
 import { ErrorBox, Loading, Notice, Pill, btnCls, cardCls, fmtDate, inputCls, primaryCls } from "@/components/studio/ui";
 
 const AUTOSAVE_MS = 1200;
@@ -44,6 +46,7 @@ function editable(p: Project): Record<string, unknown> {
     visuals: p.visuals,
     options: p.options,
     transitions: p.transitions,
+    audio: p.audio,
     budget_limit_usd: p.budget_limit_usd,
   };
 }
@@ -73,6 +76,8 @@ export default function EditorPage() {
   const dirty = useRef(false);
   const saving = useRef<Promise<boolean> | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const saveRef = useRef<(() => Promise<boolean>) | null>(null);
+  const [thumbs, setThumbs] = useState<Record<string, { file: string; t: number; score: number; reasons: string[] }[]>>({});
 
   const applyServer = useCallback((p: Project) => {
     projectRef.current = p;
@@ -152,6 +157,10 @@ export default function EditorPage() {
   }, [id, conflict, applyServer]);
 
   /** Wartet, bis alle lokalen Änderungen im Backend liegen (vor Render/Regeneration). */
+  useEffect(() => {
+    saveRef.current = save;
+  }, [save]);
+
   const flush = useCallback(async (): Promise<boolean> => {
     if (timer.current) clearTimeout(timer.current);
     if (saving.current) await saving.current;
@@ -213,12 +222,24 @@ export default function EditorPage() {
     setSaveState("dirty");
   }, [future]);
 
-  // Tastatur: Strg/Cmd+Z, Strg/Cmd+Shift+Z (außerhalb von Textfeldern)
+  // Tastatur: Strg/Cmd+S speichern (überall), Strg/Cmd+Z / +Shift+Z bzw. +Y außerhalb von Textfeldern
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
+      if (!(e.ctrlKey || e.metaKey)) return;
+      const key = e.key.toLowerCase();
+      if (key === "s") {
+        e.preventDefault();
+        void saveRef.current?.();
+        return;
+      }
       const tag = (e.target as HTMLElement | null)?.tagName;
       if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
-      if (!(e.ctrlKey || e.metaKey) || e.key.toLowerCase() !== "z") return;
+      if (key === "y") {
+        e.preventDefault();
+        redo();
+        return;
+      }
+      if (key !== "z") return;
       e.preventDefault();
       if (e.shiftKey) redo();
       else undo();
@@ -467,7 +488,21 @@ export default function EditorPage() {
             ) : (
               <>
                 {project.scenes.length === 0 && <p className={`${cardCls} text-sm text-neutral-300`}>{t("ed.empty")}</p>}
-                <ol className="space-y-3">
+                {project.scenes.length > 0 && (
+                  <Timeline
+                    scenes={project.scenes}
+                    onSelect={(i) => document.querySelectorAll("#scene-list > li")[i]?.scrollIntoView({ behavior: "smooth", block: "center" })}
+                    onMove={(from, to) =>
+                      setScenes((sc) => {
+                        const next = [...sc];
+                        const [moved] = next.splice(from, 1);
+                        next.splice(to, 0, moved);
+                        return next;
+                      })
+                    }
+                  />
+                )}
+                <ol id="scene-list" className="space-y-3">
                   {project.scenes.map((scene, i) => (
                     <SceneCard
                       key={scene.id}
@@ -652,6 +687,35 @@ export default function EditorPage() {
                     <a href={studio.renderUrl(id, r.render_id, true)} className={btnCls}>
                       {t("ed.download")}
                     </a>
+                    {r.mode === "final" && (
+                      <button
+                        type="button"
+                        className={`${btnCls} ml-2`}
+                        onClick={async () => {
+                          try {
+                            const th = await studio.thumbnails(id, r.render_id);
+                            setThumbs((m) => ({ ...m, [r.render_id]: th }));
+                          } catch (e) {
+                            setError(errorMessage(e));
+                          }
+                        }}
+                      >
+                        🖼 {t("ed.thumbs")}
+                      </button>
+                    )}
+                    {thumbs[r.render_id] && (
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        {thumbs[r.render_id].map((th) => (
+                          <a key={th.file} href={studio.thumbnailUrl(id, r.render_id, th.file)} download title={th.reasons.join(" · ")}>
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img src={studio.thumbnailUrl(id, r.render_id, th.file)} alt={`Thumbnail ${th.t}s`} className="h-28 rounded" />
+                            <span className="block text-[10px] text-neutral-400">
+                              {th.t}s · {th.score}
+                            </span>
+                          </a>
+                        ))}
+                      </div>
+                    )}
                   </li>
                 ))}
               </ul>
@@ -698,6 +762,13 @@ export default function EditorPage() {
             </section>
           </div>
 
+          <div className="space-y-5">
+          <AgentChat
+            kind="project"
+            targetId={id}
+            beforeExecute={flush}
+            onChanged={() => void refresh(true)}
+          />
           <SettingsPanel
             project={project}
             media={view?.media ?? []}
@@ -718,6 +789,7 @@ export default function EditorPage() {
               }
             }}
           />
+          </div>
         </div>
       )}
     </div>
