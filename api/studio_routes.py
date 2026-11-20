@@ -83,6 +83,8 @@ class ProjectPatch(BaseModel):
     visuals: dict[str, Any] | None = None
     options: dict[str, Any] | None = None
     transitions: dict[str, Any] | None = None
+    audio: dict[str, Any] | None = None
+    timeline: dict[str, Any] | None = None
     budget_limit_usd: float | None = Field(default=None, ge=0, le=10000)
 
 
@@ -164,6 +166,11 @@ class HighlightPatch(BaseModel):
     end: float | None = None
     title: str | None = None
     variant: Literal["short", "balanced", "context"] | None = None
+
+
+class TimelineOps(BaseModel):
+    ops: list[dict] = Field(min_length=1, max_length=50)
+    expected_version: int | None = None
 
 
 class StreamLabels(BaseModel):
@@ -1106,6 +1113,10 @@ def init_studio(app: FastAPI, registry, youtube_status=None,
             return FileResponse(path, media_type="video/mp4",
                                 filename=f"clipforge_studio_{render_id}.mp4")
         return FileResponse(path, media_type="video/mp4")
+
+    @r.post("/projects/{pid}/timeline/ops")
+    def project_timeline_ops(pid: str, req: TimelineOps) -> dict:
+        return svc.timeline_ops(pid, req.ops, req.expected_version)
 
     @r.post("/projects/{pid}/renders/{render_id}/thumbnails")
     def render_thumbnails(pid: str, render_id: str) -> dict:

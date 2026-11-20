@@ -180,3 +180,38 @@ def test_stream_variant_tools(tmp_path):
     client.post(f"/api/studio/agent/stream/{sid}/{e['id']}/execute", json={"confirm": True})
     h = client.get(f"/api/studio/streams/{sid}").json()["analysis"]["highlights"][0]
     assert h["variant"] == "context"
+
+
+def test_timeline_tools_via_agent_and_ops_api(tmp_path):
+    """UI-Op-Endpunkt und Agent schreiben dieselbe Timeline (gleiche Funktion apply_op)."""
+    import subprocess
+    client, _ = make_client(str(tmp_path))
+    r = client.post("/api/studio/projects", json={"workflow": "script", "script": SCRIPT})
+    pid = r.json()["project"]["id"]
+    wait_task(client, r.json()["task_id"])
+    subprocess.run(["ffmpeg", "-y", "-v", "error", "-f", "lavfi", "-i", "color=c=blue:s=100x100:d=1",
+                    "-frames:v", "1", str(tmp_path / "logo.png")], check=True)
+    with open(tmp_path / "logo.png", "rb") as fh:
+        client.post(f"/api/studio/projects/{pid}/media", files={"file": ("logo.png", fh, "image/png")})
+    _run(client, pid, "Leg das Logo oben rechts drüber und blende es ein")
+    _run(client, pid, 'Text „Abonnieren!“ von 2 bis 5 Sekunden oben in gelb')
+    p = client.get(f"/api/studio/projects/{pid}").json()["project"]
+    kinds = {t["kind"]: t["items"] for t in p["timeline"]["tracks"]}
+    assert kinds["overlay"][0]["x"] == 0.82 and kinds["overlay"][0]["fade_in"] == 0.3
+    assert kinds["caption"][0] == {**kinds["caption"][0], "text": "Abonnieren!", "start": 2.0, "duration": 3.0,
+                                   "color": "#ffd400", "position": "top"}
+    # gleiche Änderung über den Op-Endpunkt der Oberfläche
+    logo = kinds["overlay"][0]["id"]
+    r = client.post(f"/api/studio/projects/{pid}/timeline/ops", json={"expected_version": p["version"], "ops": [
+        {"op": "set_keyframe", "item": logo, "prop": "scale", "t": 0, "v": 0.1},
+        {"op": "set_keyframe", "item": logo, "prop": "scale", "t": 1, "v": 0.3, "ease": "ease_out"},
+        {"op": "split", "item": logo, "at": 2.5}]})
+    assert r.status_code == 200, r.text
+    assert len(r.json()["results"]) == 3
+    stale = client.post(f"/api/studio/projects/{pid}/timeline/ops", json={"expected_version": p["version"], "ops": [
+        {"op": "delete", "item": logo}]})
+    assert stale.status_code == 409                         # Versionsschutz
+    bad = client.post(f"/api/studio/projects/{pid}/timeline/ops", json={"ops": [{"op": "rm_rf"}]})
+    assert bad.status_code == 400
+    out = client.post(f"/api/studio/agent/project/{pid}", json={"message": "x"}).json()["message"]
+    assert out["plan"]["status"] == "empty"

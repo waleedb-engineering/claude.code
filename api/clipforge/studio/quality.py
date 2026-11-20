@@ -21,7 +21,11 @@ def pre_render_checks(project: dict) -> dict:
     checks = []
     scenes = project.get("scenes") or []
     if not scenes:
-        checks.append(_check("no_scenes", "fail", "Das Projekt hat keine Szenen."))
+        from .timeline import has_content
+        if has_content(project.get("timeline")):
+            checks.append(_check("timeline_only", "ok", "Video wird allein aus der Timeline gerendert."))
+        else:
+            checks.append(_check("no_scenes", "fail", "Das Projekt hat keine Szenen und keine Timeline-Elemente."))
     total_words = 0
     for i, s in enumerate(scenes, start=1):
         text = s.get("text") or ""

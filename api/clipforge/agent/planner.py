@@ -61,12 +61,8 @@ def rule_plan(message: str, kind: str, count: int) -> tuple[list[dict], list[str
     unit = "clip" if kind == "stream" else "szene"
     idx = _index(t, "clip", count) or _index(t, "szene", count) or _index(t, "scene", count)
 
-    if re.search(r"übersetz|translate|deutsche version|english version|synchronisiert", t):
-        notes.append(UNSUPPORTED["translate"])
     if re.search(r"verfolg|tracking|track the|folge dem", t):
         notes.append(UNSUPPORTED["track"])
-    if re.search(r"keyframe", t):
-        notes.append(UNSUPPORTED["keyframe"])
     if re.search(r"b-roll|broll", t):
         notes.append(UNSUPPORTED["broll"])
 
@@ -126,6 +122,46 @@ def rule_plan(message: str, kind: str, count: int) -> tuple[list[dict], list[str
         m = re.search(r"(\w+)\s+(versionen|varianten|variants).{0,30}(hook|einstieg)", t)
         if m:
             steps.append({"tool": "generate_hook_variants", "args": {"count": int(_n(m.group(1)) or 3)}})
+        # Übersetzen / Synchronisieren
+        if re.search(r"übersetz|translate|deutsche version|english version|synchronis|auf deutsch|in german|"
+                     r"auf englisch|in english|ins deutsche|ins englische", t):
+            target = "en" if re.search(r"englisch|english", t) else "de"
+            mode = "dub" if re.search(r"stimme|voice|synchron|dub|vertonung|sprecher", t) else "subtitles"
+            steps.append({"tool": "translate_video", "args": {"target": target, "mode": mode,
+                                                              "engine": "argos"}})
+            notes.append("Übersetzung lokal mit Argos (kostenlos, Sprachmodell muss installiert sein). "
+                         "Für bessere Qualität „engine anthropic“ (kostenpflichtig) wählen.")
+        # Split-Screen
+        if re.search(r"split.?screen|geteilte?r? bildschirm|gameplay (unten|darunter|below)", t):
+            gp = re.search(r"(?:gameplay|video)\s+[„\"']([^“\"']+)[“\"']", message, re.I)
+            steps.append({"tool": "create_split_screen", "args": {**({"gameplay": gp.group(1)} if gp else {}),
+                                                                   **({"scene": idx} if idx else {})}})
+        # Text-Element: Text „Abonnieren!“ von 2 bis 5 Sekunden (oben)
+        m = re.search(r"text\s+[„\"']([^“\"']{1,120})[“\"']", message, re.I)
+        if m:
+            rng = re.search(r"(?:von|from)\s+(\d+(?:[.,]\d+)?)\s*(?:s|sek\w*)?\s+(?:bis|to)\s+(\d+(?:[.,]\d+)?)", t)
+            a0, a1 = (_n(rng.group(1)), _n(rng.group(2))) if rng else (0.0, 3.0)
+            pos = re.search(r"\b(oben|mitte|unten|top|middle|bottom)\b", t)
+            col = re.search(r"\b(weiß|white|gelb|yellow|rot|red|grün|green|blau|blue|orange|pink)\w*", t)
+            steps.append({"tool": "timeline_add_text", "args": {
+                "text": m.group(1), "start": a0 or 0.0, "duration": max(0.5, (a1 or 3.0) - (a0 or 0.0)),
+                **({"position": {"oben": "top", "top": "top", "mitte": "middle", "middle": "middle"}.get(pos.group(1), "bottom")} if pos else {}),
+                **({"color": col.group(1)} if col else {})}})
+        # Logo/Bild als Overlay: „Leg das Logo oben rechts drüber“
+        m = re.search(r"(logo|bild|grafik|sticker|overlay)\b", t)
+        if m and re.search(r"leg|füg|setz|add|platzier|zeig|einblend", t):
+            corner = next((v for k, v in (("oben rechts", "top_right"), ("oben links", "top_left"),
+                                          ("unten rechts", "bottom_right"), ("unten links", "bottom_left"),
+                                          ("top right", "top_right"), ("top left", "top_left"),
+                                          ("mitte", "center")) if k in t), "top_right")
+            name = re.search(r"[„\"']([^“\"']+\.(?:png|jpg|jpeg|webp|mp4|mov))[“\"']", message, re.I)
+            steps.append({"tool": "timeline_add_media", "args": {
+                "media": name.group(1) if name else (m.group(1) if m.group(1) == "logo" else ""),
+                "track_kind": "overlay", "position": corner, "scale": 0.22,
+                "duration": 5.0, "fade": 0.3 if re.search(r"einblend|blende\w*\b.*\bein\b|fade|weich", t) else 0.0}})
+        if re.search(r"keyframe", t) and not steps:
+            notes.append("Keyframes: z. B. „timeline_keyframe“ über Claude/Ollama oder im Editor im "
+                         "Eigenschaften-Bereich setzen (Element, Eigenschaft, Zeit, Wert).")
         # Zoom: „zoom auf das Gesicht in Szene 2“, „zoom langsam rein“, „kein zoom“
         if re.search(r"zoom|heranzoom|ranzoom|reinzoom", t) and not re.search(r"zoom-übergang|zoom übergang", t):
             if re.search(r"(kein|ohne|entfern|remove|no)\w*\s+(den\s+)?zoom|zoom\s+(entfernen|weg|aus)", t):
@@ -141,15 +177,19 @@ def rule_plan(message: str, kind: str, count: int) -> tuple[list[dict], list[str
                 steps.append({"tool": "zoom_scene", "args": {**({"scene": idx} if idx else {}), "factor": factor,
                                                               "focus": focus,
                                                               "ramp": bool(re.search(r"langsam|einfahr|slow|ramp", t))}})
+                if re.search(r"wenn|when|sobald|beim|während", t) and not idx:
+                    notes.append("Zoom gilt je Szene. Für einen Moment-genauen Zoom die Szene nennen "
+                                 "(z. B. „Szene 3“) oder im Stream-Clip den Gesichts-Reframe nutzen.")
         # Untertitel-Aussehen
         if re.search(r"untertitel|caption|subtitle", t):
             look = {}
-            cols = [c for c in re.findall(r"\b(weiß|white|gelb|yellow|rot|red|grün|green|blau|blue|orange|pink|lila|purple|türkis|cyan|schwarz|black)\w*", t)]
-            if cols:
-                if re.search(r"hervorheb|highlight|aktuelle wort|markier", t):
-                    look["highlight_color"] = cols[0]
-                else:
-                    look["color"] = cols[0]
+            col_rx = r"\b(weiß|white|gelb|yellow|rot|red|grün|green|blau|blue|orange|pink|lila|purple|türkis|cyan|schwarz|black)\w*"
+            hl = re.search(r"hervorheb|highlight|aktuelle wort|markier|wichtige wörter|important words", t)
+            for cm in re.finditer(col_rx, t):
+                # Farbe nach dem Hervorhebungs-Hinweis (oder direkt davor bei „rot hervorheben“) → Hervorhebung
+                after_hl = hl and (cm.start() > hl.start() or 0 <= hl.start() - cm.end() <= 12)
+                key = "highlight_color" if after_hl else "color"
+                look.setdefault(key, cm.group(1))
             pos = re.search(r"\b(oben|top|mitte|middle|center|unten|bottom)\b", t)
             if pos:
                 look["position"] = {"oben": "top", "top": "top", "mitte": "middle", "middle": "middle",

@@ -32,7 +32,8 @@ def test_rule_planner_understands_examples():
     steps, notes = planner.rule_plan("Mache den Schnitt dynamischer, ohne dass das Video hektisch wirkt.", "project", 4)
     assert any(s["tool"] == "add_transition" for s in steps) and notes
     steps, notes = planner.rule_plan("Erstelle eine deutsche Version mit synchronisierter Stimme.", "project", 4)
-    assert steps == [] and any("übersetzen" in n.lower() for n in notes)
+    assert steps == [{"tool": "translate_video", "args": {"target": "de", "mode": "dub", "engine": "argos"}}]
+    assert any("Argos" in n for n in notes)              # seit Production-Runde: echtes Werkzeug
     steps, _ = planner.rule_plan("Setze Szene 4 an den Anfang", "project", 5)
     assert steps == [{"tool": "move_scene", "args": {"scene": 4, "to": 1}}]
 

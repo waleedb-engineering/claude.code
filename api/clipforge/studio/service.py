@@ -341,6 +341,21 @@ class StudioService:
         self.store.mutate(pid, lambda p: p["source"].update(file=name, file_meta=meta))
         return {"file": name, "kind": "source", **meta}
 
+    def timeline_ops(self, pid: str, ops: list[dict], expected_version: int | None) -> dict:
+        """Mehrere Timeline-Operationen atomar anwenden und mit Versionsschutz speichern."""
+        from . import timeline as tl_mod
+        project = self.store.load(pid)
+        if not isinstance(ops, list) or not 1 <= len(ops) <= 50:
+            raise StudioError("validation_error", "1–50 Operationen je Aufruf.")
+        tl = project.get("timeline") or tl_mod.empty()
+        results = []
+        for op in ops:
+            tl, info = tl_mod.apply_op(tl, op, self.store.dir(pid))
+            results.append(info)
+        version = project["version"] if expected_version is None else expected_version
+        saved = self.update_project(pid, {"timeline": tl}, version)
+        return {"project": saved, "results": results}
+
     def upload_media(self, pid: str, filename: str, fileobj) -> dict:
         self.store.load(pid)
         pdir = self.store.dir(pid)

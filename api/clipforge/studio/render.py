@@ -672,6 +672,67 @@ class StudioRenderer:
                 "beats": beat_info, "timing": sorted(timing_sources)}
 
     def render(self, out_path: str) -> dict:
+        from . import timeline as tl_mod
+        tl = self.p.get("timeline") or tl_mod.empty()
+        if not self.p["scenes"] and tl_mod.has_content(tl):
+            return self._render_timeline_only(out_path, tl)
+        report = self._render_scenes(out_path)
+        if tl_mod.has_content(tl):
+            from .timeline_render import composite
+            work = os.path.join(self.dir, "cache", f"tl_{new_id()}")
+            os.makedirs(work, exist_ok=True)
+            try:
+                self._check()
+                self.progress("Timeline-Spuren zusammensetzen")
+                report["timeline"] = composite(
+                    tl, self.dir, out_path, base=out_path, total=float(report.get("duration") or 0),
+                    w=self.w, h=self.h, fps=self.fps, preset=self.preset, crf=self.crf,
+                    audio_bitrate="96k" if self.preview else "160k", work=work, warnings=self.warnings)
+                aud = self.p.get("audio") or {}
+                if aud.get("loudnorm") and report["timeline"]["audio_items"]:
+                    # zusätzliche Tonspuren verändern die Lautheit → erneut normalisieren
+                    self.loudness = normalize_loudness(out_path, float(aud.get("target_lufs", -14.0)),
+                                                       "96k" if self.preview else "160k")
+                    report["loudness"] = self.loudness
+                report["warnings"] = list(self.warnings)
+                report["bytes"] = os.path.getsize(out_path)
+            finally:
+                shutil.rmtree(work, ignore_errors=True)
+        return report
+
+    def _render_timeline_only(self, out_path: str, tl: dict) -> dict:
+        """Projekt ohne Szenen: die Timeline allein ist das Video."""
+        from . import timeline as tl_mod
+        from .timeline_render import composite
+        work = os.path.join(self.dir, "cache", f"tl_{new_id()}")
+        os.makedirs(work, exist_ok=True)
+        try:
+            self.progress("Timeline rendern")
+            total = tl_mod.end_time(tl)
+            info = composite(tl, self.dir, out_path, base=None, total=total, w=self.w, h=self.h,
+                             fps=self.fps, preset=self.preset, crf=self.crf,
+                             audio_bitrate="96k" if self.preview else "160k", work=work,
+                             warnings=self.warnings)
+            aud = self.p.get("audio") or {}
+            if aud.get("loudnorm"):
+                self.loudness = normalize_loudness(out_path, float(aud.get("target_lufs", -14.0)),
+                                                   "96k" if self.preview else "160k")
+            pinfo = probe(out_path)
+            return {"file": os.path.basename(out_path), "mode": "preview" if self.preview else "final",
+                    "rendered_at": now_iso(), "project_version": self.p["version"],
+                    "width": pinfo.width, "height": pinfo.height, "duration": round(pinfo.duration, 3),
+                    "has_audio": pinfo.has_audio,
+                    "expected": {"width": self.w, "height": self.h, "duration": round(total, 3)},
+                    "bytes": os.path.getsize(out_path), "aspect_ratio": self.p["aspect_ratio"],
+                    "resolution": self.p["resolution"], "options": self.opt.to_dict(), "voice": None,
+                    "word_timing": [], "transitions": [], "music": {"track": None}, "captions": {},
+                    "loudness": self.loudness, "scenes": [], "timeline": info,
+                    "warnings": list(self.warnings), "fallbacks": self.fallbacks,
+                    "costs": self.ledger.summary()}
+        finally:
+            shutil.rmtree(work, ignore_errors=True)
+
+    def _render_scenes(self, out_path: str) -> dict:
         work = os.path.join(self.dir, "cache", f"work_{new_id()}")
         os.makedirs(work, exist_ok=True)
         try:

@@ -51,6 +51,36 @@ export type Scene = {
   sfx?: { track: string; at: number; volume: number }[];
 };
 
+export type Ease = "linear" | "ease_in" | "ease_out" | "ease_in_out";
+export type Keyframe = { t: number; v: number; ease: Ease };
+export type TimelineItem = {
+  id: string;
+  start: number;
+  duration: number;
+  group?: string;
+  src?: string;
+  in?: number;
+  x?: number;
+  y?: number;
+  scale?: number;
+  rotation?: number;
+  opacity?: number;
+  volume?: number;
+  fade_in?: number;
+  fade_out?: number;
+  blur?: number;
+  audio?: boolean;
+  text?: string;
+  color?: string;
+  size?: number;
+  position?: "top" | "middle" | "bottom";
+  keyframes?: Record<string, Keyframe[]>;
+};
+export type TrackKind = "video" | "overlay" | "audio" | "caption";
+export type TimelineTrack = { id: string; kind: TrackKind; name: string; muted: boolean; locked: boolean; hidden: boolean; items: TimelineItem[] };
+export type Timeline = { version: number; tracks: TimelineTrack[] };
+export type TimelineOp = Record<string, unknown> & { op: string };
+
 export type ZoomFocus = "center" | "face" | "top" | "bottom" | "left" | "right";
 export const CAPTION_FONTS = ["Arial", "Helvetica", "Verdana", "Impact", "Georgia", "DejaVu Sans", "Liberation Sans"] as const;
 
@@ -197,6 +227,7 @@ export type Project = {
     size?: number;
   };
   audio?: { loudnorm: boolean; target_lufs: number };
+  timeline?: Timeline;
   visuals: {
     image_provider: string;
     gameplay_media: string | null;
@@ -778,6 +809,8 @@ export const studio = {
       "Idempotency-Key": idempotencyKey,
     }),
   project: (id: string) => get<ProjectView>(`/projects/${id}`),
+  timelineOps: (id: string, ops: TimelineOp[], expectedVersion: number) =>
+    post<{ project: Project; results: Record<string, string>[] }>(`/projects/${id}/timeline/ops`, { ops, expected_version: expectedVersion }),
   patchProject: (id: string, patch: Record<string, unknown>) =>
     request<{ project: Project }>("PATCH", `/projects/${id}`, patch).then((d) => d.project),
   deleteProject: (id: string) => request<{ deleted: boolean }>("DELETE", `/projects/${id}`),
