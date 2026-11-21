@@ -265,6 +265,17 @@ export type LibraryItem = {
   duplicate?: boolean;
 };
 
+type EvalNums = { precision: number; recall: number; f1: number; duplicates: number; time_offset_mean_s: number | null };
+export type WeightCompare = {
+  streams: { id: string; name: string; synthetic: boolean; labels: number; default: EvalNums; current: EvalNums }[];
+  tuned: { weights: Record<string, number>; at?: string } | null;
+  history: { replaced_at: string; weights: unknown }[];
+  total_default: EvalNums & { tp: number; fp: number; fn: number };
+  total_current: EvalNums & { tp: number; fp: number; fn: number };
+  real_streams: number;
+  note: string;
+};
+
 export type ProjectSummary = {
   id: string;
   title: string;
@@ -722,6 +733,9 @@ export const studio = {
   putStreamLabels: (id: string, highlights: Record<string, unknown>[]) =>
     request<unknown>("PUT", `/streams/${id}/labels`, { highlights }),
   streamEvaluation: (id: string) => get<StreamEvaluation>(`/streams/${id}/evaluation`),
+  compareStreamWeights: () => get<WeightCompare>("/stream-weights/compare"),
+  rollbackStreamWeights: () => post<{ tuned: unknown }>("/stream-weights/rollback"),
+  resetStreamWeights: () => request<{ reset: boolean }>("DELETE", "/stream-weights"),
   tuneStreamWeights: (apply: boolean) =>
     post<{ f1_default: number; f1_tuned: number; f1_leave_one_out: number | null; cases: number; applied: boolean; best_group_factors: Record<string, number> }>(
       "/stream-weights/tune",

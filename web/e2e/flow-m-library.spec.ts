@@ -51,3 +51,11 @@ test("Mediathek: hochladen, Duplikat, suchen, verwenden, löschen", async ({ pag
     await fetch(`${API_URL}/api/studio/projects/${pid}`, { method: "DELETE", headers: H });
   }
 });
+
+test("Erkennung auswerten: ohne Markierungen erklärt die Seite den Ablauf", async ({ page }) => {
+  await page.goto("/studio/streams");
+  await page.getByRole("link", { name: "Erkennung auswerten →" }).click();
+  await expect(page.getByRole("heading", { name: "Highlight-Erkennung auswerten" })).toBeVisible();
+  // je nach Datenstand der E2E-Umgebung: Anleitung oder Tabelle — beides ohne Fehler
+  await expect(page.getByLabel("So geht's").or(page.getByTestId("eval-table"))).toBeVisible();
+});

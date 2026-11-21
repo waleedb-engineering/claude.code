@@ -43,6 +43,9 @@ export default function StreamsPage() {
       <div>
         <h1 className="text-2xl font-bold text-white">{t("st.title")}</h1>
         <p className="mt-1 text-sm text-neutral-300">{t("st.hint")}</p>
+        <Link href="/studio/streams/evaluation" className="mt-2 inline-block text-sm text-indigo-300 underline">
+          Erkennung auswerten →
+        </Link>
       </div>
       <ErrorBox message={error} />
       <form onSubmit={create} className={`${cardCls} grid gap-3 sm:grid-cols-3`}>

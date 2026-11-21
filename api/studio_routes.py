@@ -957,6 +957,14 @@ def init_studio(app: FastAPI, registry, youtube_status=None,
         from clipforge.stream.scoring import DEFAULT_WEIGHTS
         return {"default": DEFAULT_WEIGHTS, "tuned": streams.tuned_weights()}
 
+    @r.get("/stream-weights/compare")
+    def stream_weights_compare() -> dict:
+        return streams.compare_weights()
+
+    @r.post("/stream-weights/rollback")
+    def stream_weights_rollback() -> dict:
+        return {"tuned": streams.rollback_weights()}
+
     @r.delete("/stream-weights")
     def stream_weights_reset() -> dict:
         streams.reset_weights()
