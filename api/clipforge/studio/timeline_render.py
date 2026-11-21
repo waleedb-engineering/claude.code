@@ -18,7 +18,7 @@ from .audio import run_ffmpeg
 from .errors import StudioError
 from .projects import IMAGE_EXT, resolve_music
 from .storage import safe_child
-from .timeline import keyframe_expr
+from .timeline import CROP_PROPS, keyframe_expr, static_value, value_at
 
 ALIGN = {"bottom": 2, "middle": 5, "top": 8}
 
@@ -122,7 +122,7 @@ def composite(tl: dict, project_dir: str, out_path: str, *, base: str | None, to
             k = n
             n += 1
             if want_visual:
-                filters.append(_visual_chain(it, k, kind, s, d, w, h, fps, f"[ov{vcount}]"))
+                filters.append(_visual_chain(it, k, kind, s, d, w, h, fps, f"[ov{vcount}]", work, vcount))
                 x = keyframe_expr(it, "x", f"(t-{s:.3f})", 0.5)
                 y = keyframe_expr(it, "y", f"(t-{s:.3f})", 0.5)
                 nxt = f"[v{vcount + 1}]"
@@ -169,16 +169,42 @@ def composite(tl: dict, project_dir: str, out_path: str, *, base: str | None, to
     return report
 
 
-def _visual_chain(it: dict, k: int, kind: str, s: float, d: float, w: int, h: int, fps: int, label: str) -> str:
+def _blur_commands(it: dict, kind: str, s: float, d: float, fps: int, path: str, target: str) -> None:
+    """Unschärfe-Keyframes als sendcmd-Datei (gblur-Sigma je Bild, aus derselben Kurve)."""
+    lines, last = [], None
+    n = max(1, int(round(d * fps)))
+    for i in range(n + 1):
+        u = min(d, i / fps)
+        sigma = round(value_at(it, "blur", u, kind) * BLUR_SIGMA, 2)
+        if sigma != last:
+            lines.append(f"{s + u:.4f} {target} sigma {sigma};")
+            last = sigma
+    with open(path, "w", encoding="utf-8") as fh:
+        fh.write("\n".join(lines) + "\n")
+
+
+BLUR_SIGMA = 0.6  # Unschärfe-Wert → gblur-Sigma (statisch: boxblur-Radius)
+
+
+def _visual_chain(it: dict, k: int, kind: str, s: float, d: float, w: int, h: int, fps: int, label: str,
+                  work: str = "", n: int = 0) -> str:
     tv = f"(t-{s:.3f})"
     parts = [f"[{k}:v]setpts=PTS-STARTPTS+{s:.3f}/TB", f"fps={fps}", "format=rgba"]
     crop = it.get("crop")
-    if crop:
+    kfs_all = it.get("keyframes") or {}
+    animated_crop = any(p in kfs_all for p in CROP_PROPS)
+    if crop and not animated_crop:
         fw, fh = 1 - crop["left"] - crop["right"], 1 - crop["top"] - crop["bottom"]
         parts.append(f"crop=iw*{fw:.4f}:ih*{fh:.4f}:iw*{crop['left']:.4f}:ih*{crop['top']:.4f}")
-    if it.get("blur"):
+    if "blur" in kfs_all and work:
+        cmd_path = os.path.join(work, f"blur_{n}.cmd")
+        _blur_commands(it, kind, s, d, fps, cmd_path, f"gblur@b{n}")
+        sigma0 = round(value_at(it, "blur", 0.0, kind) * BLUR_SIGMA, 2)
+        parts.append(f"sendcmd=f={filter_path(cmd_path)}")
+        parts.append(f"gblur@b{n}=sigma={sigma0}")
+    elif it.get("blur"):
         parts.append(f"boxblur={max(1, int(it['blur']))}:1")
-    kfs = it.get("keyframes") or {}
+    kfs = kfs_all
     default_scale = 1.0 if kind == "video" else 0.4
     sc = keyframe_expr(it, "scale", tv, default_scale)
     if "scale" in kfs:
@@ -189,9 +215,15 @@ def _visual_chain(it: dict, k: int, kind: str, s: float, d: float, w: int, h: in
     if "rotation" in kfs or abs(float(it.get("rotation", 0))) > 1e-3:
         rot = keyframe_expr(it, "rotation", tv, 0.0)
         parts.append(f"rotate=a='({rot})*PI/180':c=none:ow='hypot(iw,ih)':oh=ow")
-    if "opacity" in kfs:
-        op = keyframe_expr(it, "opacity", f"(T-{s:.3f})", 1.0)
-        parts.append(f"geq=r='r(X,Y)':g='g(X,Y)':b='b(X,Y)':a='alpha(X,Y)*({op})'")
+    if "opacity" in kfs or animated_crop:
+        # Deckkraft- und Zuschnitt-Keyframes als Alphamaske (Zuschnitt „an Ort und Stelle“)
+        tt = f"(T-{s:.3f})"
+        op = keyframe_expr(it, "opacity", tt, 1.0) if "opacity" in kfs else f"{float(it.get('opacity', 1.0)):.4f}"
+        mask = "1"
+        if animated_crop:
+            cl, cr, ct, cb = (keyframe_expr({**it, p: static_value(it, p, kind)}, p, tt, 0.0) for p in CROP_PROPS)
+            mask = f"gte(X,W*({cl}))*lt(X,W*(1-({cr})))*gte(Y,H*({ct}))*lt(Y,H*(1-({cb})))"
+        parts.append(f"geq=r='r(X,Y)':g='g(X,Y)':b='b(X,Y)':a='alpha(X,Y)*({op})*({mask})'")
     elif float(it.get("opacity", 1.0)) < 0.999:
         parts.append(f"colorchannelmixer=aa={float(it['opacity']):.3f}")
     if it.get("fade_in"):

@@ -201,3 +201,56 @@ def test_preview_keeps_base_layer_without_overlays(tmp_path):
     assert _rgb_at(path, 0.5, 36, 64)(30, 9)[1] < 150          # kein grünes Overlay in der Grundebene
     final = app_module.studio.service.render_file(pid, rid)
     assert _rgb_at(final, 0.5, 36, 64)(30, 9)[1] > 180          # im Render schon
+
+
+def _edge_png(path):
+    """Links schwarz, rechts weiß — harte Kante in der Mitte."""
+    subprocess.run(["ffmpeg", "-y", "-v", "error", "-f", "lavfi", "-i", "color=c=black:s=100x200:d=1",
+                    "-f", "lavfi", "-i", "color=c=white:s=100x200:d=1", "-filter_complex", "hstack",
+                    "-frames:v", "1", path], check=True)
+    return path
+
+
+def test_animated_crop_and_blur_render(tmp_path):
+    svc, _ = make_service(str(tmp_path))
+    p = svc.create_project({"workflow": "media", "title": "KF", "resolution": "720p"})
+    with open(_png(str(tmp_path / "blue.png"), "blue", "200x200"), "rb") as fh:
+        blue = svc.upload_media(p["id"], "blue.png", fh)["name"]
+    with open(_edge_png(str(tmp_path / "edge.png")), "rb") as fh:
+        edge = svc.upload_media(p["id"], "edge.png", fh)["name"]
+    p = svc.store.load(p["id"])
+    tl = {"tracks": [{"kind": "overlay", "items": [
+        # Zuschnitt links 0 → 0,5: die linke Hälfte verschwindet nach und nach
+        {"src": blue, "start": 0, "duration": 3, "x": 0.5, "y": 0.25, "scale": 0.5,
+         "keyframes": {"crop_left": [{"t": 0, "v": 0}, {"t": 2, "v": 0.45}]}},
+        # Unschärfe 0 → 30: harte Kante wird weich
+        {"src": edge, "start": 0, "duration": 3, "x": 0.5, "y": 0.7, "scale": 0.5,
+         "keyframes": {"blur": [{"t": 0, "v": 0}, {"t": 2, "v": 30}]}}]}]}
+    svc.update_project(p["id"], {"timeline": tl, "scenes": []}, p["version"])
+    t = svc.tasks.submit("render", p["id"], {"mode": "preview"}, run_inline=True)
+    assert t["status"] == "succeeded", t
+    path = svc.render_file(p["id"], svc.list_renders(p["id"])[0]["render_id"])
+    W, H = 72, 128
+    early, late = _rgb_at(path, 0.1, W, H), _rgb_at(path, 2.5, W, H)
+    y_blue = int(H * 0.25)
+    # Blaues Overlay: Breite 50 % (x 18..54); links bei 22 → anfangs blau, später abgeschnitten
+    assert early(22, y_blue)[2] > 150 and late(22, y_blue)[2] < 60
+    assert late(48, y_blue)[2] > 150                                   # rechte Hälfte bleibt
+    # Kante: Zahl der Zwischentöne in der Zeile steigt mit der Unschärfe
+    y_edge = int(H * 0.7)
+
+    def mids(f):
+        return sum(1 for x in range(18, 54) if 40 < f(x, y_edge)[0] < 215)
+    assert mids(early) <= 2 and mids(late) >= 6, (mids(early), mids(late))
+
+
+def test_new_keyframe_props_validated():
+    tl = T.normalize({"tracks": [{"kind": "overlay", "items": [{"src": "a.png", "start": 0, "duration": 2,
+                                                                 "keyframes": {"crop_top": [{"t": 0, "v": 0.9}],
+                                                                               "blur": [{"t": 1, "v": 99}]}}]}]})
+    kf = tl["tracks"][0]["items"][0]["keyframes"]
+    assert kf["crop_top"][0]["v"] == 0.45 and kf["blur"][0]["v"] == 40.0
+    audio = T.normalize({"tracks": [{"kind": "audio", "items": [{"src": "m.wav", "start": 0, "duration": 1}]}]})
+    with pytest.raises(StudioError) as e:
+        T.set_keyframe(audio, audio["tracks"][0]["items"][0]["id"], "blur", 0, 1)
+    assert e.value.code == "validation_error"                       # Audio hat keine Unschärfe

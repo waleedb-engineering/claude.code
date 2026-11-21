@@ -40,14 +40,16 @@ from .storage import new_id
 VERSION = 1
 TRACK_KINDS = ("video", "overlay", "audio", "caption")
 EASES = ("linear", "ease_in", "ease_out", "ease_in_out")
+CROP_PROPS = ("crop_left", "crop_right", "crop_top", "crop_bottom")
 KEYFRAME_PROPS = {
-    "video": ("x", "y", "scale", "rotation", "opacity", "volume"),
-    "overlay": ("x", "y", "scale", "rotation", "opacity", "volume"),
+    "video": ("x", "y", "scale", "rotation", "opacity", "volume", *CROP_PROPS, "blur"),
+    "overlay": ("x", "y", "scale", "rotation", "opacity", "volume", *CROP_PROPS, "blur"),
     "audio": ("volume",),
     "caption": (),
 }
 RANGES = {"x": (-1.0, 2.0), "y": (-1.0, 2.0), "scale": (0.02, 4.0), "rotation": (-360.0, 360.0),
-          "opacity": (0.0, 1.0), "volume": (0.0, 3.0)}
+          "opacity": (0.0, 1.0), "volume": (0.0, 3.0), "blur": (0.0, 40.0),
+          **{p: (0.0, 0.45) for p in ("crop_left", "crop_right", "crop_top", "crop_bottom")}}
 DEFAULTS = {"video": {"x": 0.5, "y": 0.5, "scale": 1.0, "rotation": 0.0, "opacity": 1.0, "volume": 1.0},
             "overlay": {"x": 0.5, "y": 0.5, "scale": 0.4, "rotation": 0.0, "opacity": 1.0, "volume": 1.0},
             "audio": {"volume": 1.0}, "caption": {}}
@@ -189,11 +191,18 @@ def end_time(tl: dict) -> float:
 
 
 # ----------------------------------------------------------- Keyframes
+def static_value(item: dict, prop: str, kind: str = "overlay") -> float:
+    """Wert ohne Keyframes (Zuschnitt liegt im Feld ``crop``)."""
+    if prop in CROP_PROPS:
+        return float((item.get("crop") or {}).get(prop[5:], 0.0))
+    return float(item.get(prop, DEFAULTS.get(kind, {}).get(prop, 0.0)))
+
+
 def value_at(item: dict, prop: str, u: float, kind: str = "overlay") -> float:
     """Wert einer Eigenschaft zur lokalen Zeit u (gleiche Kurve wie im Render)."""
     kfs = (item.get("keyframes") or {}).get(prop)
     if not kfs:
-        return float(item.get(prop, DEFAULTS.get(kind, {}).get(prop, 0.0)))
+        return static_value(item, prop, kind)
     if u <= kfs[0]["t"]:
         return kfs[0]["v"]
     for a, b in zip(kfs, kfs[1:]):

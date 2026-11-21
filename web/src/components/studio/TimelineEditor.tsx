@@ -20,9 +20,10 @@ const KIND_COLOR: Record<TrackKind, string> = {
   audio: "bg-emerald-700/80 border-emerald-400",
   caption: "bg-amber-700/80 border-amber-400",
 };
+const VISUAL_PROPS = ["x", "y", "scale", "rotation", "opacity", "volume", "crop_left", "crop_right", "crop_top", "crop_bottom", "blur"];
 const PROPS: Record<TrackKind, string[]> = {
-  video: ["x", "y", "scale", "rotation", "opacity", "volume"],
-  overlay: ["x", "y", "scale", "rotation", "opacity", "volume"],
+  video: VISUAL_PROPS,
+  overlay: VISUAL_PROPS,
   audio: ["volume"],
   caption: [],
 };
@@ -308,6 +309,24 @@ export default function TimelineEditor(props: {
                       {item.group ? "⛓ " : ""}
                       {item.text ?? item.src}
                       {kfCount ? ` ◆${kfCount}` : ""}
+                      {/* Keyframe-Marker an ihrer Zeit; Klick setzt den Abspielkopf */}
+                      {Object.values(item.keyframes ?? {})
+                        .flat()
+                        .map((k, ki) => (
+                          <span
+                            key={ki}
+                            role="button"
+                            tabIndex={-1}
+                            aria-label={`Keyframe bei ${fmt(item.start + k.t)}`}
+                            data-testid="tl-kf-marker"
+                            onPointerDown={(e) => {
+                              e.stopPropagation();
+                              setPlayhead(item.start + k.t);
+                            }}
+                            className="absolute bottom-0 h-2 w-2 -translate-x-1/2 rotate-45 bg-yellow-300"
+                            style={{ left: k.t * zoom }}
+                          />
+                        ))}
                     </div>
                   );
                 })}

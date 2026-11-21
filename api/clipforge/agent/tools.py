@@ -721,9 +721,10 @@ TOOLS: dict[str, Tool] = {t.name: t for t in [
                                                                            "slip", "delete", "ripple_delete", "duplicate"]},
           "time": {**N, "minimum": 0, "maximum": 14400}, "delta": {**N, "minimum": -3600, "maximum": 3600}},
          ("item", "action"), run=t_tl_edit),
-    Tool("timeline_keyframe", "Keyframe setzen (x, y, scale, rotation, opacity, volume; t = Sekunde ab "
+    Tool("timeline_keyframe", "Keyframe setzen (x, y, scale, rotation, opacity, volume, crop_*, blur; t = Sekunde ab "
          "Elementbeginn), optional zweiter Keyframe t2/v2 für eine Animation.", "project",
-         {"item": {"type": "string"}, "prop": {"type": "string", "enum": ["x", "y", "scale", "rotation", "opacity", "volume"]},
+         {"item": {"type": "string"}, "prop": {"type": "string", "enum": ["x", "y", "scale", "rotation", "opacity", "volume", "crop_left",
+                                               "crop_right", "crop_top", "crop_bottom", "blur"]},
           "t": {**N, "minimum": 0, "maximum": 14400}, "v": N, "t2": {**N, "minimum": 0, "maximum": 14400}, "v2": N,
           "ease": {"type": "string", "enum": ["linear", "ease_in", "ease_out", "ease_in_out"]}},
          ("item", "prop", "t", "v"), run=t_tl_keyframe),

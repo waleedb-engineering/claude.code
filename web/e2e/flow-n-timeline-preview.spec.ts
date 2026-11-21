@@ -65,6 +65,12 @@ test("Timeline-Live-Vorschau: Keyframe-Position und Text folgen dem Abspielkopf"
     // Bild für Bild vor
     await page.getByRole("button", { name: "Ein Bild vor" }).click();
     await expect(page.getByTestId("tl-playhead")).toContainText(/0:01\.[56]/);
+    // Keyframe-Marker: zwei Rauten am Overlay, Klick springt zur Keyframe-Zeit
+    const markers = page.getByTestId("tl-kf-marker");
+    await expect(markers).toHaveCount(2);
+    await markers.nth(1).dispatchEvent("pointerdown");
+    await expect(page.getByTestId("tl-playhead")).toContainText("0:02.0");
+    expect(await centerX()).toBeCloseTo(0.8, 1);
   } finally {
     await fetch(`${API_URL}/api/studio/projects/${pid}`, { method: "DELETE", headers: H });
   }
