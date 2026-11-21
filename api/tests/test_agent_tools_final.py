@@ -266,3 +266,51 @@ def test_memory_summarizes_long_history():
     mem = planner.memory_context(hist)
     assert mem.startswith("Zusammenfassung früherer Schritte") and "trim_scene×" in mem
     assert "Befehl 29" in mem and len(mem) <= 3000
+
+
+def test_step_status_retry_and_cancel(tmp_path):
+    client, _ = make_client(str(tmp_path))
+    r = client.post("/api/studio/projects", json={"workflow": "script", "script": SCRIPT,
+                                                  "voice": {"provider": "mock"}})
+    pid = r.json()["project"]["id"]
+    wait_task(client, r.json()["task_id"])
+    # Schritt 1 scheitert (keine Musik vorhanden) → Schritt 2 wird übersprungen, nicht still ausgeführt
+    e = _say(client, pid, "Füge Hintergrundmusik hinzu und normalisiere die Lautheit")
+    assert [s["tool"] for s in e["plan"]["steps"]] == ["add_background_music", "normalize_loudness"]
+    out = client.post(f"/api/studio/agent/project/{pid}/{e['id']}/execute", json={"confirm": True}).json()["message"]
+    st = [(r["tool"], r["status"]) for r in out["plan"]["results"]]
+    assert st == [("add_background_music", "failed"), ("normalize_loudness", "skipped")]
+    assert out["plan"]["status"] == "partial"
+    # Ursache beheben, dann ab dem fehlgeschlagenen Schritt wiederholen
+    with open(make_click_wav(str(tmp_path / "m.wav"), 2.0), "rb") as fh:
+        client.post(f"/api/studio/projects/{pid}/media", files={"file": ("m.wav", fh, "audio/wav")})
+    out = client.post(f"/api/studio/agent/project/{pid}/{e['id']}/retry", json={}).json()["message"]
+    assert out["plan"]["status"] == "done", [r.get("error") for r in out["plan"]["results"]]
+    assert out["plan"]["retries"] == 1
+    assert [r["status"] for r in out["plan"]["results"]] == ["ok", "ok"]
+    p = client.get(f"/api/studio/projects/{pid}").json()["project"]
+    assert p["music"]["track"] and p["audio"]["loudnorm"] is True
+    assert client.post(f"/api/studio/agent/project/{pid}/{e['id']}/retry", json={}).status_code == 409
+    # Render starten und über den Plan abbrechen
+    e2 = _say(client, pid, "Exportiere das Video")
+    out = client.post(f"/api/studio/agent/project/{pid}/{e2['id']}/execute", json={"confirm": True}).json()["message"]
+    tid = out["plan"]["results"][0]["task_id"]
+    c = client.post(f"/api/studio/agent/project/{pid}/{e2['id']}/cancel").json()["message"]
+    assert c["plan"]["canceled_tasks"][0]["task_id"] == tid
+    final = wait_task(client, tid, 300)
+    assert final["status"] in ("canceled", "succeeded")       # bereits fertig ist ebenfalls korrekt
+
+
+def test_unexpected_tool_error_is_reported_per_step(tmp_path, monkeypatch):
+    from clipforge.agent import tools
+    client, _ = make_client(str(tmp_path))
+    r = client.post("/api/studio/projects", json={"workflow": "script", "script": SCRIPT})
+    pid = r.json()["project"]["id"]
+    wait_task(client, r.json()["task_id"])
+
+    def boom(ctx, a):
+        raise RuntimeError("kaputt")
+    monkeypatch.setattr(tools.TOOLS["normalize_loudness"], "run", boom)
+    e = _say(client, pid, "Normalisiere die Lautheit")
+    out = client.post(f"/api/studio/agent/project/{pid}/{e['id']}/execute", json={}).json()["message"]
+    assert out["plan"]["results"][0]["status"] == "failed" and "RuntimeError" in out["plan"]["results"][0]["error"]

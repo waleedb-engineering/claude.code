@@ -312,7 +312,8 @@ def t_render_highlights(ctx, a):
             raise StudioError("agent_invalid", f"Clip {i} gibt es nicht.")
         ids.append(hs[i - 1]["id"])
     task = ctx.streams.start_render(ctx.target, ids, {
-        "reframe_mode": "smart", "remove_silence": a.get("remove_pauses", True),
+        "reframe_mode": a.get("framing", "smart"), "track_zoom": a.get("track_zoom", 1.0),
+        "remove_silence": a.get("remove_pauses", True),
         "caption_style": "high_energy" if a.get("animated_captions", True) else "clean"})
     return {"task_id": task["id"], "change": f"{len(ids)} vertikale Clips werden gerendert"}
 
@@ -757,7 +758,9 @@ TOOLS: dict[str, Tool] = {t.name: t for t in [
          ("clip", "variant"), run=t_clip_variant),
     Tool("render_clips", "Highlights als vertikale Clips rendern.", "stream",
          {"clips": {"type": "array"}, "count": {"type": "integer", "minimum": 1, "maximum": 20},
-          "remove_pauses": {"type": "boolean"}, "animated_captions": {"type": "boolean"}},
+          "remove_pauses": {"type": "boolean"}, "animated_captions": {"type": "boolean"},
+          "framing": {"type": "string", "enum": ["smart", "track", "center", "face"]},
+          "track_zoom": {**N, "minimum": 1.0, "maximum": 2.0}},
          confirm=True, run=t_render_highlights),
 ]}
 

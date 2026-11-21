@@ -192,7 +192,7 @@ export type AgentMessage = {
     status: "pending" | "done" | "partial" | "discarded" | "empty";
     needs_confirmation: boolean;
     steps: { tool: string; args: Record<string, unknown>; label: string; confirm: boolean; cost: string }[];
-    results?: { tool: string; ok: boolean; change?: string; error?: string; task_id?: string }[];
+    results?: { tool: string; ok: boolean; status?: "ok" | "failed" | "skipped"; change?: string; error?: string; task_id?: string }[];
     undone?: boolean;
   };
 };
@@ -799,6 +799,9 @@ export const studio = {
     post<{ message: AgentMessage }>(`/agent/${kind}/${id}`, { message, engine, confirm_cost: confirmCost }).then((d) => d.message),
   agentExecute: (kind: string, id: string, entryId: string, confirm = false) =>
     post<{ message: AgentMessage }>(`/agent/${kind}/${id}/${entryId}/execute`, { confirm }).then((d) => d.message),
+  agentRetry: (kind: string, id: string, entryId: string, confirm = false) =>
+    post<{ message: AgentMessage }>(`/agent/${kind}/${id}/${entryId}/retry`, { confirm }),
+  agentCancel: (kind: string, id: string, entryId: string) => post<{ message: AgentMessage }>(`/agent/${kind}/${id}/${entryId}/cancel`),
   agentDiscard: (kind: string, id: string, entryId: string) => post<unknown>(`/agent/${kind}/${id}/${entryId}/discard`),
   agentUndo: (kind: string, id: string) => post<{ project: Project }>(`/agent/${kind}/${id}/undo`),
   hardware: () =>

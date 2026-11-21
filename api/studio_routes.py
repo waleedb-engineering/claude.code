@@ -1004,6 +1004,12 @@ def init_studio(app: FastAPI, registry, youtube_status=None,
     # ------------------------------------------------------------ Editor-Agent
     agent = studio.agent
 
+    @r.get("/system/transcription")
+    def system_transcription() -> dict:
+        from clipforge.config import get_settings
+        from clipforge.transcribe import transcription_status
+        return transcription_status(get_settings())
+
     @r.get("/system/hwaccel")
     def system_hwaccel(benchmark: bool = False) -> dict:
         from clipforge import hwaccel
@@ -1047,6 +1053,14 @@ def init_studio(app: FastAPI, registry, youtube_status=None,
     @r.post("/agent/{kind}/{target}/{entry_id}/execute")
     def agent_execute(kind: str, target: str, entry_id: str, req: AgentExecute) -> dict:
         return {"message": agent.execute(kind, target, entry_id, req.confirm)}
+
+    @r.post("/agent/{kind}/{target}/{entry_id}/retry")
+    def agent_retry(kind: str, target: str, entry_id: str, req: AgentExecute) -> dict:
+        return {"message": agent.retry(kind, target, entry_id, req.confirm)}
+
+    @r.post("/agent/{kind}/{target}/{entry_id}/cancel")
+    def agent_cancel(kind: str, target: str, entry_id: str) -> dict:
+        return {"message": agent.cancel(kind, target, entry_id)}
 
     @r.post("/agent/{kind}/{target}/{entry_id}/discard")
     def agent_discard(kind: str, target: str, entry_id: str) -> dict:

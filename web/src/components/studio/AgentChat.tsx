@@ -134,7 +134,14 @@ export default function AgentChat({ kind, targetId, beforeExecute, onChanged }: 
                     return (
                       <li key={i}>
                         <code className="text-indigo-300">{s.tool}</code> {JSON.stringify(s.args)}
-                        {res && (res.ok ? <span className="text-emerald-300"> ✓ {res.change ?? ""}</span> : <span className="text-rose-300"> ✗ {res.error}</span>)}
+                        {res &&
+                          (res.ok ? (
+                            <span className="text-emerald-300"> ✓ {res.change ?? ""}</span>
+                          ) : res.status === "skipped" ? (
+                            <span className="text-neutral-500"> – übersprungen (vorheriger Schritt fehlgeschlagen)</span>
+                          ) : (
+                            <span className="text-rose-300"> ✗ {res.error}</span>
+                          ))}
                       </li>
                     );
                   })}
@@ -164,6 +171,42 @@ export default function AgentChat({ kind, targetId, beforeExecute, onChanged }: 
                   </div>
                 )}
                 {m.plan.status !== "pending" && <p className="text-[11px] text-neutral-500">{m.plan.undone ? t("ag.undone") : m.plan.status}</p>}
+                {m.plan.status === "partial" && !m.plan.undone && (
+                  <button
+                    type="button"
+                    className={btnCls}
+                    disabled={!!busy}
+                    onClick={async () => {
+                      setError(null);
+                      try {
+                        if (beforeExecute && !(await beforeExecute())) return;
+                        await studio.agentRetry(kind, targetId, m.id, true);
+                        await load();
+                        onChanged?.();
+                      } catch (err) {
+                        setError(errorMessage(err));
+                      }
+                    }}
+                  >
+                    ↻ Ab dem Fehler wiederholen
+                  </button>
+                )}
+                {(m.plan.results ?? []).some((r) => r.task_id) && m.plan.status !== "pending" && (
+                  <button
+                    type="button"
+                    className={btnCls}
+                    onClick={async () => {
+                      try {
+                        await studio.agentCancel(kind, targetId, m.id);
+                        await load();
+                      } catch (err) {
+                        setError(errorMessage(err));
+                      }
+                    }}
+                  >
+                    ■ Gestartete Aufgaben abbrechen
+                  </button>
+                )}
               </div>
             )}
           </div>

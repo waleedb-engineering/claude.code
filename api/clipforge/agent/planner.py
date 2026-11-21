@@ -82,6 +82,9 @@ def _index(text: str, word: str, count: int) -> int | None:
     m = re.search(rf"\b{word}\s*(?:nr\.?\s*)?(\d+)\b", text)
     if m:
         return int(m.group(1))
+    m = re.search(rf"\b{word}\s+(eins|zwei|drei|vier|fünf|sechs|sieben|acht|neun|zehn|one|two|three|four|five)\b", text)
+    if m:
+        return NUM[m.group(1)]
     m = re.search(rf"\b(\w+)\s+{word}\b", text)
     if m and m.group(1) in ORD:
         v = ORD[m.group(1)]
@@ -239,10 +242,12 @@ def rule_plan(message: str, kind: str, count: int) -> tuple[list[dict], list[str
             if look:
                 steps.append({"tool": "set_caption_appearance", "args": look})
         # Musik / Effekte / Lautheit
-        m = re.search(r"(füge|leg|add|setz)\w*\s+(?:(?:eine?n?|die|some)\s+)?(?:hintergrund)?(musik|music)(?:\s+[„\"']?([\w .-]+?)[“\"']?)?\s*(hinzu|ein|unter|$)", t)
+        m = re.search(r"(füge|leg|add|setz)\w*\s+(?:(?:eine?n?|die|some)\s+)?(?:hintergrund)?(musik|music)"
+                      r"(?:\s+(?:[„\"']([^“\"']{1,60})[“\"']|([\w.-]+)))?", t)
         if m or re.search(r"(mit|with)\s+(hintergrund)?musik", t):
-            name = (m.group(3) or "").strip() if m else ""
-            if name in ("hinzu", "ein", "unter", "dazu", "rein", "drunter"):
+            name = ((m.group(3) or m.group(4) or "").strip()) if m else ""
+            if name in ("hinzu", "ein", "unter", "dazu", "rein", "drunter", "und", "and", "an", "mit", "leiser",
+                        "lauter", "bitte"):
                 name = ""
             steps.append({"tool": "add_background_music", "args": {"track": name}})
         elif re.search(r"(keine|ohne|entfern\w*)\s+(die\s+)?musik|musik\s+(entfernen|weg|raus)", t):
@@ -266,10 +271,11 @@ def rule_plan(message: str, kind: str, count: int) -> tuple[list[dict], list[str
             steps.append({"tool": "export_video", "args": {}})
     else:
         nums = "|".join(NUM)
-        m = re.search(rf"\b(\d+|{nums})\s+(?:[\wäöüß-]+\s+){{0,2}}(tiktoks?|clips?|shorts?|highlights?|momente?)", t)
+        m = re.search(rf"\b(\d+|{nums})\s+(?:[\wäöüß-]+\s+){{0,2}}(tiktoks?|clips?|shorts?|highlights?|momente?|szenen?|scenes?|stellen)", t)
         want = int(_n(m.group(1)) or 5) if m else 5
         if re.search(r"analysier|finde|find|suche|erstelle|create", t) and re.search(
-                r"stream|moment|highlight|tiktok|clip|short", t) and not re.search(r"clip\s*\d", t):
+                r"stream|moment|highlight|tiktok|clip|short|szene|stelle", t) and not re.search(r"clip\s*\d", t) \
+                and not idx:
             focus = "funny" if re.search(r"lustig|funny|witzig|lach", t) else "any"
             steps.append({"tool": "find_highlights", "args": {"count": want, "focus": focus}})
             if re.search(r"erstelle|create|mach", t):
@@ -287,6 +293,12 @@ def rule_plan(message: str, kind: str, count: int) -> tuple[list[dict], list[str
             steps.append({"tool": "set_clip_variant", "args": {"clip": idx, "variant": v}})
         elif re.search(r"variante|varianten|variants", t) and idx:
             steps.append({"tool": "list_clip_variants", "args": {"clip": idx}})
+        # „… und zoome beim Höhepunkt auf mein Gesicht“ → mit Gesichts-Tracking (enger) rendern
+        if idx and re.search(r"zoom|näher|nah ran", t) and re.search(r"gesicht|face|streamer|mich|facecam", t):
+            steps.append({"tool": "render_clips", "args": {"clips": [idx], "framing": "track", "track_zoom": 1.4,
+                                                            "remove_pauses": True}})
+            notes.append("Zoom auf das Gesicht: Clip wird mit Gesichts-Tracking (1,4× enger) gerendert — "
+                         "der Ausschnitt folgt dem Gesicht über den ganzen Clip.")
         if re.search(r"liste|zeig|show|list", t) and not steps:
             steps.append({"tool": "list_highlights", "args": {}})
     return steps, notes
