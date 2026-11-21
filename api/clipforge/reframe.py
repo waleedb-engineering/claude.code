@@ -80,7 +80,7 @@ def detect_focus(
         return info
     info["detection_method"] = tr["method"]
     info["frames_analyzed"] = len(tr["samples"])
-    fracs = sorted(x for _, x, _ in tr["samples"] if x is not None)
+    fracs = sorted(s_[1] for s_ in tr["samples"] if s_[1] is not None)
     info["faces_detected_count"] = len(fracs)
     if fracs:
         info["focus_frac"] = round(fracs[len(fracs) // 2], 4)
@@ -98,6 +98,7 @@ def plan_reframe(
     out_h: int,
     mode: str,
     manual_points: list | None = None,
+    track_zoom: float = 1.0,
 ) -> tuple[str, dict]:
     """Plant den Crop. Gibt (video_crop_filter, reframe_info) zurück.
 
@@ -134,7 +135,7 @@ def plan_reframe(
             info["fallback_reason"] = "keine Fokuspunkte angegeben"
             return center_crop_filter(out_w, out_h), info
         flt, tinfo = plan_tracking(video_path, clip_start, clip_end, in_w, in_h, out_w, out_h,
-                                   manual_points if requested == "manual" else None)
+                                   manual_points if requested == "manual" else None, track_zoom)
         info.update(tinfo)
         if flt:
             info.update(applied_mode=requested, crop_strategy="dynamic_track" if requested == "track"
@@ -241,47 +242,70 @@ def _detector():
 
 def track_faces(video_path: str, start: float, end: float, *, step: float = TRACK_STEP,
                 max_samples: int = 240) -> dict:
-    """Gesichtsposition über die Zeit. → {method, samples: [(t_lokal, x_frac|None, konfidenz)]}.
+    """Gesichtsposition über die Zeit.
 
-    Motivbindung: nach dem ersten Treffer wird das Gesicht gewählt, das der
-    letzten Position am nächsten liegt (bei gleicher Nähe das größere)."""
+    → {method, samples: [(t, x_frac|None, konfidenz, y_frac|None)], tracks}
+
+    Hauptmotiv: Treffer werden über die Zeit zu Spuren verknüpft (nächster
+    Treffer innerhalb 15 % Bildbreite). Gewählt wird die Spur mit der größten
+    Summe aus Fläche × Konfidenz — ein dauerhaft sichtbares Gesicht schlägt ein
+    kurz eingeblendetes großes."""
     method, detect = _detector()
     if detect is None:
-        return {"method": "unavailable", "samples": []}
+        return {"method": "unavailable", "samples": [], "tracks": 0}
     import cv2
     cap = cv2.VideoCapture(video_path)
     if not cap.isOpened():
-        return {"method": method, "samples": []}
+        return {"method": method, "samples": [], "tracks": 0}
     dur = max(0.0, end - start)
     n = max(1, min(max_samples, int(dur / step) + 1))
-    samples, last = [], None
+    times, per = [], []
     try:
         for k in range(n):
             t = k * (dur / max(1, n - 1)) if n > 1 else 0.0
             cap.set(cv2.CAP_PROP_POS_MSEC, (start + t) * 1000.0)
             ok, frame = cap.read()
-            if not ok or frame is None:
-                samples.append((round(t, 3), None, 0.0))
-                continue
-            faces = detect(frame)
-            if not faces:
-                samples.append((round(t, 3), None, 0.0))
-                continue
-            if last is None:
-                pick = max(faces, key=lambda f: f[2] * f[3])
-            else:
-                pick = min(faces, key=lambda f: (abs(f[0] - last) - 1e-9 * f[2]))
-            last = pick[0]
-            samples.append((round(t, 3), round(pick[0], 4), round(pick[3], 3)))
+            times.append(round(t, 3))
+            per.append(detect(frame) if ok and frame is not None else [])
     finally:
         cap.release()
-    return {"method": method, "samples": samples}
+    # Spuren bilden (gierig, nach Nähe zur letzten Position)
+    tracks: list[dict] = []
+    for i, faces in enumerate(per):
+        used = set()
+        for tr in sorted(tracks, key=lambda x: -x["weight"]):
+            if i - tr["last_i"] > int(HOLD / step) + 1:
+                continue
+            best, bd = None, 0.15
+            for j, f in enumerate(faces):
+                if j in used:
+                    continue
+                dist = ((f[0] - tr["x"]) ** 2 + (f[1] - tr["y"]) ** 2) ** 0.5
+                if dist < bd:
+                    best, bd = j, dist
+            if best is not None:
+                used.add(best)
+                f = faces[best]
+                tr["points"][i] = f
+                tr.update(x=f[0], y=f[1], last_i=i, weight=tr["weight"] + f[2] * f[3])
+        for j, f in enumerate(faces):
+            if j not in used:
+                tracks.append({"points": {i: f}, "x": f[0], "y": f[1], "last_i": i, "weight": f[2] * f[3]})
+    if not tracks:
+        return {"method": method, "samples": [(t, None, 0.0, None) for t in times], "tracks": 0}
+    main = max(tracks, key=lambda x: x["weight"])
+    samples = []
+    for i, t in enumerate(times):
+        f = main["points"].get(i)
+        samples.append((t, round(f[0], 4), round(f[3], 3), round(f[1], 4)) if f else (t, None, 0.0, None))
+    return {"method": method, "samples": samples, "tracks": len(tracks)}
 
 
 def smooth_track(samples: list[tuple], dur: float) -> list[tuple[float, float]]:
     """Lücken füllen (Halten, dann Mitte), Ausreißer per Median, Totzone, Tempolimit.
 
     → Stützpunkte [(t, x_frac)] für eine ruhige Kamerafahrt."""
+    samples = [(s_[0], s_[1], s_[2]) for s_ in samples]
     if not samples or all(x is None for _, x, _ in samples):
         return []
     filled, last, last_t = [], None, None
@@ -324,7 +348,8 @@ def smooth_track(samples: list[tuple], dur: float) -> list[tuple[float, float]]:
 
 
 def crop_x_expr(points: list[tuple[float, float]], sw: int, out_w: int) -> str:
-    """Stückweise lineare Crop-x-Position (Quellzeit t) in Pixeln, begrenzt auf das Bild."""
+    """Stückweise lineare Crop-Position (Quellzeit t) in Pixeln, begrenzt auf das Bild.
+    Auch für y nutzbar (sw/out_w = Höhe des skalierten Bilds / Ausschnitts)."""
     def px(f):
         return max(0, min(sw - out_w, f * sw - out_w / 2))
     expr = f"{px(points[-1][1]):.1f}"
@@ -336,16 +361,21 @@ def crop_x_expr(points: list[tuple[float, float]], sw: int, out_w: int) -> str:
 
 
 def plan_tracking(video_path: str, clip_start: float, clip_end: float, in_w: int, in_h: int,
-                  out_w: int, out_h: int, manual_points: list | None = None) -> tuple[str | None, dict]:
-    """Dynamischer Crop. → (Filter oder None für statischen Fallback, Info)."""
-    scale = max(out_w / in_w, out_h / in_h)
+                  out_w: int, out_h: int, manual_points: list | None = None,
+                  zoom: float = 1.0) -> tuple[str | None, dict]:
+    """Dynamischer Crop (horizontal und — wo Spielraum besteht — vertikal).
+
+    ``zoom`` > 1 schneidet enger (Punch-in) und schafft damit auch vertikalen
+    Spielraum. → (Filter oder None für statischen Fallback, Info)."""
+    zoom = max(1.0, min(2.0, float(zoom or 1.0)))
+    scale = max(out_w / in_w, out_h / in_h) * zoom
     sw, sh = max(out_w, _even(math.ceil(in_w * scale))), max(out_h, _even(math.ceil(in_h * scale)))
-    y = max(0, (sh - out_h) // 2)
+    y_mid = max(0, (sh - out_h) // 2)
     dur = max(0.0, clip_end - clip_start)
     info = {"track_applied": False, "track_method": None, "track_points": 0, "track_confidence": None,
-            "track_reason": None}
-    if sw <= out_w:
-        info["track_reason"] = "kein horizontaler Spielraum"
+            "track_reason": None, "track_zoom": zoom, "track_vertical": False}
+    if sw <= out_w and sh <= out_h:
+        info["track_reason"] = "kein Spielraum für einen Ausschnitt"
         return None, info
     if manual_points:
         pts = sorted((max(0.0, min(dur, float(t))), max(0.0, min(1.0, float(x)))) for t, x in manual_points)
@@ -354,19 +384,32 @@ def plan_tracking(video_path: str, clip_start: float, clip_end: float, in_w: int
         if pts[-1][0] < dur:
             pts.append((dur, pts[-1][1]))
         info.update(track_applied=True, track_method="manual", track_points=len(pts))
-        return f"scale={sw}:{sh},crop={out_w}:{out_h}:x='{crop_x_expr(pts, sw, out_w)}':y={y}", info
+        return f"scale={sw}:{sh},crop={out_w}:{out_h}:x='{crop_x_expr(pts, sw, out_w)}':y={y_mid}", info
     tr = track_faces(video_path, clip_start, clip_end)
     info["track_method"] = tr["method"]
-    found = [s for s in tr["samples"] if s[1] is not None]
+    info["track_candidates"] = tr.get("tracks", 0)
+    found = [s_ for s_ in tr["samples"] if s_[1] is not None]
     if not found:
         info["track_reason"] = "kein Gesicht verfolgt"
         return None, info
-    info["track_confidence"] = round(sum(s[2] for s in found) / len(found), 3)
+    info["track_confidence"] = round(sum(s_[2] for s_ in found) / len(found), 3)
     info["track_coverage"] = round(len(found) / max(1, len(tr["samples"])), 3)
-    pts = smooth_track(tr["samples"], dur)
-    xs = [x for _, x in pts]
-    if max(xs) - min(xs) < MIN_SPREAD:
+    xs_pts = smooth_track([(t, x, c) for t, x, c, _ in tr["samples"]], dur)
+    ys_pts = smooth_track([(t, y, c) for t, _, c, y in tr["samples"]], dur)
+    spread_x = max(x for _, x in xs_pts) - min(x for _, x in xs_pts)
+    spread_y = max(y for _, y in ys_pts) - min(y for _, y in ys_pts) if ys_pts else 0.0
+    vertical = sh > out_h and spread_y >= MIN_SPREAD
+    if spread_x < MIN_SPREAD and not vertical and zoom <= 1.0:
         info["track_reason"] = "Motiv bewegt sich kaum — statischer Zuschnitt ist ruhiger"
         return None, info
-    info.update(track_applied=True, track_points=len(pts))
-    return f"scale={sw}:{sh},crop={out_w}:{out_h}:x='{crop_x_expr(pts, sw, out_w)}':y={y}", info
+    x_expr = crop_x_expr(xs_pts, sw, out_w) if sw > out_w else "0"
+    if vertical:
+        y_expr = crop_x_expr(ys_pts, sh, out_h)
+    elif sh > out_h:
+        # Zoom ohne vertikale Bewegung: Gesicht auf die mittlere Höhe des Motivs legen
+        my = sorted(y for _, y in ys_pts)[len(ys_pts) // 2]
+        y_expr = str(int(max(0, min(sh - out_h, my * sh - out_h / 2))))
+    else:
+        y_expr = str(y_mid)
+    info.update(track_applied=True, track_points=len(xs_pts), track_vertical=vertical)
+    return f"scale={sw}:{sh},crop={out_w}:{out_h}:x='{x_expr}':y='{y_expr}'", info

@@ -429,6 +429,7 @@ class StreamService:
             raise StudioError("validation_error", "Bitte mindestens ein Highlight wählen.")
         opts = {"reframe_mode": options.get("reframe_mode") if options.get("reframe_mode") in
                 ("smart", "center", "face", "track") else "smart",
+                "track_zoom": max(1.0, min(2.0, float(options.get("track_zoom") or 1.0))),
                 "remove_silence": bool(options.get("remove_silence", True)),
                 "caption_mode": "karaoke" if options.get("caption_mode", "karaoke") == "karaoke" else "standard",
                 "caption_style": options.get("caption_style") if options.get("caption_style") in
@@ -467,7 +468,8 @@ class StreamService:
                 out = os.path.join(job_dir, f"clip_{i:02d}_score{int(sc)}.mp4")
                 render_clip(src, clip, out, settings, remove_silence=p["remove_silence"],
                             caption_mode=p["caption_mode"], caption_style=p["caption_style"],
-                            reframe_mode=p["reframe_mode"], progress=progress)
+                            reframe_mode=p["reframe_mode"], progress=progress,
+                            track_zoom=p.get("track_zoom", 1.0))
                 clip.output_path = out
                 try:
                     clip.content_package, _ = generate_content_package(clip, settings, language="de")

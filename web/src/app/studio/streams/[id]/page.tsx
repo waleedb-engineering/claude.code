@@ -50,7 +50,7 @@ export default function StreamDetailPage() {
   const [selected, setSelected] = useState<string[]>([]);
   const [bounds, setBounds] = useState<Record<string, { start: number; end: number }>>({});
   const [preview, setPreview] = useState<Record<string, string>>({});
-  const [opts, setOpts] = useState({ reframe_mode: "smart", remove_silence: true });
+  const [opts, setOpts] = useState({ reframe_mode: "smart", remove_silence: true, track_zoom: 1 });
   const [jobId, setJobId] = useState<string | null>(null);
   const [live, setLive] = useState({ channel: "", recording_path: "", youtube_video: "" });
   const [liveState, setLiveState] = useState<Awaited<ReturnType<typeof studio.liveState>> | null>(null);
@@ -460,6 +460,18 @@ export default function StreamDetailPage() {
                 <option value="center">Mitte</option>
               </select>
             </div>
+            {opts.reframe_mode === "track" && (
+              <div>
+                <label htmlFor="stz" className={labelCls}>
+                  Nähe beim Verfolgen
+                </label>
+                <select id="stz" className={inputCls} value={opts.track_zoom} onChange={(e) => setOpts({ ...opts, track_zoom: Number(e.target.value) })}>
+                  <option value={1}>normal</option>
+                  <option value={1.3}>näher (1,3×)</option>
+                  <option value={1.6}>nah (1,6×, auch vertikal)</option>
+                </select>
+              </div>
+            )}
             <label className="flex items-center gap-2 text-sm text-neutral-300">
               <input type="checkbox" checked={opts.remove_silence} onChange={(e) => setOpts({ ...opts, remove_silence: e.target.checked })} />
               {t("st.silence")}

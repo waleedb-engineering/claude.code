@@ -221,6 +221,7 @@ def render_clip(
     brand_overrides: dict | None = None,
     progress: LogFn | None = None,
     focus_points: list | None = None,
+    track_zoom: float = 1.0,
 ) -> RenderInfo:
     """Rendert einen einzelnen Clip. Gibt RenderInfo zurück.
 
@@ -245,7 +246,7 @@ def render_clip(
         media = probe(video_path)
         crop_filter, reframe_info = plan_reframe(
             video_path, clip.start, clip.end,
-            media.width, media.height, out_w, out_h, reframe_mode, focus_points,
+            media.width, media.height, out_w, out_h, reframe_mode, focus_points, track_zoom,
         )
     except Exception as exc:  # noqa: BLE001 — Reframe darf Export nie blocken
         from .reframe import center_crop_filter

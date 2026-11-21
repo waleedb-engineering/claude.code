@@ -95,3 +95,67 @@ def test_track_with_silence_removal_in_clip_render(tmp_path):
     info = probe(out)
     assert clip.reframe_info["applied_mode"] == "track" and clip.reframe_info["track_applied"]
     assert info.width * 16 == info.height * 9 and 5.0 < info.duration < 7.6, info.duration
+
+
+def _scene_video(path, overlays, dur=8, size="640x360"):
+    """overlays: [(scale, x_expr, y_expr, enable_expr|None)] — Gesichter auf grauem Grund."""
+    args = ["ffmpeg", "-y", "-v", "error", "-f", "lavfi", "-i", f"color=c=0x707070:s={size}:r=15:d={dur}"]
+    chain, prev = [], "[0:v]"
+    for i, (sc, x, y, en) in enumerate(overlays):
+        args += ["-loop", "1", "-i", LENA]
+        chain.append(f"[{i + 1}:v]scale={sc}:{sc}[f{i}]")
+        en_s = f":enable='{en}'" if en else ""
+        chain.append(f"{prev}[f{i}]overlay=x='{x}':y='{y}':shortest=1{en_s}[v{i}]")
+        prev = f"[v{i}]"
+    args += ["-filter_complex", ";".join(chain), "-map", prev, "-t", str(dur), "-c:v", "libx264",
+             "-preset", "ultrafast", "-pix_fmt", "yuv420p", path]
+    subprocess.run(args, check=True)
+    return path
+
+
+def _face_xy(src, flt, t):
+    import cv2
+    tmp = src + f".{t}.png"
+    subprocess.run(["ffmpeg", "-y", "-v", "error", "-i", src, "-vf", flt, "-ss", str(t), "-frames:v", "1", tmp],
+                   check=True)
+    faces = reframe._detector()[1](cv2.imread(tmp))
+    f = max(faces, key=lambda f: f[2]) if faces else None
+    return (f[0], f[1]) if f else None
+
+
+def test_main_subject_beats_brief_large_decoy(tmp_path):
+    # großes Gesicht nur 0–1,5 s oben rechts, Hauptmotiv bewegt sich die ganze Zeit
+    src = _scene_video(str(tmp_path / "two.mp4"), [
+        (110, "40+50*t", "140", None),
+        (170, "450", "20", "lt(t,1.5)")])
+    flt, info = reframe.plan_reframe(src, 0, 8, 640, 360, 202, 360, "track")
+    assert info["track_applied"] and info["track_candidates"] >= 2, info
+    for t in (0.5, 5.0, 7.0):
+        xy = _face_xy(src, flt, t)
+        assert xy and abs(xy[0] - 0.5) < 0.22, (t, xy)
+
+
+def test_vertical_tracking_with_zoom(tmp_path):
+    # Gesicht wandert von oben nach unten; mit Zoom 1,6 entsteht vertikaler Spielraum
+    src = _scene_video(str(tmp_path / "vert.mp4"), [(90, "275", "10+28*t", None)])
+    flt, info = reframe.plan_reframe(src, 0, 8, 640, 360, 202, 360, "track", track_zoom=1.6)
+    assert info["track_applied"] and info["track_vertical"], info
+    for t in (1.0, 7.0):
+        xy = _face_xy(src, flt, t)
+        assert xy and abs(xy[1] - 0.5) < 0.22, (t, xy)
+    static, _ = reframe.plan_reframe(src, 0, 8, 640, 360, 202, 360, "smart")
+    ends = [_face_xy(src, static, t) for t in (1.0, 7.0)]
+    assert any(e is None or abs(e[1] - 0.5) > 0.25 for e in ends), ends
+
+
+def test_realistic_motion_is_smooth(tmp_path):
+    # Beschleunigung, Stillstand, Zittern: sin-Bahn mit Pause und 3-px-Wackeln
+    src = _scene_video(str(tmp_path / "real.mp4"), [
+        (120, "260+200*sin(t*0.9)*gt(t,2)+3*sin(t*37)", "120+4*sin(t*29)", None)], dur=9)
+    flt, info = reframe.plan_reframe(src, 0, 9, 640, 360, 202, 360, "track")
+    assert info["track_applied"], info
+    pts = reframe.smooth_track([(t, x, c) for t, x, c, _ in reframe.track_faces(src, 0, 9)["samples"]], 9)
+    for (t0, x0), (t1, x1) in zip(pts, pts[1:]):
+        assert abs(x1 - x0) <= reframe.MAX_PAN * (t1 - t0) + 1e-6
+    hits = [_face_xy(src, flt, t) for t in (1.0, 3.5, 6.0, 8.5)]
+    assert sum(1 for h in hits if h and abs(h[0] - 0.5) < 0.3) >= 3, hits
