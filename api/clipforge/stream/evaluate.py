@@ -76,6 +76,10 @@ def evaluate(predicted: list[dict], labels: list[dict], tolerance: float = 5.0, 
     contained = [p["start"] <= g["start"] + 0.5 and p["end"] >= g["end"] - 0.5 for p, g in pairs if g]
     start_err = [p["start"] - g["start"] for p, g in pairs if g]
     end_err = [p["end"] - g["end"] for p, g in pairs if g]
+    # Duplikate: unzugeordnete Vorhersagen, die ein bereits getroffenes Ereignis erneut treffen
+    hit_labels = [g for _, g in pairs if g]
+    duplicates = sum(1 for p, g in pairs if not g and any(
+        h["start"] - tolerance <= p["t"] <= h["end"] + tolerance for h in hit_labels))
     ranked = sorted(pairs, key=lambda x: -float(x[0].get("score", 0)))
     p_at = {f"p@{k}": round(sum(1 for _, g in ranked[:k] if g) / k, 3) for k in ks if len(ranked) >= k}
     return {
@@ -86,6 +90,10 @@ def evaluate(predicted: list[dict], labels: list[dict], tolerance: float = 5.0, 
         "event_fully_contained": round(sum(contained) / len(contained), 3) if contained else None,
         "start_error_mean_s": round(statistics.fmean(start_err), 2) if start_err else None,
         "end_error_mean_s": round(statistics.fmean(end_err), 2) if end_err else None,
+        "start_error_abs_mean_s": round(statistics.fmean(abs(x) for x in start_err), 2) if start_err else None,
+        "end_error_abs_mean_s": round(statistics.fmean(abs(x) for x in end_err), 2) if end_err else None,
+        "duplicates": duplicates, "duplicate_rate": round(duplicates / len(pairs), 3) if pairs else 0.0,
+        "missed_rate": round(fn / len(labels), 3) if labels else 0.0,
         "tolerance_s": tolerance,
         "missed": [{"start": g["start"], "end": g["end"], "label": g["label"]}
                    for g in labels if all(g is not m for _, m in pairs)],
@@ -101,7 +109,8 @@ def aggregate(results: list[dict]) -> dict:
     rec = tp / (tp + fn) if tp + fn else 0.0
     offs = [r["time_offset_mean_s"] for r in results if r["time_offset_mean_s"] is not None]
     cont = [r["event_fully_contained"] for r in results if r["event_fully_contained"] is not None]
-    return {"cases": len(results), "tp": tp, "fp": fp, "fn": fn, "precision": round(prec, 3),
+    dup = sum(r.get("duplicates", 0) for r in results)
+    return {"cases": len(results), "tp": tp, "fp": fp, "fn": fn, "duplicates": dup, "precision": round(prec, 3),
             "recall": round(rec, 3), "f1": round(2 * prec * rec / (prec + rec), 3) if prec + rec else 0.0,
             "time_offset_mean_s": round(statistics.fmean(offs), 2) if offs else None,
             "event_fully_contained": round(statistics.fmean(cont), 3) if cont else None}
@@ -110,12 +119,14 @@ def aggregate(results: list[dict]) -> dict:
 # ------------------------------------------------------------- Detektion
 def detect(measured: dict, chat: list[ChatMessage] | None, *, weights: dict | None = None,
            max_clips: int = 8, pre: float = 10.0, post: float = 8.0, min_len: float = 12.0,
-           max_len: float = 60.0, chat_delay: float | None = None) -> list[dict]:
+           max_len: float = 60.0, chat_delay: float | None = None, audio_events_mode: str = "explain") -> list[dict]:
     """Nur Scoring + Grenzen auf gespeicherten Signalen (ohne Transkript) — schnell."""
     duration = float(measured["duration"])
     chat_ps = per_second(chat, duration) if chat else None
     tl = scoring.score_timeline(duration, chat=chat_ps, audio=measured.get("audio"),
-                                video=measured.get("video"), chat_delay=chat_delay, weights=weights)
+                                video=measured.get("video"), chat_delay=chat_delay, weights=weights,
+                                audio_events=measured.get("audio_events") if audio_events_mode != "off" else None,
+                                events_in_ranking=audio_events_mode == "rank")
     cands = scoring.pick_candidates(tl, chat=chat_ps, max_count=max_clips * 2)
     clips = []
     for c in cands:
@@ -227,13 +238,16 @@ def main(argv=None) -> int:
     ap.add_argument("--tolerance", type=float, default=5.0)
     ap.add_argument("--max-clips", type=int, default=8)
     ap.add_argument("--tune", action="store_true", help="Gruppengewichte per Rastersuche anpassen")
+    ap.add_argument("--audio-events", choices=["off", "explain", "rank"], default="explain")
+    ap.add_argument("--compare-audio-events", action="store_true",
+                    help="A/B: Audio-Ereignisse im Ranking ('rank') gegen nur erklärend ('explain')")
     ap.add_argument("--json", help="Ergebnis zusätzlich als JSON speichern")
     a = ap.parse_args(argv)
     names = sorted(f[: -len(".labels.json")] for f in os.listdir(a.folder) if f.endswith(".labels.json"))
     cases = [_load_case(a.folder, n, measure) for n in names]
     rows = []
     for c in cases:
-        pred = detect(c["measured"], c["chat"], max_clips=a.max_clips)
+        pred = detect(c["measured"], c["chat"], max_clips=a.max_clips, audio_events_mode=a.audio_events)
         r = evaluate(pred, c["labels"], a.tolerance)
         rows.append(r)
         r["timing"] = c["timing"]
@@ -242,7 +256,18 @@ def main(argv=None) -> int:
         print(f"{c['name']}{tag}: P={r['precision']:.2f} R={r['recall']:.2f} F1={r['f1']:.2f} "
               f"Δt={r['time_offset_mean_s']} s vollständig={r['event_fully_contained']} {c['timing']}")
     out = {"per_case": dict(zip(names, rows)), "total": aggregate(rows), "peak_rss_mb": _peak_rss_mb()}
-    print("Gesamt:", out["total"])
+    # synthetische und echte Aufnahmen NIE zusammen berichten
+    for label, flag in (("synthetisch", True), ("echt", False)):
+        grp = [r for c, r in zip(cases, rows) if c["synthetic"] == flag]
+        if grp:
+            out[f"total_{'synthetic' if flag else 'real'}"] = aggregate(grp)
+            print(f"Gesamt {label}:", out[f"total_{'synthetic' if flag else 'real'}"])
+    if a.compare_audio_events:
+        other = "explain" if a.audio_events == "rank" else "rank"
+        alt = [evaluate(detect(c["measured"], c["chat"], max_clips=a.max_clips, audio_events_mode=other),
+                        c["labels"], a.tolerance) for c in cases]
+        out[f"audio_events_{other}"] = aggregate(alt)
+        print(f"Audio-Ereignisse '{other}':", out[f"audio_events_{other}"])
     if a.tune:
         out["tuning"] = tune(cases, tolerance=a.tolerance, max_clips=a.max_clips)
         print("Tuning:", out["tuning"])

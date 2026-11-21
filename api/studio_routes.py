@@ -83,6 +83,8 @@ class ProjectPatch(BaseModel):
     visuals: dict[str, Any] | None = None
     options: dict[str, Any] | None = None
     transitions: dict[str, Any] | None = None
+    audio: dict[str, Any] | None = None
+    timeline: dict[str, Any] | None = None
     budget_limit_usd: float | None = Field(default=None, ge=0, le=10000)
 
 
@@ -151,11 +153,12 @@ class StreamCreate(BaseModel):
 class StreamAnalyze(BaseModel):
     keywords: list[str] = Field(default_factory=list, max_length=20)
     chat_delay: float | None = Field(default=None, ge=0, le=30)
-    max_clips: int = Field(default=8, ge=1, le=20)
+    max_clips: int = Field(default=8, ge=1, le=60)
     pre: float = Field(default=10, ge=2, le=30)
     post: float = Field(default=8, ge=2, le=30)
     max_len: float = Field(default=60, ge=10, le=180)
     min_len: float = Field(default=12, ge=3, le=60)
+    audio_events: Literal["off", "explain", "rank"] = "explain"
     transcribe: bool = True
 
 
@@ -164,6 +167,28 @@ class HighlightPatch(BaseModel):
     end: float | None = None
     title: str | None = None
     variant: Literal["short", "balanced", "context"] | None = None
+
+
+class TimelineOps(BaseModel):
+    ops: list[dict] = Field(min_length=1, max_length=50)
+    expected_version: int | None = None
+
+
+class LibraryPatch(BaseModel):
+    name: str | None = None
+    tags: list[str] | None = None
+    kind: str | None = None
+    provenance: dict | None = None
+
+
+class LibraryUse(BaseModel):
+    project_id: str
+
+
+class RenderReview(BaseModel):
+    checklist: dict[str, bool] = Field(default_factory=dict)
+    verdict: Literal["approved", "changes_requested"]
+    note: str = ""
 
 
 class StreamLabels(BaseModel):
@@ -189,7 +214,7 @@ class SkillToggle(BaseModel):
 
 class AgentMessage(BaseModel):
     message: str
-    engine: Literal["rules", "ollama", "anthropic", "openai"] = "rules"
+    engine: Literal["rules", "ollama", "anthropic", "openai", "gemini"] = "rules"
     confirm_cost: bool = False
 
 
@@ -209,7 +234,8 @@ class StreamLive(BaseModel):
 
 class StreamRender(BaseModel):
     ids: list[str] = Field(min_length=1, max_length=20)
-    reframe_mode: Literal["smart", "center", "face"] = "smart"
+    reframe_mode: Literal["smart", "center", "face", "track"] = "smart"
+    track_zoom: float = Field(default=1.0, ge=1.0, le=2.0)
     remove_silence: bool = True
     caption_mode: Literal["karaoke", "standard"] = "karaoke"
     caption_style: Literal["clean", "high_energy"] = "high_energy"
@@ -735,6 +761,46 @@ def init_studio(app: FastAPI, registry, youtube_status=None,
     def media_upload(pid: str, file: UploadFile = File(...)) -> dict:
         return svc.upload_media(pid, file.filename or "", file.file)
 
+    # ------------------------------------------------------------ Mediathek
+    @r.get("/library")
+    def library_list(q: str = "", kind: str | None = None, tag: str | None = None) -> dict:
+        from clipforge.studio import library
+        items = library.search(q, kind, tag)
+        tags = sorted({t for e in library.search() for t in e["tags"]})
+        return {"items": items, "tags": tags, "kinds": library.KINDS}
+
+    @r.post("/library", status_code=201)
+    def library_add(file: UploadFile = File(...), kind: str | None = Form(default=None),
+                    tags: str = Form(default=""), source: str = Form(default="upload"),
+                    author: str = Form(default=""), url: str = Form(default=""),
+                    license_name: str = Form(default=""), license_url: str = Form(default="")) -> dict:
+        return {"item": svc.library_upload(file.filename or "", file.file, kind=kind or None, tags=tags,
+                                           provenance={"source": source, "author": author, "url": url,
+                                                       "license": {"name": license_name, "url": license_url}})}
+
+    @r.patch("/library/{eid}")
+    def library_patch(eid: str, req: LibraryPatch) -> dict:
+        from clipforge.studio import library
+        return {"item": library.update(eid, {k: v for k, v in req.model_dump().items() if v is not None})}
+
+    @r.delete("/library/{eid}")
+    def library_delete(eid: str, force: bool = False) -> dict:
+        from clipforge.studio import library
+        return library.delete(eid, force)
+
+    @r.get("/library/{eid}/file")
+    def library_file(eid: str):
+        from clipforge.studio import library
+        return FileResponse(library.file_path(eid))
+
+    @r.post("/library/{eid}/use")
+    def library_use(eid: str, req: LibraryUse) -> dict:
+        return svc.library_use(eid, req.project_id)
+
+    @r.post("/projects/{pid}/media/{name}/to-library", status_code=201)
+    def media_to_library(pid: str, name: str) -> dict:
+        return {"item": svc.library_from_project(pid, name)}
+
     @r.get("/projects/{pid}/media/{name}")
     def media_file(pid: str, name: str):
         return FileResponse(svc.media_path(pid, name))
@@ -891,6 +957,14 @@ def init_studio(app: FastAPI, registry, youtube_status=None,
         from clipforge.stream.scoring import DEFAULT_WEIGHTS
         return {"default": DEFAULT_WEIGHTS, "tuned": streams.tuned_weights()}
 
+    @r.get("/stream-weights/compare")
+    def stream_weights_compare() -> dict:
+        return streams.compare_weights()
+
+    @r.post("/stream-weights/rollback")
+    def stream_weights_rollback() -> dict:
+        return {"tuned": streams.rollback_weights()}
+
     @r.delete("/stream-weights")
     def stream_weights_reset() -> dict:
         streams.reset_weights()
@@ -930,6 +1004,26 @@ def init_studio(app: FastAPI, registry, youtube_status=None,
     # ------------------------------------------------------------ Editor-Agent
     agent = studio.agent
 
+    @r.get("/system/transcription")
+    def system_transcription() -> dict:
+        from clipforge.config import get_settings
+        from clipforge.transcribe import transcription_status
+        return transcription_status(get_settings())
+
+    @r.get("/system/hwaccel")
+    def system_hwaccel(benchmark: bool = False) -> dict:
+        from clipforge import hwaccel
+        from clipforge.studio.tasks import check_disk_space
+        out = {**hwaccel.detect(), "selected": hwaccel.selected_encoder(),
+               "setting": os.environ.get("CLIPFORGE_HWACCEL", "off")}
+        try:
+            out["disk"] = check_disk_space()
+        except StudioError as exc:
+            out["disk"] = {"error": exc.message, **(exc.details or {})}
+        if benchmark:
+            out["benchmark"] = hwaccel.benchmark(5, "1280x720")
+        return out
+
     @r.get("/agent/ollama")
     def agent_ollama() -> dict:
         from clipforge.agent import ollama
@@ -959,6 +1053,14 @@ def init_studio(app: FastAPI, registry, youtube_status=None,
     @r.post("/agent/{kind}/{target}/{entry_id}/execute")
     def agent_execute(kind: str, target: str, entry_id: str, req: AgentExecute) -> dict:
         return {"message": agent.execute(kind, target, entry_id, req.confirm)}
+
+    @r.post("/agent/{kind}/{target}/{entry_id}/retry")
+    def agent_retry(kind: str, target: str, entry_id: str, req: AgentExecute) -> dict:
+        return {"message": agent.retry(kind, target, entry_id, req.confirm)}
+
+    @r.post("/agent/{kind}/{target}/{entry_id}/cancel")
+    def agent_cancel(kind: str, target: str, entry_id: str) -> dict:
+        return {"message": agent.cancel(kind, target, entry_id)}
 
     @r.post("/agent/{kind}/{target}/{entry_id}/discard")
     def agent_discard(kind: str, target: str, entry_id: str) -> dict:
@@ -1106,6 +1208,19 @@ def init_studio(app: FastAPI, registry, youtube_status=None,
             return FileResponse(path, media_type="video/mp4",
                                 filename=f"clipforge_studio_{render_id}.mp4")
         return FileResponse(path, media_type="video/mp4")
+
+    @r.post("/projects/{pid}/timeline/ops")
+    def project_timeline_ops(pid: str, req: TimelineOps) -> dict:
+        return svc.timeline_ops(pid, req.ops, req.expected_version)
+
+    @r.put("/projects/{pid}/renders/{render_id}/review")
+    def render_review(pid: str, render_id: str, req: RenderReview, request: Request) -> dict:
+        return {"review": svc.review_render(pid, render_id, req.checklist, req.verdict, req.note,
+                                            getattr(request.state, "user", None))}
+
+    @r.get("/projects/{pid}/renders/{render_id}/base")
+    def render_base(pid: str, render_id: str):
+        return FileResponse(svc.render_base_file(pid, render_id), media_type="video/mp4")
 
     @r.post("/projects/{pid}/renders/{render_id}/thumbnails")
     def render_thumbnails(pid: str, render_id: str) -> dict:

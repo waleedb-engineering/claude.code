@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { tDyn, useLocale, useT, type TKey } from "@/lib/i18n";
 import { errorMessage, studio, type Overview, type ProjectSummary } from "@/lib/studio";
+import Onboarding from "@/components/studio/Onboarding";
 import { ErrorBox, Loading, Pill, btnCls, cardCls, fmtDate, primaryCls } from "@/components/studio/ui";
 
 export default function StudioDashboard() {
@@ -54,6 +55,8 @@ export default function StudioDashboard() {
           + {t("dash.new")}
         </Link>
       </div>
+
+      <Onboarding projects={projects} />
 
       <ErrorBox message={error} />
 

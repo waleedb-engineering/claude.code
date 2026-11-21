@@ -19,7 +19,7 @@ from ..models import Word
 from . import scoring, signals
 from .chat import ChatMessage, per_second
 
-SIGNAL_VERSION = 1
+SIGNAL_VERSION = 2  # 2: Audio-Merkmale + Ereignis-Klassifikation
 
 
 def _transcribe_window(path: str, start: float, end: float, transcriber, settings) -> list[Word]:
@@ -43,8 +43,10 @@ def measure(path: str, *, progress=None, should_cancel=None) -> dict:
     audio = signals.audio_features(path, should_cancel) if info.has_audio else None
     log("Video-Signale werden gemessen …")
     video = signals.video_features(path, should_cancel)
+    from . import audio_events
+    events = audio_events.classify(audio) if audio and audio_events.enabled() else None
     return {"version": SIGNAL_VERSION, "duration": duration, "has_audio": bool(info.has_audio),
-            "audio": _to_lists(audio), "video": _to_lists(video)}
+            "audio": _to_lists(audio), "video": _to_lists(video), "audio_events": events}
 
 
 def _to_lists(d: dict | None) -> dict | None:
@@ -57,7 +59,8 @@ def analyze(path: str, *, chat: list[ChatMessage] | None = None, transcriber=Non
             keywords: list[str] | None = None, chat_delay: float | None = None,
             max_clips: int = 8, pre: float = 10.0, post: float = 8.0, max_len: float = 60.0,
             min_len: float = 12.0, weights: dict | None = None, measured: dict | None = None,
-            variants: bool = True, progress=None, should_cancel=None) -> dict:
+            variants: bool = True, audio_events_mode: str = "explain", progress=None,
+            should_cancel=None) -> dict:
     log = progress or (lambda _m: None)
     if measured is None or measured.get("version") != SIGNAL_VERSION:
         measured = measure(path, progress=progress, should_cancel=should_cancel)
@@ -65,11 +68,14 @@ def analyze(path: str, *, chat: list[ChatMessage] | None = None, transcriber=Non
         log("Gespeicherte Signal-Messung wird wiederverwendet …")
     duration = float(measured["duration"])
     audio, video = measured.get("audio"), measured.get("video")
+    events = measured.get("audio_events") if audio_events_mode in ("explain", "rank") else None
+    rank_events = audio_events_mode == "rank"
     chat_ps = per_second(chat, duration) if chat else None
 
     log("Erstes Scoring (Chat/Audio/Video) …")
     tl = scoring.score_timeline(duration, chat=chat_ps, audio=audio, video=video,
-                                keywords=keywords, chat_delay=chat_delay, weights=weights)
+                                keywords=keywords, chat_delay=chat_delay, weights=weights, audio_events=events,
+                                events_in_ranking=rank_events)
     first = scoring.pick_candidates(tl, chat=chat_ps, max_count=max_clips * 2)
 
     words: list[Word] = []
@@ -97,7 +103,7 @@ def analyze(path: str, *, chat: list[ChatMessage] | None = None, transcriber=Non
             log("Zweites Scoring mit Transkript …")
             tl = scoring.score_timeline(duration, chat=chat_ps, audio=audio, video=video,
                                         words=words, keywords=keywords, chat_delay=tl["chat_delay"],
-                                        weights=weights)
+                                        weights=weights, audio_events=events, events_in_ranking=rank_events)
     cands = scoring.pick_candidates(tl, chat=chat_ps, max_count=max_clips * 2)
     clips = []
     for c in cands:
@@ -122,6 +128,12 @@ def analyze(path: str, *, chat: list[ChatMessage] | None = None, transcriber=Non
         "chat_delay": tl["chat_delay"], "chat_delay_note": tl["chat_delay_note"],
         "chat_messages": len(chat or []), "transcribed_windows": transcribed,
         "clip_limits": {"min_len": min_len, "max_len": max_len, "pre": pre, "post": post},
+        "audio_events": {"used": bool(events), "mode": audio_events_mode,
+                         "method": "akustische Heuristik (nicht trainiert)",
+                         "heatmap": {k: [round(max(v[i:i + step]), 2) for i in range(0, len(v), step)]
+                                     for k, v in (events or {}).items() if k in ("laughter", "cheering",
+                                                                                 "applause", "screaming", "music")}}
+        if events else {"used": False, "mode": audio_events_mode},
         "heatmap": {"step": step, "score": [round(float(x), 1) for x in tl["score"][::step]]},
         "highlights": clips,
         "disclaimer": "Rangfolge aus messbaren Signalen — keine Viralitäts-Vorhersage.",

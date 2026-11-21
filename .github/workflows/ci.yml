@@ -18,10 +18,12 @@ jobs:
   backend:
     name: Backend (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
+    # macOS (Apple Silicon) zunächst nicht blockierend, bis die Läufe stabil grün sind
+    continue-on-error: ${{ matrix.os == 'macos-latest' }}
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest]
+        os: [ubuntu-latest, windows-latest, macos-latest]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -35,6 +37,12 @@ jobs:
       - name: FFmpeg (Windows)
         if: runner.os == 'Windows'
         run: choco install ffmpeg -y --no-progress
+      - name: FFmpeg (macOS)
+        if: runner.os == 'macOS'
+        # Homebrew-"ffmpeg" enthält seit 8.x kein libass/freetype mehr → Untertitel-Export scheitert.
+        run: |
+          brew install ffmpeg-full
+          echo "$(brew --prefix ffmpeg-full)/bin" >> "$GITHUB_PATH"
       - name: Abhängigkeiten
         run: |
           python -m pip install --upgrade pip
@@ -45,7 +53,14 @@ jobs:
         working-directory: api
         env:
           CLIPFORGE_TEST_MODELS_DIR: ${{ github.workspace }}/test_models
-        run: python -m pytest -q tests
+        run: python -m pytest -q -rs tests
+      - name: macOS — Startskript, Hardware-Encoder (echter Probelauf)
+        if: runner.os == 'macOS'
+        working-directory: api
+        run: |
+          bash -n ../scripts/start_local.sh
+          uname -m
+          python -c "import json; from clipforge import hwaccel; d = hwaccel.detect(); print(json.dumps(d, indent=1)); print(hwaccel.benchmark(5, '1280x720'))"
 
   frontend:
     name: Oberfläche (tsc, lint, build)

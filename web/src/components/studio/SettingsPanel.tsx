@@ -714,6 +714,18 @@ export default function SettingsPanel({ project, media, estimate, onChange, onMe
             {t("ed.cost")}: {estimate.total_usd.toFixed(2)} USD ({t("common.estimate")}) · {estimate.spent_usd.toFixed(2)} USD verbraucht
           </p>
         )}
+        {estimate && estimate.items.length > 0 && (
+          <ul className="space-y-1 text-xs text-neutral-300" aria-label="Kosten je Anbieter" data-testid="cost-items">
+            {estimate.items.map((it) => (
+              <li key={`${it.provider}-${it.what}`} className="rounded border border-neutral-800 p-1.5">
+                <span className="font-medium">{it.what}</span> · {it.provider}
+                {it.model ? ` (${it.model})` : ""} · ≈ {it.amount_usd.toFixed(2)} USD
+                {it.alternative && <span className="block text-emerald-300">Alternative: {it.alternative}</span>}
+              </li>
+            ))}
+            {estimate.variance_note && <li className="text-neutral-500">{estimate.variance_note}</li>}
+          </ul>
+        )}
       </div>
     </aside>
   );

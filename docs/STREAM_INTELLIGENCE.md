@@ -108,14 +108,39 @@ Kontext** (doppelter Vorlauf). Jede mit **Eignung 0–100** aus prüfbaren Krite
 15–45 s, Sprechanteil, Signalstärke) — ausdrücklich **keine** Reichweiten- oder
 Viralitätsprognose. Mindest- und Maximallänge sind je Analyse einstellbar.
 
-## Audio-Ereignis-Klassifikation (YAMNet)
+## Audio-Ereignisse (lokale Heuristik)
 
-Geprüft, nicht eingebaut: YAMNet (Apache-2.0) würde Lachen/Jubel/Schreie direkt
-erkennen. Das Modell liegt bei TF-Hub/Kaggle; beide Hosts sind in der
-Entwicklungsumgebung gesperrt, eine ONNX-Konvertierung ließ sich daher nicht
-prüfen. Bis dahin ersetzt die Heuristik „laut + hell“ (Lautheit ∧ Spektral-
-schwerpunkt) die Klassifikation. Nächster Schritt: ONNX-Export lokal erzeugen,
-Prüfsumme in den Modell-Katalog, Auswertung gegen markierte echte Streams.
+`stream/audio_events.py` berechnet je Sekunde aus derselben FFmpeg-Pipe zusätzliche
+Merkmale (spektrale Flachheit, Silbenmodulation 2–8 Hz, Regelmäßigkeit,
+Periodizität/Tonhöhe, Onsets, Gleichmaß) und daraus heuristische
+Wahrscheinlichkeiten für **Stille, Sprache, Musik, Lachen, Jubel, Applaus,
+Schreien**. Kein Mehraufwand messbar (weiterhin ~80× Echtzeit bei 360p).
+
+| Modus (`audio_events`) | Wirkung |
+|---|---|
+| `explain` (Standard) | Ereignisse erscheinen in den Begründungen und als Heatmap; Ranking unverändert |
+| `rank` | Ereignisse zählen im Score (Gewicht 0,10), laute **Musik** wird gedämpft (×0,3) — leiser, aber bedeutsamer Moment schlägt laute Musik (Test) |
+| `off` | aus (auch `CLIPFORGE_AUDIO_EVENTS=0`) |
+
+Warum `explain` Standard ist: Auf den synthetischen Testsätzen (10 min ×3, 60 min)
+war mit `rank` **keine** F1-Verbesserung messbar (0,833 bzw. 0,913 in beiden
+Modi). Ohne Nachweis auf echten Daten wird das Ranking nicht verändert. Prüfen:
+`python -m clipforge.stream.evaluate <ordner> --audio-events rank --compare-audio-events`.
+
+Grenzen: nicht trainiert, an synthetischen Signalen (und eSpeak-Sprache)
+abgestimmt; echte Lacher, Publikum und Musik können anders aussehen. Ein
+trainiertes Modell (YAMNet/PANNs als ONNX) ließ sich nicht prüfen, weil alle
+Modell-Hosts (TF-Hub, Kaggle, Zenodo, Hugging Face) in der Umgebung gesperrt sind.
+
+## Gesichts-Tracking
+
+Render-Modus `track` (Upload, Stream-Render): Gesicht alle 0,5 s erkennen (YuNet,
+sonst OpenCV-Haar), Motivbindung an die letzte Position, Lücken bis 2 s halten,
+Median gegen Ausreißer, Totzone 3 %, Tempolimit 0,35 Bildbreiten/s → stückweise
+lineare Kamerafahrt. Bewegt sich das Motiv kaum (< 6 % der Breite), bleibt es beim
+ruhigen statischen Zuschnitt. `manual` nimmt eigene Fokuspunkte. Der Crop liegt im
+Filtergraphen vor der Pausenentfernung (Quellzeit) — Bild, Ton und Untertitel
+bleiben synchron (Test).
 
 ## Status
 
@@ -129,6 +154,8 @@ Prüfsumme in den Modell-Katalog, Auswertung gegen markierte echte Streams.
 | Live: Warteschlange/Grenzen | real getestet (`test_stream_live_youtube.py`) |
 | Auswertung/Tuning/Varianten | real getestet; Qualität nur auf **synthetischem** Testsatz gemessen (`BENCHMARKS.md`) |
 | Fehlende/defekte Daten | real getestet: kaputtes Video, leerer/kaputter Chat, Video ohne Ton, Chat außerhalb der Videozeit |
+| Audio-Ereignisse | Funktion real getestet (synthetisch); Qualität auf echten Streams unbelegt |
+| Gesichts-Tracking | real getestet mit synthetisch bewegtem Gesicht (Haar und YuNet) |
 | Live: Schnitt aus wachsender Aufnahme | real getestet |
 | Transkript-Signale mit echtem Whisper | Logik getestet (Mock-Transkript); echtes Modell nicht in CI |
 | Qualität auf echten Streams | **nicht verifiziert** — braucht echte VODs + Chat-Exporte |

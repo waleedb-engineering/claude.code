@@ -18,7 +18,7 @@ type Props = {
 export default function AgentChat({ kind, targetId, beforeExecute, onChanged }: Props) {
   const t = useT();
   const [msgs, setMsgs] = useState<AgentMessage[]>([]);
-  const [engines, setEngines] = useState<{ id: string; label: string; ready: boolean; paid: boolean; hint?: string; cost_per_message_usd?: number }[]>([]);
+  const [engines, setEngines] = useState<{ id: string; label: string; ready: boolean; paid: boolean; hint?: string; cost_per_message_usd?: number | null; model?: string }[]>([]);
   const [engine, setEngine] = useState("rules");
   const [text, setText] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
@@ -58,7 +58,11 @@ export default function AgentChat({ kind, targetId, beforeExecute, onChanged }: 
     setError(null);
     let confirmCost = false;
     if (current?.paid) {
-      confirmCost = window.confirm(`${current.label}: ca. ${current.cost_per_message_usd ?? "?"} USD je Nachricht (Projektbudget). Senden?`);
+      confirmCost = window.confirm(
+        current.cost_per_message_usd != null
+          ? `${current.label}: ca. ${current.cost_per_message_usd} USD je Nachricht (Projektbudget). Senden?`
+          : `${current.label}: Kosten hängen von deinem Anbieter-Tarif ab (evtl. Gratis-Kontingent). Senden?`,
+      );
       if (!confirmCost) return;
     }
     setBusy(t("ag.thinking"));
@@ -130,7 +134,14 @@ export default function AgentChat({ kind, targetId, beforeExecute, onChanged }: 
                     return (
                       <li key={i}>
                         <code className="text-indigo-300">{s.tool}</code> {JSON.stringify(s.args)}
-                        {res && (res.ok ? <span className="text-emerald-300"> ✓ {res.change ?? ""}</span> : <span className="text-rose-300"> ✗ {res.error}</span>)}
+                        {res &&
+                          (res.ok ? (
+                            <span className="text-emerald-300"> ✓ {res.change ?? ""}</span>
+                          ) : res.status === "skipped" ? (
+                            <span className="text-neutral-500"> – übersprungen (vorheriger Schritt fehlgeschlagen)</span>
+                          ) : (
+                            <span className="text-rose-300"> ✗ {res.error}</span>
+                          ))}
                       </li>
                     );
                   })}
@@ -160,6 +171,42 @@ export default function AgentChat({ kind, targetId, beforeExecute, onChanged }: 
                   </div>
                 )}
                 {m.plan.status !== "pending" && <p className="text-[11px] text-neutral-500">{m.plan.undone ? t("ag.undone") : m.plan.status}</p>}
+                {m.plan.status === "partial" && !m.plan.undone && (
+                  <button
+                    type="button"
+                    className={btnCls}
+                    disabled={!!busy}
+                    onClick={async () => {
+                      setError(null);
+                      try {
+                        if (beforeExecute && !(await beforeExecute())) return;
+                        await studio.agentRetry(kind, targetId, m.id, true);
+                        await load();
+                        onChanged?.();
+                      } catch (err) {
+                        setError(errorMessage(err));
+                      }
+                    }}
+                  >
+                    ↻ Ab dem Fehler wiederholen
+                  </button>
+                )}
+                {(m.plan.results ?? []).some((r) => r.task_id) && m.plan.status !== "pending" && (
+                  <button
+                    type="button"
+                    className={btnCls}
+                    onClick={async () => {
+                      try {
+                        await studio.agentCancel(kind, targetId, m.id);
+                        await load();
+                      } catch (err) {
+                        setError(errorMessage(err));
+                      }
+                    }}
+                  >
+                    ■ Gestartete Aufgaben abbrechen
+                  </button>
+                )}
               </div>
             )}
           </div>

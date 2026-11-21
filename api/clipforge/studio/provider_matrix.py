@@ -28,7 +28,7 @@ KEYS = {
     "pexels": ("Stock-Medien", "0 (kostenloser Schlüssel)", "ca. 200 Anfragen/h", "eigene Mediathek"),
     "pixabay": ("Stock-Medien", "0 (kostenloser Schlüssel)", "ca. 100 Anfragen/min", "eigene Mediathek"),
     "youtube_data": ("Trends", "0 (Kontingent)", "10 000 Einheiten/Tag Standard", "manuelle Ideen"),
-    "gemini": ("LLM (noch ungenutzt)", "Gratis-Kontingent möglich", "je Modell", "–"),
+    "gemini": ("LLM (KI-Assistent, nur mit Bestätigung)", "Gratis-Kontingent möglich", "je Modell", "–"),
     "huggingface": ("Modell-Downloads (noch ungenutzt)", "0", "–", "–"),
     "elevenlabs": ("Stimme/Stimmklon", "Tarif", "Kontingent", "Piper"),
 }

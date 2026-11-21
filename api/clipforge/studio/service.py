@@ -26,7 +26,8 @@ from .projects import (
 )
 from .quality import pre_render_checks
 from .render import RenderCanceled, render_project, render_scene_preview
-from .storage import new_id, now_iso, read_json, require_id, safe_child, safe_filename, write_json_atomic
+from .storage import (new_id, now_iso, read_json, require_id, safe_child, safe_filename, studio_dir,
+                      write_json_atomic)
 from .tasks import TaskCanceled, TaskManager
 
 TEXT_WORKFLOWS = ("prompt", "script", "cinematic", "idea", "product_ad")
@@ -340,6 +341,58 @@ class StudioService:
             raise
         self.store.mutate(pid, lambda p: p["source"].update(file=name, file_meta=meta))
         return {"file": name, "kind": "source", **meta}
+
+    def timeline_ops(self, pid: str, ops: list[dict], expected_version: int | None) -> dict:
+        """Mehrere Timeline-Operationen atomar anwenden und mit Versionsschutz speichern."""
+        from . import timeline as tl_mod
+        project = self.store.load(pid)
+        if not isinstance(ops, list) or not 1 <= len(ops) <= 50:
+            raise StudioError("validation_error", "1–50 Operationen je Aufruf.")
+        tl = project.get("timeline") or tl_mod.empty()
+        results = []
+        for op in ops:
+            tl, info = tl_mod.apply_op(tl, op, self.store.dir(pid))
+            results.append(info)
+        version = project["version"] if expected_version is None else expected_version
+        saved = self.update_project(pid, {"timeline": tl}, version)
+        return {"project": saved, "results": results}
+
+    # ------------------------------------------------------------ Mediathek
+    def library_upload(self, filename: str, fileobj, *, kind: str | None, tags, provenance: dict) -> dict:
+        import tempfile
+        from . import library
+        ext = os.path.splitext(filename or "")[1].lower()
+        library.media_type(ext)
+        limit = 25 if ext in IMAGE_EXT else _env_mb("CLIPFORGE_MAX_UPLOAD_MB", 500)
+        fd, tmp = tempfile.mkstemp(suffix=ext, dir=os.path.join(studio_dir(), "library") if
+                                   os.path.isdir(os.path.join(studio_dir(), "library")) else None)
+        os.close(fd)
+        try:
+            save_upload(fileobj, tmp, limit * 1024 * 1024)
+            return library.add_file(tmp, filename, kind=kind, tags=tags, provenance=provenance, move=True)
+        finally:
+            if os.path.exists(tmp):
+                os.remove(tmp)
+
+    def library_use(self, eid: str, pid: str) -> dict:
+        """Kopiert einen Mediathek-Eintrag ins Projekt (gleiche Prüfung wie ein Upload)."""
+        from . import library
+        entry = library.get(eid)
+        with open(library.file_path(eid), "rb") as fh:
+            media = self.upload_media(pid, entry["name"], fh)
+        prov = entry.get("provenance") or {}
+        if prov.get("source") != "upload" or (prov.get("license") or {}).get("name"):
+            from .broll import set_media_meta
+            set_media_meta(self.store.dir(pid), media["name"], tags=entry.get("tags") or [],
+                           origin={"source": f"library:{prov.get('source')}", "author": prov.get("author"),
+                                   "page": prov.get("url"), "license": prov.get("license")})
+        library.record_use(eid, pid, media["name"])
+        return {"media": media, "library_id": eid}
+
+    def library_from_project(self, pid: str, name: str, tags=None) -> dict:
+        from . import library
+        path = self.media_path(pid, name)
+        return library.add_file(path, name, tags=tags, provenance={"source": "project"})
 
     def upload_media(self, pid: str, filename: str, fileobj) -> dict:
         self.store.load(pid)
@@ -1121,6 +1174,25 @@ class StudioService:
             raise StudioError("render_not_found", "Render nicht gefunden.", 404)
         return data
 
+    def review_render(self, pid: str, render_id: str, checklist: dict, verdict: str, note: str,
+                      user: str | None) -> dict:
+        """Menschliche Review-Stufe: Checkliste + Freigabe/Änderungswunsch am Render speichern."""
+        from ..output_quality import review_entry
+        rep = self.get_render(pid, render_id)
+        entry = review_entry(checklist, verdict, note, user)
+        rep.setdefault("reviews", []).append(entry)
+        rep["review"] = entry
+        write_json_atomic(os.path.join(self.store.dir(pid), "renders", f"{render_id}.json"), rep)
+        return entry
+
+    def render_base_file(self, pid: str, render_id: str) -> str:
+        """Szenenprogramm ohne Timeline-Spuren (Grundebene der Live-Vorschau)."""
+        require_id(render_id, "Render-ID")
+        path = os.path.join(self.store.dir(pid), "renders", f"{render_id}.base.mp4")
+        if not os.path.isfile(path):
+            raise StudioError("render_not_found", "Keine Grundebene zu diesem Render.", 404)
+        return path
+
     def render_file(self, pid: str, render_id: str) -> str:
         require_id(render_id, "Render-ID")
         path = os.path.join(self.store.dir(pid), "renders", f"{render_id}.mp4")
@@ -1239,7 +1311,9 @@ class StudioService:
         speed = max(0.5, min(2.0, float(speed or 1.0)))
         key = hashlib.sha256(
             f"{provider.id}|{choice['voice_id']}|{language}|{sample}|{speed}".encode()).hexdigest()[:20]
-        raw, out = os.path.join(pdir, key + ".raw"), os.path.join(pdir, key + ".mp3")
+        # Anbieter schreiben WAV (lokal) bzw. ihr eigenes Format — FFmpeg erkennt den Inhalt;
+        # die Endung muss aber ein Ausgabeformat benennen (macOS-`say` konvertiert per FFmpeg)
+        raw, out = os.path.join(pdir, key + ".src.wav"), os.path.join(pdir, key + ".mp3")
         if not os.path.isfile(out):
             from .errors import ProviderError
             try:

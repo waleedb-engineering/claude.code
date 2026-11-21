@@ -46,6 +46,7 @@ const DICT = {
   "nav.ideas": ["Ideen", "Ideas"],
   "nav.trends": ["Trends", "Trends"],
   "nav.streams": ["Streams", "Streams"],
+  "nav.brand": ["Marke", "Brand kit"],
   "st.title": ["Stream Intelligence", "Stream intelligence"],
   "st.hint": [
     "Findet Highlights in deinen Streams aus Chat, Ton, Bild und Sprache — mit Begründung. Keine Viralitäts-Vorhersage.",
@@ -141,6 +142,10 @@ const DICT = {
   "ed.focus.right": ["rechts", "Right"],
   "ed.sfxClear": ["entfernen", "remove"],
   "st.youtubeLive": ["YouTube-Live (Link/ID, API-Schlüssel nötig)", "YouTube Live (link/ID, API key required)"],
+  "st.audioEvents": ["Audio-Ereignisse (Lachen/Jubel/Applaus/Schreien)", "Audio events (laughter/cheering/applause/screaming)"],
+  "st.aeExplain": ["nur als Begründung (Standard)", "explanation only (default)"],
+  "st.aeRank": ["auch im Ranking (Musik gedämpft)", "also in ranking (music damped)"],
+  "st.aeOff": ["aus", "off"],
   "st.minLen": ["Min. Länge (s)", "Min length (s)"],
   "st.maxLen": ["Max. Länge (s)", "Max length (s)"],
   "st.variants": ["Varianten (Eignung = Heuristik, keine Reichweitenprognose)", "Variants (fit = heuristic, no reach prediction)"],

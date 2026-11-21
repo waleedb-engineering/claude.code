@@ -151,8 +151,13 @@ export default function ClipCard({
               ? "Center"
               : clip.reframe_info.applied_mode === "face"
                 ? "Face"
-                : "Smart"}
+                : clip.reframe_info.applied_mode === "track"
+                  ? "Tracking"
+                  : clip.reframe_info.applied_mode === "manual"
+                    ? "Manuell"
+                    : "Smart"}
           </span>
+          {clip.reframe_info.crop_strategy === "dynamic_track" && <span className="text-emerald-400">folgt dem Gesicht (geglättet)</span>}
           {clip.reframe_info.crop_strategy === "static_smart" && (
             <span className="text-emerald-400">
               auf Gesicht ausgerichtet ({clip.reframe_info.faces_detected_count})

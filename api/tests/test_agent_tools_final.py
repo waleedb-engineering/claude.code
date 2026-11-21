@@ -180,3 +180,137 @@ def test_stream_variant_tools(tmp_path):
     client.post(f"/api/studio/agent/stream/{sid}/{e['id']}/execute", json={"confirm": True})
     h = client.get(f"/api/studio/streams/{sid}").json()["analysis"]["highlights"][0]
     assert h["variant"] == "context"
+
+
+def test_timeline_tools_via_agent_and_ops_api(tmp_path):
+    """UI-Op-Endpunkt und Agent schreiben dieselbe Timeline (gleiche Funktion apply_op)."""
+    import subprocess
+    client, _ = make_client(str(tmp_path))
+    r = client.post("/api/studio/projects", json={"workflow": "script", "script": SCRIPT})
+    pid = r.json()["project"]["id"]
+    wait_task(client, r.json()["task_id"])
+    subprocess.run(["ffmpeg", "-y", "-v", "error", "-f", "lavfi", "-i", "color=c=blue:s=100x100:d=1",
+                    "-frames:v", "1", str(tmp_path / "logo.png")], check=True)
+    with open(tmp_path / "logo.png", "rb") as fh:
+        client.post(f"/api/studio/projects/{pid}/media", files={"file": ("logo.png", fh, "image/png")})
+    _run(client, pid, "Leg das Logo oben rechts drüber und blende es ein")
+    _run(client, pid, 'Text „Abonnieren!“ von 2 bis 5 Sekunden oben in gelb')
+    p = client.get(f"/api/studio/projects/{pid}").json()["project"]
+    kinds = {t["kind"]: t["items"] for t in p["timeline"]["tracks"]}
+    assert kinds["overlay"][0]["x"] == 0.82 and kinds["overlay"][0]["fade_in"] == 0.3
+    assert kinds["caption"][0] == {**kinds["caption"][0], "text": "Abonnieren!", "start": 2.0, "duration": 3.0,
+                                   "color": "#ffd400", "position": "top"}
+    # gleiche Änderung über den Op-Endpunkt der Oberfläche
+    logo = kinds["overlay"][0]["id"]
+    r = client.post(f"/api/studio/projects/{pid}/timeline/ops", json={"expected_version": p["version"], "ops": [
+        {"op": "set_keyframe", "item": logo, "prop": "scale", "t": 0, "v": 0.1},
+        {"op": "set_keyframe", "item": logo, "prop": "scale", "t": 1, "v": 0.3, "ease": "ease_out"},
+        {"op": "split", "item": logo, "at": 2.5}]})
+    assert r.status_code == 200, r.text
+    assert len(r.json()["results"]) == 3
+    stale = client.post(f"/api/studio/projects/{pid}/timeline/ops", json={"expected_version": p["version"], "ops": [
+        {"op": "delete", "item": logo}]})
+    assert stale.status_code == 409                         # Versionsschutz
+    bad = client.post(f"/api/studio/projects/{pid}/timeline/ops", json={"ops": [{"op": "rm_rf"}]})
+    assert bad.status_code == 400
+    out = client.post(f"/api/studio/agent/project/{pid}", json={"message": "x"}).json()["message"]
+    assert out["plan"]["status"] == "empty"
+
+
+def test_project_memory_and_gemini(tmp_path, monkeypatch):
+    """Gedächtnis je Projekt geht an den LLM-Planer; Gemini braucht Bestätigung + Schlüssel.
+    Gemini-Antworten sind hier NACHGEBILDET (kein echter Aufruf)."""
+    seen = {}
+
+    def fake(engine, system, user, tools):
+        seen["user"] = user
+        return [{"tool": "change_caption_style", "args": {"style": "bold"}}]
+    monkeypatch.setattr(planner, "LLM_CALL", fake)
+    client, _ = make_client(str(tmp_path))
+    r = client.post("/api/studio/projects", json={"workflow": "script", "script": SCRIPT})
+    pid = r.json()["project"]["id"]
+    wait_task(client, r.json()["task_id"])
+    _run(client, pid, "Mach die Untertitel oben")
+    monkeypatch.setenv("CLIPFORGE_OLLAMA_URL", "http://127.0.0.1:9")
+    r = client.post(f"/api/studio/agent/project/{pid}", json={"message": "Jetzt fetter", "engine": "gemini"})
+    assert r.status_code == 402 and "Tarif" in r.text              # nie still bezahlt
+    r = client.post(f"/api/studio/agent/project/{pid}", json={"message": "Jetzt fetter", "engine": "gemini",
+                                                                "confirm_cost": True})
+    assert r.status_code == 201, r.text
+    msg = r.json()["message"]
+    assert msg["plan"]["steps"][0]["tool"] == "change_caption_style"
+    assert "Bisheriger Verlauf" in seen["user"] and "Mach die Untertitel oben" in seen["user"]
+    assert "set_caption_appearance" in seen["user"]
+    # echter Gemini-Pfad ohne Test-Hook: Antwortformat parsen (nachgebildete HTTP-Antwort)
+    monkeypatch.setattr(planner, "LLM_CALL", None)
+    monkeypatch.setattr("clipforge.studio.credentials.secret", lambda n: "k" if n == "GEMINI_API_KEY" else None)
+    sent = {}
+
+    def http(url, body, headers, timeout=60):
+        sent.update(url=url, body=body, headers=headers)
+        return {"candidates": [{"content": {"parts": [
+            {"functionCall": {"name": "render_clips", "args": {"clips": [1, 2]}}}, {"text": "ok"}]}}]}
+    monkeypatch.setattr(planner, "_http_json", http)
+    calls, text = planner.llm_plan("gemini", "rendere 1 und 2", {}, "stream")
+    assert calls == [{"tool": "render_clips", "args": {"clips": [1, 2]}}] and text == "ok"
+    assert "key=" not in sent["url"] and sent["headers"]["x-goog-api-key"] == "k"
+    decl = next(d for d in sent["body"]["tools"][0]["functionDeclarations"] if d["name"] == "render_clips")
+    assert decl["parameters"]["properties"]["clips"]["items"] == {"type": "integer"}
+
+
+def test_memory_summarizes_long_history():
+    hist = []
+    for i in range(30):
+        hist.append({"role": "user", "text": f"Befehl {i}"})
+        hist.append({"role": "assistant", "plan": {"status": "executed", "steps": [{"tool": "trim_scene", "args": {}}]}})
+    mem = planner.memory_context(hist)
+    assert mem.startswith("Zusammenfassung früherer Schritte") and "trim_scene×" in mem
+    assert "Befehl 29" in mem and len(mem) <= 3000
+
+
+def test_step_status_retry_and_cancel(tmp_path):
+    client, _ = make_client(str(tmp_path))
+    r = client.post("/api/studio/projects", json={"workflow": "script", "script": SCRIPT,
+                                                  "voice": {"provider": "mock"}})
+    pid = r.json()["project"]["id"]
+    wait_task(client, r.json()["task_id"])
+    # Schritt 1 scheitert (keine Musik vorhanden) → Schritt 2 wird übersprungen, nicht still ausgeführt
+    e = _say(client, pid, "Füge Hintergrundmusik hinzu und normalisiere die Lautheit")
+    assert [s["tool"] for s in e["plan"]["steps"]] == ["add_background_music", "normalize_loudness"]
+    out = client.post(f"/api/studio/agent/project/{pid}/{e['id']}/execute", json={"confirm": True}).json()["message"]
+    st = [(r["tool"], r["status"]) for r in out["plan"]["results"]]
+    assert st == [("add_background_music", "failed"), ("normalize_loudness", "skipped")]
+    assert out["plan"]["status"] == "partial"
+    # Ursache beheben, dann ab dem fehlgeschlagenen Schritt wiederholen
+    with open(make_click_wav(str(tmp_path / "m.wav"), 2.0), "rb") as fh:
+        client.post(f"/api/studio/projects/{pid}/media", files={"file": ("m.wav", fh, "audio/wav")})
+    out = client.post(f"/api/studio/agent/project/{pid}/{e['id']}/retry", json={}).json()["message"]
+    assert out["plan"]["status"] == "done", [r.get("error") for r in out["plan"]["results"]]
+    assert out["plan"]["retries"] == 1
+    assert [r["status"] for r in out["plan"]["results"]] == ["ok", "ok"]
+    p = client.get(f"/api/studio/projects/{pid}").json()["project"]
+    assert p["music"]["track"] and p["audio"]["loudnorm"] is True
+    assert client.post(f"/api/studio/agent/project/{pid}/{e['id']}/retry", json={}).status_code == 409
+    # Render starten und über den Plan abbrechen
+    e2 = _say(client, pid, "Exportiere das Video")
+    out = client.post(f"/api/studio/agent/project/{pid}/{e2['id']}/execute", json={"confirm": True}).json()["message"]
+    tid = out["plan"]["results"][0]["task_id"]
+    c = client.post(f"/api/studio/agent/project/{pid}/{e2['id']}/cancel").json()["message"]
+    assert c["plan"]["canceled_tasks"][0]["task_id"] == tid
+    final = wait_task(client, tid, 300)
+    assert final["status"] in ("canceled", "succeeded")       # bereits fertig ist ebenfalls korrekt
+
+
+def test_unexpected_tool_error_is_reported_per_step(tmp_path, monkeypatch):
+    from clipforge.agent import tools
+    client, _ = make_client(str(tmp_path))
+    r = client.post("/api/studio/projects", json={"workflow": "script", "script": SCRIPT})
+    pid = r.json()["project"]["id"]
+    wait_task(client, r.json()["task_id"])
+
+    def boom(ctx, a):
+        raise RuntimeError("kaputt")
+    monkeypatch.setattr(tools.TOOLS["normalize_loudness"], "run", boom)
+    e = _say(client, pid, "Normalisiere die Lautheit")
+    out = client.post(f"/api/studio/agent/project/{pid}/{e['id']}/execute", json={}).json()["message"]
+    assert out["plan"]["results"][0]["status"] == "failed" and "RuntimeError" in out["plan"]["results"][0]["error"]

@@ -384,6 +384,7 @@ export default function UploadPage() {
           >
             <option value="smart">Automatisch / Smart</option>
             <option value="face">Gesicht / Face</option>
+            <option value="track">Gesicht verfolgen / Tracking</option>
             <option value="center">Mitte / Center</option>
           </select>
         </label>

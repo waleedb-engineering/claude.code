@@ -43,14 +43,14 @@ export default function StreamDetailPage() {
   const [error, setError] = useState<string | null>(null);
   const [upload, setUpload] = useState<number | null>(null);
   const [task, setTask] = useState<Task | null>(null);
-  const [params, setParams] = useState({ keywords: "", max_clips: 8, chat_delay: "", transcribe: true, min_len: 12, max_len: 60 });
+  const [params, setParams] = useState({ keywords: "", max_clips: 8, chat_delay: "", transcribe: true, min_len: 12, max_len: 60, audio_events: "explain" });
   const [evaluation, setEvaluation] = useState<StreamEvaluation | null>(null);
   const [missed, setMissed] = useState({ start: "", end: "" });
   const [tune, setTune] = useState<Awaited<ReturnType<typeof studio.tuneStreamWeights>> | null>(null);
   const [selected, setSelected] = useState<string[]>([]);
   const [bounds, setBounds] = useState<Record<string, { start: number; end: number }>>({});
   const [preview, setPreview] = useState<Record<string, string>>({});
-  const [opts, setOpts] = useState({ reframe_mode: "smart", remove_silence: true });
+  const [opts, setOpts] = useState({ reframe_mode: "smart", remove_silence: true, track_zoom: 1 });
   const [jobId, setJobId] = useState<string | null>(null);
   const [live, setLive] = useState({ channel: "", recording_path: "", youtube_video: "" });
   const [liveState, setLiveState] = useState<Awaited<ReturnType<typeof studio.liveState>> | null>(null);
@@ -173,7 +173,7 @@ export default function StreamDetailPage() {
           <label htmlFor="sm" className={labelCls}>
             {t("st.maxClips")}
           </label>
-          <input id="sm" type="number" min={1} max={20} className={inputCls} value={params.max_clips} onChange={(e) => setParams({ ...params, max_clips: Number(e.target.value) })} />
+          <input id="sm" type="number" min={1} max={60} className={inputCls} value={params.max_clips} onChange={(e) => setParams({ ...params, max_clips: Number(e.target.value) })} />
         </div>
         <div>
           <label htmlFor="smin" className={labelCls}>
@@ -193,6 +193,16 @@ export default function StreamDetailPage() {
           </label>
           <input id="sd" type="number" min={0} max={30} className={inputCls} value={params.chat_delay} onChange={(e) => setParams({ ...params, chat_delay: e.target.value })} />
         </div>
+        <div>
+          <label htmlFor="sae" className={labelCls}>
+            {t("st.audioEvents")}
+          </label>
+          <select id="sae" className={inputCls} value={params.audio_events} onChange={(e) => setParams({ ...params, audio_events: e.target.value })}>
+            <option value="explain">{t("st.aeExplain")}</option>
+            <option value="rank">{t("st.aeRank")}</option>
+            <option value="off">{t("st.aeOff")}</option>
+          </select>
+        </div>
         <label className="flex items-center gap-2 text-sm text-neutral-300 sm:col-span-3">
           <input type="checkbox" checked={params.transcribe} onChange={(e) => setParams({ ...params, transcribe: e.target.checked })} />
           {t("st.transcribe")}
@@ -211,6 +221,7 @@ export default function StreamDetailPage() {
                   transcribe: params.transcribe,
                   min_len: params.min_len,
                   max_len: params.max_len,
+                  audio_events: params.audio_events,
                 }),
               )
             }
@@ -443,11 +454,24 @@ export default function StreamDetailPage() {
                 {t("st.reframe")}
               </label>
               <select id="sr" className={inputCls} value={opts.reframe_mode} onChange={(e) => setOpts({ ...opts, reframe_mode: e.target.value })}>
-                <option value="smart">Smart (Gesicht/Bewegung)</option>
+                <option value="smart">Smart (fester Fokus)</option>
+                <option value="track">Gesicht verfolgen (geglättet)</option>
                 <option value="face">Gesicht</option>
                 <option value="center">Mitte</option>
               </select>
             </div>
+            {opts.reframe_mode === "track" && (
+              <div>
+                <label htmlFor="stz" className={labelCls}>
+                  Nähe beim Verfolgen
+                </label>
+                <select id="stz" className={inputCls} value={opts.track_zoom} onChange={(e) => setOpts({ ...opts, track_zoom: Number(e.target.value) })}>
+                  <option value={1}>normal</option>
+                  <option value={1.3}>näher (1,3×)</option>
+                  <option value={1.6}>nah (1,6×, auch vertikal)</option>
+                </select>
+              </div>
+            )}
             <label className="flex items-center gap-2 text-sm text-neutral-300">
               <input type="checkbox" checked={opts.remove_silence} onChange={(e) => setOpts({ ...opts, remove_silence: e.target.checked })} />
               {t("st.silence")}
