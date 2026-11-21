@@ -51,7 +51,7 @@ des Nutzers in dieser Umgebung nicht verifiziert werden konnten.
 | Backend lokal (Linux, mit freien Testmodellen) | **585 bestanden**, 4 übersprungen (Ollama-Live: nicht erreichbar → ehrlich übersprungen) |
 | Playwright E2E (Chromium) | alle bestanden, inkl. neuer Flows N (Live-Vorschau) und M (Evaluationsseite) |
 | `tsc` + ESLint | sauber |
-| GitHub Actions | `9b6a172`: Linux, Windows, E2E, Docker, Frontend grün; macOS 581/584 (die 3 Reste sind oben behoben, Ergebnis des Folgelaufs im PR) |
+| GitHub Actions | `58ee17c`: **alle Jobs grün, auch macOS (Apple Silicon)**; davor `9b6a172` macOS 581/584, `efd5a26` macOS 68 Fehler (libass) |
 
 ## 5. Performance
 
@@ -107,7 +107,7 @@ YouTube · Hardware-Kodierung · Lauf auf dem MacBook M3 Pro · LLM-Antwort-Stre
 
 ## 11. Nächste Schritte (genau)
 
-1. PR-Checks auf `9b6a172`+ prüfen; ist der macOS-Job grün, `continue-on-error` entfernen.
+1. macOS-Job ist auf `58ee17c` grün — nach 2–3 weiteren grünen Läufen `continue-on-error` entfernen (Eigentümer).
 2. Auf dem M3 Pro: `brew install ffmpeg-full`, `python scripts/clipforge_doctor.py`, `./scripts/start_local.sh`.
 3. Mit Freigabe: `ollama pull qwen2.5:7b`, dann `cd api && python -m pytest tests/test_ollama_live.py -v -rs`.
 4. Mit Freigabe: faster-whisper `small` laden, eine eigene Aufnahme transkribieren, Status unter Einstellungen prüfen.
