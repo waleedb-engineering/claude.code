@@ -979,6 +979,13 @@ def render_project(project: dict, project_dir: str, *, mode: str = "final",
     report["render_id"] = render_id
     from .quality import post_render_checks
     report["quality"] = post_render_checks(report)
+    try:
+        from ..output_quality import analyze as output_analyze
+        platform = (project.get("options") or {}).get("platform") or "generic"
+        report["output_checks"] = output_analyze(out, platform=platform if platform in (
+            "tiktok", "youtube_shorts", "instagram_reels", "x") else "generic")
+    except Exception as exc:  # noqa: BLE001 — Prüfung darf den Render nie scheitern lassen
+        report["output_checks"] = {"error": type(exc).__name__, "checks": [], "passed": None}
     write_json_atomic(os.path.join(rdir, f"{render_id}.json"), report)
     return report
 

@@ -22,6 +22,7 @@ import SettingsPanel from "@/components/studio/SettingsPanel";
 import SocialCopyPanel from "@/components/studio/SocialCopyPanel";
 import AgentChat from "@/components/studio/AgentChat";
 import TimelineEditor from "@/components/studio/TimelineEditor";
+import RenderQuality from "@/components/studio/RenderQuality";
 import Timeline from "@/components/studio/Timeline";
 import { ErrorBox, Loading, Notice, Pill, btnCls, cardCls, fmtDate, inputCls, primaryCls } from "@/components/studio/ui";
 
@@ -722,6 +723,7 @@ export default function EditorPage() {
                         ⚠ {w}
                       </p>
                     ))}
+                    <RenderQuality projectId={id} render={r} onSaved={() => void refresh(false)} />
                     <a href={studio.renderUrl(id, r.render_id, true)} className={btnCls}>
                       {t("ed.download")}
                     </a>

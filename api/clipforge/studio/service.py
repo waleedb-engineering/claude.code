@@ -1174,6 +1174,17 @@ class StudioService:
             raise StudioError("render_not_found", "Render nicht gefunden.", 404)
         return data
 
+    def review_render(self, pid: str, render_id: str, checklist: dict, verdict: str, note: str,
+                      user: str | None) -> dict:
+        """Menschliche Review-Stufe: Checkliste + Freigabe/Änderungswunsch am Render speichern."""
+        from ..output_quality import review_entry
+        rep = self.get_render(pid, render_id)
+        entry = review_entry(checklist, verdict, note, user)
+        rep.setdefault("reviews", []).append(entry)
+        rep["review"] = entry
+        write_json_atomic(os.path.join(self.store.dir(pid), "renders", f"{render_id}.json"), rep)
+        return entry
+
     def render_base_file(self, pid: str, render_id: str) -> str:
         """Szenenprogramm ohne Timeline-Spuren (Grundebene der Live-Vorschau)."""
         require_id(render_id, "Render-ID")

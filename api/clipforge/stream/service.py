@@ -476,6 +476,11 @@ class StreamService:
                 except Exception:  # noqa: BLE001 — Texte sind optional
                     clip.content_package = None
                 d = clip.to_dict()
+                try:
+                    from ..output_quality import analyze as output_analyze
+                    d["output_checks"] = output_analyze(out, platform="tiktok")
+                except Exception as exc:  # noqa: BLE001
+                    d["output_checks"] = {"error": type(exc).__name__, "checks": [], "passed": None}
                 d["stream"] = {"stream_id": sid, "highlight": h["id"], "chat_categories":
                                h.get("chat_categories"), "top_terms": h.get("top_terms")}
                 clips.append(d)

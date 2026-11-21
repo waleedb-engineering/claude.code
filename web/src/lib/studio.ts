@@ -318,6 +318,14 @@ export type RenderReport = {
   scene_id?: string;
   timeline?: Record<string, number>;
   base_file?: string;
+  output_checks?: {
+    platform: string;
+    passed: boolean | null;
+    warnings: number;
+    checks: { id: string; level: "ok" | "warn" | "fail"; message: string }[];
+    review_items: Record<string, string>;
+  };
+  review?: { checklist: Record<string, boolean>; verdict: "approved" | "changes_requested"; note: string; by: string; at: string };
 };
 
 export type MediaItem = {
@@ -864,6 +872,8 @@ export const studio = {
   quality: (id: string) => get<{ checks: QualityCheck[]; estimated_seconds: number; blocking: boolean }>(`/projects/${id}/quality`),
   render: (id: string, mode: "final" | "preview") =>
     post<{ task: Task }>(`/projects/${id}/render`, { mode }).then((d) => d.task),
+  reviewRender: (id: string, renderId: string, body: Record<string, unknown>) =>
+    request<{ review: unknown }>("PUT", `/projects/${id}/renders/${renderId}/review`, body),
   renderBaseUrl: (id: string, renderId: string) => `${API_BASE}/api/studio/projects/${id}/renders/${renderId}/base`,
   renderUrl: (id: string, renderId: string, download = false) =>
     `${API_BASE}/api/studio/projects/${id}/renders/${renderId}/file${download ? "?download=true" : ""}`,

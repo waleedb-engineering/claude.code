@@ -185,6 +185,12 @@ class LibraryUse(BaseModel):
     project_id: str
 
 
+class RenderReview(BaseModel):
+    checklist: dict[str, bool] = Field(default_factory=dict)
+    verdict: Literal["approved", "changes_requested"]
+    note: str = ""
+
+
 class StreamLabels(BaseModel):
     highlights: list[dict] = Field(default_factory=list, max_length=500)
 
@@ -1184,6 +1190,11 @@ def init_studio(app: FastAPI, registry, youtube_status=None,
     @r.post("/projects/{pid}/timeline/ops")
     def project_timeline_ops(pid: str, req: TimelineOps) -> dict:
         return svc.timeline_ops(pid, req.ops, req.expected_version)
+
+    @r.put("/projects/{pid}/renders/{render_id}/review")
+    def render_review(pid: str, render_id: str, req: RenderReview, request: Request) -> dict:
+        return {"review": svc.review_render(pid, render_id, req.checklist, req.verdict, req.note,
+                                            getattr(request.state, "user", None))}
 
     @r.get("/projects/{pid}/renders/{render_id}/base")
     def render_base(pid: str, render_id: str):
