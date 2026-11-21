@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import re
 import subprocess
 
 from .errors import StudioError
@@ -22,6 +23,13 @@ def run_ffmpeg(cmd: list[str], what: str, timeout: int = 1800) -> None:
     except OSError as exc:
         raise StudioError("ffmpeg_missing", "FFmpeg wurde nicht gefunden.", 503) from exc
     if proc.returncode != 0:
+        missing = re.search(r"No such filter: '([\w]+)'", proc.stderr or "")
+        if missing:
+            raise StudioError(
+                "ffmpeg_feature_missing",
+                f"{what}: Dem installierten FFmpeg fehlt der Filter '{missing.group(1)}' "
+                "(Untertitel/Text brauchen libass und freetype; macOS: brew install ffmpeg-full).", 500,
+                {"stderr_tail": proc.stderr[-600:]})
         raise StudioError(
             "ffmpeg_failed", f"{what} ist fehlgeschlagen.", 500,
             {"stderr_tail": proc.stderr[-600:]})

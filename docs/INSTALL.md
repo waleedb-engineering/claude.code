@@ -57,8 +57,22 @@ Hinweise:
 1. Programme (mit [Homebrew](https://brew.sh)):
 
    ```bash
-   brew install git python@3.13 node ffmpeg
+   brew install git python@3.13 node ffmpeg-full
    ```
+
+   **Wichtig:** Das Homebrew-Paket `ffmpeg` enthält seit Version 8 kein libass/freetype mehr —
+   damit scheitert jeder Export mit Untertiteln („No such filter: 'ass'“). `ffmpeg-full`
+   enthält beides. Prüfen und ggf. in den PATH aufnehmen:
+
+   ```bash
+   ffmpeg -hide_banner -filters | grep -wE "ass|drawtext"
+   ```
+
+   ```bash
+   echo 'export PATH="$(brew --prefix ffmpeg-full)/bin:$PATH"' >> ~/.zprofile && exec zsh -l
+   ```
+
+   `python scripts/clipforge_doctor.py` meldet fehlende Filter ebenfalls.
 
 2. Code holen und einrichten:
 
@@ -81,7 +95,7 @@ Hinweise:
 | Baustein | Empfehlung | Prüfen |
 |---|---|---|
 | Python | `python@3.13` aus Homebrew (arm64) | `python3 -c "import platform; print(platform.machine())"` → `arm64` |
-| FFmpeg | Homebrew-FFmpeg enthält **VideoToolbox** | `ffmpeg -hide_banner -encoders \| grep videotoolbox` |
+| FFmpeg | `ffmpeg-full` (libass, freetype, **VideoToolbox**) | `ffmpeg -hide_banner -encoders \| grep videotoolbox` |
 | Hardware-Kodierung | optional `CLIPFORGE_HWACCEL=auto` in `.env`; wird nur nach echtem Probelauf genutzt | `curl -s localhost:8000/api/studio/system/hwaccel?benchmark=true` |
 | Transkription | faster-whisper rechnet auf der **CPU** (CTranslate2 nutzt kein Metal): `CLIPFORGE_WHISPER_DEVICE=cpu`, `CLIPFORGE_WHISPER_COMPUTE=int8`, Modell `small` | Einstellungen → Transkription bzw. `/api/studio/system/transcription` |
 | Lokale KI (Ollama) | <https://ollama.com/download> installieren; bei 18 GB RAM (M3 Pro) `ollama pull qwen2.5:7b` (≈ 4,7 GB) | Einstellungen → KI-Assistent lokal → „Probelauf“; Live-Test: `cd api && python -m pytest tests/test_ollama_live.py -v -rs` |

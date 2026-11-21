@@ -117,12 +117,34 @@ def check_ffmpeg_tool(report: Report, name: str) -> None:
     path = shutil.which(name)
     if not path:
         hint = {"Windows": "winget install Gyan.FFmpeg, dann Terminal neu öffnen",
-                "Darwin": "brew install ffmpeg"}.get(platform.system(), "sudo apt install ffmpeg")
+                "Darwin": "brew install ffmpeg-full"}.get(platform.system(), "sudo apt install ffmpeg")
         report.add(FAIL, name, f"nicht gefunden — Rendering braucht dies ({hint})")
         return
     rc, out = _run([path, "-version"])
     first_line = out.splitlines()[0] if out else ""
     report.add(PASS if rc == 0 else WARN, name, first_line or path)
+    if name == "ffmpeg" and rc == 0:
+        check_ffmpeg_filters(report, path)
+
+
+# Filter, ohne die Untertitel/Texteinblendungen nicht gerendert werden können.
+# Das Homebrew-Paket ``ffmpeg`` (ab 8.x) enthält libass/freetype nicht mehr.
+REQUIRED_FILTERS = {"ass": "Untertitel (libass)", "drawtext": "Texteinblendungen (freetype)"}
+
+
+def check_ffmpeg_filters(report: Report, path: str) -> None:
+    rc, out = _run([path, "-hide_banner", "-filters"])
+    if rc != 0:
+        report.add(WARN, "FFmpeg-Filter", "Filterliste nicht lesbar")
+        return
+    names = {parts[1] for parts in (ln.split() for ln in out.splitlines()) if len(parts) > 2}
+    missing = [f"{f} ({why})" for f, why in REQUIRED_FILTERS.items() if f not in names]
+    if missing:
+        hint = {"Darwin": "brew install ffmpeg-full (und dessen bin/ vor PATH setzen)"}.get(
+            platform.system(), "FFmpeg-Build mit libass und freetype installieren")
+        report.add(FAIL, "FFmpeg-Filter", "fehlen: " + ", ".join(missing) + f" — {hint}")
+    else:
+        report.add(PASS, "FFmpeg-Filter", "ass, drawtext vorhanden")
 
 
 def _module_available(mod_name: str) -> bool:

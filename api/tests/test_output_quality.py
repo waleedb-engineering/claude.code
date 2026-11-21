@@ -79,3 +79,15 @@ def test_render_report_has_output_checks_and_review(tmp_path):
                     json={"verdict": "changes_requested", "checklist": {"audio_ok": True}, "note": "Musik zu laut"})
     assert ok.status_code == 200
     assert client.get(f"/api/studio/projects/{pid}").json()["renders"][0]["review"]["note"] == "Musik zu laut"
+
+
+def test_missing_ffmpeg_filter_gives_actionable_error(tmp_path):
+    """Fehlt einem FFmpeg-Build ein Filter (z. B. Homebrew ohne libass), nennt der Fehler die Ursache."""
+    import pytest
+    from clipforge.studio.audio import run_ffmpeg
+    from clipforge.studio.errors import StudioError
+    with pytest.raises(StudioError) as exc:
+        run_ffmpeg(["ffmpeg", "-hide_banner", "-f", "lavfi", "-i", "color=c=black:s=32x32:d=0.1",
+                    "-vf", "gibtesnicht_xyz", "-f", "null", "-"], "Test")
+    assert exc.value.code == "ffmpeg_feature_missing"
+    assert "gibtesnicht_xyz" in exc.value.message and "ffmpeg-full" in exc.value.message

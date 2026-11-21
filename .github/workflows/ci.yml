@@ -39,7 +39,10 @@ jobs:
         run: choco install ffmpeg -y --no-progress
       - name: FFmpeg (macOS)
         if: runner.os == 'macOS'
-        run: brew install ffmpeg
+        # Homebrew-"ffmpeg" enthält seit 8.x kein libass/freetype mehr → Untertitel-Export scheitert.
+        run: |
+          brew install ffmpeg-full
+          echo "$(brew --prefix ffmpeg-full)/bin" >> "$GITHUB_PATH"
       - name: Abhängigkeiten
         run: |
           python -m pip install --upgrade pip
