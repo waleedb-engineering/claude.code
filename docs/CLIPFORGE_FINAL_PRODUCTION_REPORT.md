@@ -1,14 +1,125 @@
 # ClipForge — Final Production Report
 
-Stand 21.11.2026. Dieser Bericht ist zugleich der fortlaufende Fortschrittsbericht
-der Production-Runde. Detailmatrix je Funktion (A–E, Ort, Nachweis, Grenze, nächster
-Schritt): [`FEATURE_VERIFICATION.md`](FEATURE_VERIFICATION.md).
+Stand 21.11.2026, **Quality-Sprint** (oben) und vorherige Production-Runde (unten,
+unverändert als Verlauf). Detailmatrix je Funktion (A–E, Ort, Nachweis, real vs.
+nachgebildet, Grenze, nächster Schritt): [`FEATURE_VERIFICATION.md`](FEATURE_VERIFICATION.md).
 
-**Ergebnis in einem Satz:** Die lokalen Kernabläufe (Analyse → Clips → Mehrspur-
-Bearbeitung per UI und KI-Chat → Render/Export) funktionieren und sind real getestet;
-**produktionsreif im Sinne der Abnahmekriterien ist ClipForge noch nicht**, weil
-Erkennungsqualität auf echten Streams, echte LLM-Inferenz und alle externen
-Plattform-/Cloud-Anbindungen in dieser Umgebung nicht verifiziert werden konnten.
+**Ergebnis in einem Satz:** Alle lokal prüfbaren Teile dieses Sprints sind umgesetzt
+und real getestet; **produktionsreif ist ClipForge weiterhin nicht**, weil echte
+Streams, echte LLM-Inferenz, Cloud-/Plattform-Anbindungen und der Lauf auf dem Mac
+des Nutzers in dieser Umgebung nicht verifiziert werden konnten.
+
+# Quality-Sprint
+
+## 1. Commit
+
+| | |
+|---|---|
+| Branch | `claude/clipforge-production` → Draft-PR waleedb-engineering/claude.code#2 (Basis `claude/clipforge-3`) |
+| Commits | `2e151d0` Live-Vorschau · `374bdb5` Zuschnitt/Unschärfe-Keyframes · `73fdc63` Tracking 2D · `9d35392` Ausgabeprüfung/Review · `e432a3c` Evaluation/Rücksprung · `bc1f016` Agent-Schritte/Whisper/Ollama-Test · `efd5a26` macOS-CI/Kosten · `9b6a172` CI-Fixes · Doku-Commit |
+| Umfang | 41 Dateien, +1 850 / −110 Zeilen (ohne Doku) |
+| Merge / Deployment / Veröffentlichung / bezahlte Aufrufe | **keine** |
+
+## 2. Änderungen
+
+| Phase | Umgesetzt |
+|---|---|
+| 1 Real-World-Validierung | Evaluationsseite (Markierungen, P/R/F1, verpasst/Fehlalarm), Gewichtsvergleich aktuell vs. gespeichert, Gewichtshistorie + Rücksprung; Transkriptionsstatus, Ergebnis-Cache je Audio-Hash, Spracheinstellung, klare Fehlermeldung |
+| 2 KI-Assistent | mehrstufige Befehle mit Schrittstatus ok/fehlgeschlagen/übersprungen, Wiederholen, Abbrechen, Undo; komplexere Sprachmuster (Zahlwörter, „Zoom aufs Gesicht“ → Tracking-Render); echter Ollama-Test, der ohne Ollama ehrlich übersprungen wird |
+| 3 Editor | Live-Vorschau der Mehrspur-Timeline im Browser über Render-Basisebene; animierter Zuschnitt + Unschärfe; Keyframe-Marker; Tracking horizontal + vertikal mit Zoom, Hauptmotiv bei mehreren Gesichtern |
+| 4 Generativ | Audit (Abschnitt 6/7): alle Cloud-Anbieter weiterhin nur nachgebildet getestet; Gemini-Beschriftung in der Anbieter-Matrix korrigiert |
+| 5 UX | Qualitätskarte je Render, Review-Checkliste, Schrittstatus im Chat, Zoom-Auswahl beim Stream-Render |
+| 6 Kosten | Kostenvorschau je Posten mit Anbieter, Modell, Schätzung, Budget-Rest, Abweichungshinweis, günstigerer Alternative; unbekannte Preise bleiben „?“ |
+| 7 macOS/Betrieb | macOS-Runner (Apple Silicon) in CI (nicht blockierend), Startskript-Syntax + Hardware-Encoder-Probelauf auf macOS; FFmpeg-Fähigkeitsprüfung; Apple-Silicon-Abschnitt in `INSTALL.md`; Vercel-Entscheidungsvorlage in `DEPLOYMENT.md` |
+| 8 Qualität | automatische Ausgabeprüfung (Format, Dauer je Plattform, Schwarz-/Standbild, Ton, Lautheit, True Peak, Pausen) + menschliche Review-Stufe |
+
+## 3. Behobene Fehler
+
+- **macOS:** Homebrew-`ffmpeg` 8+/9 enthält kein libass/freetype → jeder Export mit Untertiteln schlug fehl (68 Tests im ersten macOS-CI-Lauf). Jetzt: `ffmpeg-full` in CI und Anleitung, Doctor prüft die Filter, Fehlercode `ffmpeg_feature_missing` nennt Ursache und Lösung.
+- **macOS-Stimmprobe:** Die Hörprobe mit der Systemstimme `say` schlug immer fehl, weil die Zwischendatei auf `.raw` endete (FFmpeg kann daraus kein Ausgabeformat ableiten). Jetzt `.src.wav`.
+- **Tests mit festen Linux-Annahmen:** Ein Stimmentest erwartete bei „auto“ eSpeak (macOS wählt korrekt `say`) → eSpeak wird dort ausdrücklich gewählt. Der Unschärfe-Test misst jetzt in Vorschau-Auflösung statt 72 px (Linux 2 → 26 Zwischentöne, Schwelle ≤ 4 → ≥ 15).
+- **Windows-CI:** Test las kurzlebige `.tmp`-Dateien atomarer Schreibvorgänge, die Windows beim Schreiben sperrt (`PermissionError`). Die Zieldateien werden weiterhin vollständig auf das Token geprüft — keine Abschwächung der Prüfung.
+- Planer: Musikname verschluckte den Rest des Satzes; Zahlwörter nach „Clip“ wurden nicht erkannt.
+- Evaluations-Vergleich lieferte 404 ohne Markierungen (Browser-Konsolenfehler) → leeres Ergebnis.
+- Gesichtserkennung: Entpackfehler nach Umstellung auf 4-Tupel (Fokus-Erkennung).
+- Validierungstest prüfte versehentlich verschiedene Objekte → korrigiert (Test wurde strenger, nicht schwächer).
+
+## 4. Ausgeführte Tests
+
+| Suite | Ergebnis |
+|---|---|
+| Backend lokal (Linux, mit freien Testmodellen) | **585 bestanden**, 4 übersprungen (Ollama-Live: nicht erreichbar → ehrlich übersprungen) |
+| Playwright E2E (Chromium) | alle bestanden, inkl. neuer Flows N (Live-Vorschau) und M (Evaluationsseite) |
+| `tsc` + ESLint | sauber |
+| GitHub Actions | `9b6a172`: Linux, Windows, E2E, Docker, Frontend grün; macOS 581/584 (die 3 Reste sind oben behoben, Ergebnis des Folgelaufs im PR) |
+
+## 5. Performance
+
+Gleiche Hardware wie `BENCHMARKS.md` (4 vCPU, keine GPU). Die Ausgabeprüfung ist ein
+zusätzlicher FFmpeg-Analyse-Durchgang je Render (decodiert einmal; bei Kurzvideos
+im Bereich weniger Sekunden). Live-Vorschau rechnet im Browser, kein Server-Render.
+Animierte Unschärfe nutzt `sendcmd` statt Neuberechnung der Filterkette. Keine neuen
+Messungen auf dem Mac — VideoToolbox-Zahlen stehen aus.
+
+## 6. Echte Integrationen (real geprüft)
+
+FFmpeg (Render, Analyse, Filter), OpenCV (YuNet/Haar), eSpeak-Sprache, Chromium
+(Playwright), Dateisystem/Persistenz, GitHub-Actions-Runner Linux/Windows/macOS.
+
+## 7. Nicht verifizierte Funktionen
+
+Ollama/Claude/OpenAI/Gemini-Planer (nur nachgebildet) · faster-whisper mit echtem
+Modell · YAMNet/PANNs (nicht installiert) · Erkennungsqualität auf echten Streams ·
+Tracking an echten Facecams · Cloud-Generierung (fal.ai Video/Avatar/Face Swap,
+OpenAI Bilder/TTS, ElevenLabs inkl. Stimmklon) · Publishing an TikTok/Instagram/X/
+YouTube · Hardware-Kodierung · Lauf auf dem MacBook M3 Pro · LLM-Antwort-Streaming (D).
+
+## 8. Externe Blocker
+
+| Blocker | Lösung |
+|---|---|
+| Modell-Hosts (Hugging Face, Ollama-Registry, TF-Hub, Kaggle, Zenodo) gesperrt | Modelle auf dem Mac laden (Freigabe, ≈ 0,5–5 GB) |
+| Keine eigenen VODs + Chat-Exporte | Nutzer liefert 2–3 markierte Streams |
+| Cloud-Schlüssel / Kostenfreigabe fehlen | je Anbieter 1 freigegebener Testaufruf |
+| Plattform-App-Prüfungen (TikTok/Meta/X) | Entwickler-Apps + Testkonten |
+| Vercel-Einstellung | Eigentümer, siehe `DEPLOYMENT.md` → Vercel |
+| Kein GPU/kein Mac in dieser Umgebung | Lauf auf dem Gerät des Nutzers |
+
+## 9. Sicherheitsrisiken
+
+- Unverändert: Sprachmodelle rufen nur validierte Werkzeuge auf, **nie** Shell-Befehle; FFmpeg nur als Argumentliste.
+- Neue Endpunkte (Review, Basisebene, Retry/Cancel, Gewichts-Rollback) nutzen denselben Token-/Origin-Schutz und Benutzerbereich wie die übrigen Routen; Projekt- und Render-IDs werden vor jedem Dateizugriff per `require_id` validiert (keine Pfadbestandteile aus Eingaben).
+- Transkript-Cache liegt im Benutzerbereich und enthält Gesprächsinhalte → wird mit dem Projekt-Speicher gesichert/gelöscht; kein Upload.
+- Offene Restrisiken wie zuvor: JSON-Persistenz ohne Mehrprozess-Transaktionen, Online-Betrieb nur mit HTTPS + Konten (`ONLINE_BETRIEB.md`).
+
+## 10. Produktionsreife
+
+| Kriterium | Stand |
+|---|---|
+| Lokale Kernabläufe funktionieren, real getestet | erfüllt |
+| Messbare Qualitätsprüfung jedes Renders + menschliche Freigabe | erfüllt |
+| Qualität auf echten Streams belegt | **nicht erfüllt** (keine Daten) |
+| Echte KI-Planer/Cloud-Dienste belegt | **nicht erfüllt** (Mock ≠ Nachweis) |
+| Lauf auf macOS Apple Silicon belegt | teilweise (CI-Runner), Gerät des Nutzers offen |
+| Online-Betrieb | vorbereitet (Docker, Konten), nicht ausgerollt |
+
+→ **Beta für lokale Nutzung durch den Eigentümer**, nicht produktionsreif.
+
+## 11. Nächste Schritte (genau)
+
+1. PR-Checks auf `9b6a172`+ prüfen; ist der macOS-Job grün, `continue-on-error` entfernen.
+2. Auf dem M3 Pro: `brew install ffmpeg-full`, `python scripts/clipforge_doctor.py`, `./scripts/start_local.sh`.
+3. Mit Freigabe: `ollama pull qwen2.5:7b`, dann `cd api && python -m pytest tests/test_ollama_live.py -v -rs`.
+4. Mit Freigabe: faster-whisper `small` laden, eine eigene Aufnahme transkribieren, Status unter Einstellungen prüfen.
+5. 2–3 eigene Streams (Video + Chat-Export) importieren, Highlights in der Evaluationsseite markieren, `--tune` ausführen, Gewichte vergleichen, ggf. zurückspringen.
+6. Tracking an einer eigenen Facecam-Aufnahme mit Zoom 1,4 rendern und in der Review-Stufe beurteilen.
+7. Vercel: Option A oder B aus `DEPLOYMENT.md` wählen.
+8. Je Cloud-Anbieter einen freigegebenen Testaufruf mit Budgetgrenze; Ergebnis in `FEATURE_VERIFICATION.md` von B auf A setzen.
+9. PRs erst nach Durchsicht durch den Eigentümer zusammenführen (kein automatischer Merge).
+
+---
+
+# Production-Runde (vorher)
 
 ## 1. Commit und Branch
 

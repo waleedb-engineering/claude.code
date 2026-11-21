@@ -236,12 +236,16 @@ def test_animated_crop_and_blur_render(tmp_path):
     # Blaues Overlay: Breite 50 % (x 18..54); links bei 22 → anfangs blau, später abgeschnitten
     assert early(22, y_blue)[2] > 150 and late(22, y_blue)[2] < 60
     assert late(48, y_blue)[2] > 150                                   # rechte Hälfte bleibt
-    # Kante: Zahl der Zwischentöne in der Zeile steigt mit der Unschärfe
-    y_edge = int(H * 0.7)
+    # Kante: Zahl der Zwischentöne in der Zeile steigt mit der Unschärfe. Gemessen in
+    # Vorschau-Auflösung (360 px), damit die Breite des Übergangs nicht im Abtasten untergeht.
+    FW, FH = 360, 640
+    e_full, l_full = _rgb_at(path, 0.1, FW, FH), _rgb_at(path, 2.5, FW, FH)
+    y_edge = int(FH * 0.7)
 
     def mids(f):
-        return sum(1 for x in range(18, 54) if 40 < f(x, y_edge)[0] < 215)
-    assert mids(early) <= 2 and mids(late) >= 6, (mids(early), mids(late))
+        return sum(1 for x in range(90, 270) if 40 < f(x, y_edge)[0] < 215)
+    # Linux/FFmpeg 6: 2 → 26; harte Kante ≤ 4, weiche Kante deutlich breiter
+    assert mids(e_full) <= 4 and mids(l_full) >= 15, (mids(e_full), mids(l_full))
 
 
 def test_new_keyframe_props_validated():

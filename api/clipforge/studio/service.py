@@ -1311,7 +1311,9 @@ class StudioService:
         speed = max(0.5, min(2.0, float(speed or 1.0)))
         key = hashlib.sha256(
             f"{provider.id}|{choice['voice_id']}|{language}|{sample}|{speed}".encode()).hexdigest()[:20]
-        raw, out = os.path.join(pdir, key + ".raw"), os.path.join(pdir, key + ".mp3")
+        # Anbieter schreiben WAV (lokal) bzw. ihr eigenes Format — FFmpeg erkennt den Inhalt;
+        # die Endung muss aber ein Ausgabeformat benennen (macOS-`say` konvertiert per FFmpeg)
+        raw, out = os.path.join(pdir, key + ".src.wav"), os.path.join(pdir, key + ".mp3")
         if not os.path.isfile(out):
             from .errors import ProviderError
             try:

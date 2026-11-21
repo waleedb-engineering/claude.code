@@ -278,3 +278,12 @@ freien Mehrspur-Schnitte).
 - **Gemini/Claude/OpenAI/Ollama** nicht live getestet; LLM-Antworten werden nicht gestreamt.
 - **Hardware-Kodierung** nur nach echtem Probelauf, hier ohne GPU nicht nutzbar; Standard CPU.
 - **Übersetzung per Chat** legt ein neues Projekt an; Argos-Sprachmodell muss lokal installiert sein.
+
+## Quality-Sprint (21.11.2026)
+
+- **macOS + Homebrew:** `brew install ffmpeg` (ab 8.x) enthält kein libass/freetype — Exporte mit Untertiteln scheitern mit `ffmpeg_feature_missing`. Lösung: `brew install ffmpeg-full` (siehe `INSTALL.md`); `scripts/clipforge_doctor.py` prüft das.
+- **macOS-CI:** läuft auf `macos-latest` nicht blockierend; die Hörprobe mit `say` scheiterte an der Dateiendung der Zwischendatei (behoben); auf einem echten Mac noch nicht geprüft.
+- **Live-Vorschau:** Browser-Komposition ist eine Annäherung (Schriftbild, Unschärfe, Interpolation können vom FFmpeg-Ergebnis abweichen); maßgeblich ist der Render. Die Basisebene entsteht erst mit einem Vorschau-Render.
+- **Tracking:** nur an synthetisch bewegten Testgesichtern geprüft; schnelle Schwenks werden bewusst gedämpft (max. 0,35 Bildbreiten/s).
+- **Ausgabeprüfung:** misst nur technische Größen; ob die Pointe drin ist, entscheidet die Review-Stufe.
+- **LLM-Antwort-Streaming:** nicht umgesetzt (Status D).

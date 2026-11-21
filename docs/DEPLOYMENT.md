@@ -32,6 +32,21 @@ nicht. Details zu Konten, TLS und Sicherung: [`ONLINE_BETRIEB.md`](ONLINE_BETRIE
    (S3-kompatibel), PostgreSQL. **Noch nicht implementiert** — Voraussetzung ist der
    Wechsel der Persistenz.
 
+## Vercel (Entscheidung des Eigentümers)
+
+Der Vercel-Check auf den Pull Requests ist rot, und zwar **schon auf dem Basis-Branch**.
+Ursache: Das Vercel-Projekt baut die Repo-Wurzel; dort liegt kein Next.js-Projekt
+(Frontend in `web/`, Backend in `api/`). Das Backend (FastAPI + FFmpeg + Dateispeicher +
+lange Hintergrundjobs) ist auf Serverless-Funktionen grundsätzlich nicht lauffähig.
+
+| Option | Schritte (Vercel-Projekteinstellungen, nicht im Repo) | Ergebnis |
+|---|---|---|
+| A — nur Frontend-Vorschau | Settings → Build and Deployment → **Root Directory = `web`**; Umgebungsvariable `NEXT_PUBLIC_API_BASE_URL` auf ein separat betriebenes Backend (Docker, siehe oben) | Preview baut; ohne erreichbares Backend zeigt die UI nur Fehlermeldungen |
+| B — Preview abschalten (empfohlen, solange kein Backend online läuft) | Vercel-Git-Integration für dieses Repo trennen oder „Ignored Build Step“ auf `exit 0` | kein roter Check mehr; Tests laufen in GitHub Actions |
+
+Es wurde **keine** `vercel.json` geraten und keine Vercel-Einstellung geändert; beide
+Optionen kosten im Hobby-Tarif nichts, ein Backend-Server dagegen schon (Freigabe nötig).
+
 ## Was ausdrücklich nicht getan wurde
 
 - Keine bezahlten Server, Domains oder Speicher angelegt.

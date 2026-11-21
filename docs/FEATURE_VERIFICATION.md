@@ -1,4 +1,4 @@
-# Verifizierte Funktionsmatrix — ClipForge (Stand Production-Runde 21.11.2026)
+# Verifizierte Funktionsmatrix — ClipForge (Stand Quality-Sprint 21.11.2026)
 
 **A** real getestet und funktionierend · **B** implementiert, externer Live-Test
 fehlt · **C** teilweise implementiert · **D** nicht implementiert · **E** extern
@@ -47,7 +47,7 @@ Pfade relativ zu `api/clipforge/` (Backend), `web/src/` (Frontend), Tests in `ap
 | Claude / OpenAI / Gemini als Planer | B | `agent/planner.llm_plan`, `_gemini` | nachgebildete Antworten | kostenpflichtig bzw. tarifabhängig, nicht live getestet; Gemini nie ohne Bestätigung | nach Freigabe je 1 Testnachricht |
 | Gesprächsgedächtnis je Projekt + Zusammenfassung | A (Logik) / B (mit LLM) | `planner.memory_context` | `test_project_memory_and_gemini`, `test_memory_summarizes_long_history` | – | – |
 | Timeline-, Split-Screen- und Übersetzungs-Werkzeuge im Agenten | A (Timeline/Split-Screen) / B (Übersetzung) | `agent/tools.py` | `test_timeline_tools_via_agent_and_ops_api` | Übersetzung legt Projekt an; Argos-Modell lokal nötig | Argos-Modell installieren, Lauf prüfen |
-| Antwort-Streaming der LLMs | D | – | – | Planer liefert vollständige Pläne | – |
+| Antwort-Streaming der LLMs | D | – | – | Planer liefern kurze JSON-Pläne vollständig; Fortschritt wird stattdessen je Schritt angezeigt | erst sinnvoll bei längeren Freitext-Antworten |
 
 ## Editor und Renderer
 
@@ -55,11 +55,11 @@ Pfade relativ zu `api/clipforge/` (Backend), `web/src/` (Frontend), Tests in `ap
 |---|---|---|---|---|---|
 | Szenen-Editor, Autosave, Versionen, Undo/Redo, Konflikte | A | Editor-Seite, `studio/projects.py` | `test_studio_api`, E2E Flow I | – | – |
 | Szenen-Timeline (Reihenfolge), Tastenkürzel | A (UI) | `components/studio/Timeline.tsx` | E2E-Suite | – | – |
-| Mehrspur-Timeline: Video-/Overlay-/Audio-/Text-Spuren, Ziehen, Einrasten, Trimmen, Teilen, Slip, Ripple-Löschen, Kopie, Gruppen, Stumm/Sperren/Ausblenden, Zoom, Abspielkopf, Undo/Redo | A | `studio/timeline.py`, `timeline_render.py`, `components/studio/TimelineEditor.tsx` | `test_timeline` (Ops + Pixel-/Ton-Render), E2E Flow L | Vorschau zeigt den letzten Render (keine Echtzeit-Komposition im Browser) | Live-Vorschau im Browser |
-| Keyframes x/y/Skalierung/Drehung/Deckkraft/Lautstärke mit linear/ease-in/-out/-in-out | A | `timeline.keyframe_expr` | Ausdruck == Python-Kurve (alle Easings), Render-Pixeltest | Zuschnitt und Unschärfe nur statisch, nicht animierbar | Zuschnitt-/Unschärfe-Keyframes |
+| Mehrspur-Timeline: Video-/Overlay-/Audio-/Text-Spuren, Ziehen, Einrasten, Trimmen, Teilen, Slip, Ripple-Löschen, Kopie, Gruppen, Stumm/Sperren/Ausblenden, Zoom, Abspielkopf, Undo/Redo | A | `studio/timeline.py`, `timeline_render.py`, `components/studio/TimelineEditor.tsx` | `test_timeline` (Ops + Pixel-/Ton-Render), E2E Flow L, Flow N (Live-Vorschau) | Browser-Vorschau ≈ FFmpeg-Ergebnis, nicht pixelgleich | – |
+| Keyframes x/y/Skalierung/Drehung/Deckkraft/Lautstärke mit linear/ease-in/-out/-in-out | A | `timeline.keyframe_expr` | Ausdruck == Python-Kurve (alle Easings), Render-Pixeltest | Zuschnitt/Unschärfe: s. Quality-Sprint | – |
 | Alte Projekte unverändert lesbar/renderbar | A | `projects.migrate` | `test_overlay_on_scene_project_and_old_projects_unchanged` | – | – |
 | Punch-in-Zoom (statisch/einfahrend, Fokus) | A | `studio/render._zoom_chain` | `test_zoom_caption_layout…` (Pixelprüfung) | Fokus fest je Szene | – |
-| Gesichts-Tracking mit Glättung (Totzone, Tempolimit, Lücken halten, Motivbindung), manuelle Fokuspunkte | A (synthetisch) | `reframe.track_faces/smooth_track/plan_tracking` | `test_tracking` (bewegtes Gesicht bleibt mittig, Haar + YuNet; Tracking + Pausenentfernung synchron) | nur horizontal; Testgesicht synthetisch bewegt | Prüfung an echten Facecam-Aufnahmen |
+| Gesichts-Tracking mit Glättung (Totzone, Tempolimit, Lücken halten, Motivbindung), manuelle Fokuspunkte | A (synthetisch) | `reframe.track_faces/smooth_track/plan_tracking` | `test_tracking` (bewegtes Gesicht bleibt mittig, Haar + YuNet; Tracking + Pausenentfernung synchron) | Testgesichter synthetisch bewegt (2D + Hauptmotiv: s. Quality-Sprint) | Prüfung an echten Facecam-Aufnahmen |
 | Fix OpenCV 5 (keine Haar-Kaskaden → Smart-Reframe fiel still auf Mitte) | A | `requirements.txt` (<5), Detektorkette | `test_tracking` | – | – |
 | Split-Screen (Gameplay unten) | A | `studio/render.render_segment` | `test_split_screen…` | – | – |
 | Untertitel: Karaoke/Wort-Hervorhebung, Position, Schrift, Farben, Größe | A | `captions.py`, `render._caption_layout` | `test_render_effects`, `test_captions` | Schriften aus Whitelist | – |
@@ -88,12 +88,38 @@ Pfade relativ zu `api/clipforge/` (Backend), `web/src/` (Frontend), Tests in `ap
 | Publishing YouTube/TikTok/Instagram/X (Export, Entwurf, privat, geplant) | B | `platforms/`, `studio/publish_ops.py` | Dry-Run-/Mock-Tests, E2E C/D/E | keine echte Veröffentlichung ohne Freigabe; App-Prüfungen der Plattformen nötig | Freigabe + eigener Testkanal |
 | Konten, getrennte Arbeitsbereiche, Admin-Rollen | A | `auth`, `studio/workspace.py` | `test_auth_accounts` | – | – |
 | Persistenz JSON (atomar, Versionen, Recovery) | A | `studio/storage.py`, `tasks.py` | `test_storage`, `test_restore`, `test_cancel` | keine Transaktionen über Prozesse | SQLite bei Mehrprozess-Betrieb (`STORAGE_EVALUATION.md`) |
-| Docker, CI (Linux + Windows), macOS-Start | A (CI) / B (macOS) | `Dockerfile`, `.github/workflows/ci.yml`, `scripts/start_local.sh` | CI grün | macOS nur vom Nutzer geprüft, nicht in CI | macOS-Runner in CI |
+| Docker, CI (Linux + Windows + macOS Apple Silicon), macOS-Start | A (Linux/Windows) / B (macOS) | `Dockerfile`, `.github/workflows/ci.yml`, `scripts/start_local.sh` | CI | macOS-Job nicht blockierend; deckte fehlendes libass im Homebrew-`ffmpeg` auf → `ffmpeg-full` | macOS-Job nach grünem Lauf blockierend schalten; Test auf dem M3 Pro |
 | Hauptnavigation Dashboard · Erstellen · Streams · Editor · Mediathek · Clips · Publishing · Analytics · Einstellungen; Erste Schritte | A (Abläufe) / C (Design) | `components/Nav.tsx`, `Onboarding.tsx` | 24 Playwright-Tests | kein vollständiges visuelles Redesign | Design-Durchgang |
 | Mediathek (Tags, Suche, Herkunft/Lizenz, Duplikate, Nutzung, sicheres Löschen, je Benutzer) | A | `studio/library.py`, `/studio/library` | `test_library`, E2E Flow M | keine Vorschaubilder für Videos (erstes Bild per Browser) | – |
 | Speicherplatz-Prüfung vor schweren Aufgaben | A | `tasks.check_disk_space` | `test_operations` | – | – |
 | Hardware-Kodierung (VideoToolbox/NVENC/QSV/VAAPI) | A (Erkennung/Fallback) / E (Kodierung) | `clipforge/hwaccel.py` | `test_operations`, echte Probeläufe | keine GPU in der Testumgebung; Standard CPU | Messung auf dem Mac (VideoToolbox) |
-| Vercel-Preview | E | – | – | Backend (Python/FFmpeg) dort nicht lauffähig; Check scheitert schon auf der Basis | Eigentümer-Entscheidung |
+| Vercel-Preview | E | `docs/DEPLOYMENT.md` (Abschnitt Vercel) | – | Repo-Wurzel ist kein Next.js-Projekt; Backend (Python/FFmpeg, Dateispeicher) dort nicht lauffähig; Check scheitert schon auf der Basis | Eigentümer: Root Directory `web/` + `NEXT_PUBLIC_API_BASE_URL`, oder Preview abschalten |
+
+## Quality-Sprint (21.11.2026) — neue und geänderte Funktionen
+
+| Funktion | St. | Ort | Nachweis | Real / nachgebildet | Einschränkung | Nächster Schritt |
+|---|---|---|---|---|---|---|
+| Timeline-Live-Vorschau im Browser (Overlays, Text, Keyframes, Abspielkopf) über einer Render-Basisebene | A | `web/src/components/studio/TimelinePreview.tsx`, `lib/timeline.ts`, `studio/render.py` (`*.base.mp4`) | `test_timeline` (Basisebene), E2E `flow-n-timeline-preview` | real (Chromium, FFmpeg) | Basis-Szenen erst nach einem Vorschau-Render sichtbar; Browser ≈ FFmpeg, nicht pixelgleich | – |
+| Animierter Zuschnitt (crop_l/r/t/b) und Unschärfe als Keyframes | A | `studio/timeline.py`, `timeline_render._visual_chain/_blur_commands` | `test_timeline` (Pixelmessung im Render) | real | Unschärfe wird je Bild per `sendcmd` gesetzt | – |
+| Keyframe-Marker auf Clips, Klick springt zum Keyframe | A | `TimelineEditor.tsx` | E2E `flow-n` | real | – | – |
+| Tracking horizontal + vertikal mit Zoom 1–2; Hauptmotiv bei mehreren Gesichtern (Fläche × Konfidenz, Motivbindung) | A (synthetisch) | `reframe.track_faces/plan_tracking`, Stream-Seite „Zoom“ | `test_tracking` (Ablenkgesicht, vertikal, realistische Bewegung) | real (OpenCV, FFmpeg); Bewegung synthetisch | keine echten Facecam-Aufnahmen getestet | an 2–3 eigenen Aufnahmen prüfen |
+| Automatische Ausgabeprüfung (Format, Dauer je Plattform, Schwarzbild, Standbild, Ton, Lautheit, True Peak, Pausen) | A | `clipforge/output_quality.py`, Render-Bericht, `RenderQuality.tsx` | `test_output_quality` | real (FFmpeg-Analyse) | prüft nur Messbares | – |
+| Menschliche Review-Stufe (6 Punkte; Freigabe nur, wenn alle erfüllt) | A | `PUT …/renders/{rid}/review` | `test_output_quality`, `test_timeline` | real | subjektiv, bewusst nicht automatisiert | – |
+| Evaluationsansicht (P/R/F1, verpasst, Fehlalarme), Gewichtsvergleich, Historie, Rücksprung | A (Funktion) | `/studio/streams/evaluation`, `stream/service.compare_weights/rollback_weights` | `test_stream_evaluation`, E2E Flow M | real, aber nur synthetische Markierungen | ohne markierte echte Streams keine Qualitätsaussage | Nutzer markiert eigene Streams |
+| Agent: mehrstufige Befehle mit Schrittstatus (ok/fehlgeschlagen/übersprungen), Wiederholen, Abbrechen, Undo | A (Regel-Planer) / B (LLM) | `agent/service._run_steps/retry/cancel`, `AgentChat.tsx` | `test_agent_tools_final` | real mit Regel-Planer; LLM nachgebildet | – | Ollama-Live-Test auf dem Mac |
+| Ollama-Live-Test (echter Server + Modell) | E hier | `tests/test_ollama_live.py` | wird übersprungen, wenn Ollama fehlt | – | Registry gesperrt; **kein** großer Modell-Download ohne Freigabe | `ollama pull qwen2.5:7b`, dann `pytest tests/test_ollama_live.py -rs` |
+| Transkription: Status (Paket, Modell im Cache, Gerät), Ergebnis-Cache je Audio-Hash, Sprache per Einstellung | A (Logik) / B (Whisper) | `transcribe.py`, `/system/transcription` | `test_transcription` | Whisper nachgebildet | Modell-Download gesperrt | echter Lauf auf dem Mac |
+| Trainiertes Audio-Modell (YAMNet/PANNs) | E | `docs/STREAM_INTELLIGENCE.md` | – | – | Modell-Hosts gesperrt, nicht installiert | ONNX lokal + Prüfsumme, dann A/B mit `--compare-audio-events` |
+| Kostenvorschau: Anbieter, Modell, Schätzung, Budget-Rest, Abweichungshinweis, günstigere Alternative | A (Logik) | `studio/costs.py`, `SettingsPanel.tsx` | `test_operations` | Richtwerte aus `provider_matrix` (keine erfundenen Preise; unbekannt → „?“) | Abrechnung des Anbieters maßgeblich | – |
+| FFmpeg-Fähigkeitsprüfung (ass/drawtext) im Doctor; Fehlercode `ffmpeg_feature_missing` mit Lösung | A | `scripts/clipforge_doctor.py`, `studio/audio.run_ffmpeg` | `test_output_quality` | real | – | – |
+
+## Gesamturteil (Quality-Sprint)
+
+Neu real belegt: Browser-Live-Vorschau, animierter Zuschnitt/Unschärfe, 2D-Tracking
+mit Hauptmotiv, automatische Ausgabeprüfung + Review, Evaluations-UI mit Rücksprung,
+Agent-Schrittsteuerung. Weiterhin **nicht** belegt: Qualität auf echten Streams,
+echte LLM-/Cloud-/Plattform-Anbindungen, trainierte Audio-Modelle, Hardware-Kodierung,
+Lauf auf dem Mac des Nutzers. → nicht produktionsreif im Sinne der Abnahmekriterien.
 
 ## Gesamturteil (Production-Runde)
 
