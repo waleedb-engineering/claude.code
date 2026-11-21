@@ -448,8 +448,10 @@ export type Estimate = {
   spent_usd: number;
   budget_limit_usd: number;
   within_budget: boolean;
-  items: { provider: string; what: string; amount_usd: number }[];
+  items: { provider: string; what: string; amount_usd: number; model?: string | null; alternative?: string | null }[];
   note: string;
+  variance_note?: string;
+  budget_remaining_usd?: number;
 };
 
 export type AutomationRun = {

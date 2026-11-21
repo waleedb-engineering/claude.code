@@ -48,3 +48,16 @@ def test_real_cpu_encode_and_system_endpoint(tmp_path):
     r = client.get("/api/studio/system/hwaccel").json()
     assert r["selected"] == "libx264" and "details" in r and "disk" in r
     hwaccel.detect.cache_clear()
+
+
+def test_cost_estimate_shows_model_alternative_and_variance():
+    from clipforge.studio.costs import estimate_project
+    from clipforge.studio.projects import migrate
+    p = migrate({"scenes": [{"text": "Hallo Welt " * 10, "visual": {"mode": "ai_image"}}],
+                 "voice": {"provider": "openai_tts"}, "visuals": {"image_provider": "openai_image"},
+                 "budget_limit_usd": 1.0})
+    est = estimate_project(p)
+    items = {i["provider"]: i for i in est["items"]}
+    assert items["openai_tts"]["model"] == "tts-1" and "0 USD" in items["openai_tts"]["alternative"]
+    assert items["openai_image"]["model"] == "gpt-image-1" and items["openai_image"]["amount_usd"] > 0
+    assert "Anbieter" in est["variance_note"] and est["budget_remaining_usd"] <= 1.0

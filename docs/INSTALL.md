@@ -76,6 +76,23 @@ Hinweise:
    ./scripts/start_local.sh
    ```
 
+### Apple Silicon (z. B. MacBook Pro M3 Pro) — Empfehlungen
+
+| Baustein | Empfehlung | Prüfen |
+|---|---|---|
+| Python | `python@3.13` aus Homebrew (arm64) | `python3 -c "import platform; print(platform.machine())"` → `arm64` |
+| FFmpeg | Homebrew-FFmpeg enthält **VideoToolbox** | `ffmpeg -hide_banner -encoders \| grep videotoolbox` |
+| Hardware-Kodierung | optional `CLIPFORGE_HWACCEL=auto` in `.env`; wird nur nach echtem Probelauf genutzt | `curl -s localhost:8000/api/studio/system/hwaccel?benchmark=true` |
+| Transkription | faster-whisper rechnet auf der **CPU** (CTranslate2 nutzt kein Metal): `CLIPFORGE_WHISPER_DEVICE=cpu`, `CLIPFORGE_WHISPER_COMPUTE=int8`, Modell `small` | Einstellungen → Transkription bzw. `/api/studio/system/transcription` |
+| Lokale KI (Ollama) | <https://ollama.com/download> installieren; bei 18 GB RAM (M3 Pro) `ollama pull qwen2.5:7b` (≈ 4,7 GB) | Einstellungen → KI-Assistent lokal → „Probelauf“; Live-Test: `cd api && python -m pytest tests/test_ollama_live.py -v -rs` |
+| Speicher | ≥ 20 GB frei (Modelle, Renders); Jobs starten nicht unter `CLIPFORGE_MIN_FREE_MB` (Standard 1 GB) | – |
+| Startskript | `scripts/start_local.sh` läuft mit der macOS-bash 3.2 | CI prüft die Syntax auf `macos-latest` |
+
+Leistung auf einem M3 ist **noch nicht gemessen** (Messwerte in `docs/BENCHMARKS.md`
+stammen von einem Linux-Container mit 4 vCPU). Eigene Messung:
+`python scripts/make_stream_benchmark.py /tmp/bench --minutes 10 --count 1` und
+`cd api && python -m clipforge.stream.evaluate /tmp/bench`.
+
 ## Linux (Debian/Ubuntu)
 
 1. Programme:

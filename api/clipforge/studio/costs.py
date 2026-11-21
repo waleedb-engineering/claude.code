@@ -148,6 +148,18 @@ class CostLedger:
                 "note": "Beträge sind Schätzungen auf Basis von Listenpreisen."}
 
 
+def provider_model(provider_id: str) -> str | None:
+    """Tatsächlich verwendetes Modell je Anbieter (gleiche Variablen wie die Adapter)."""
+    import os
+    return {
+        "openai_tts": lambda: os.environ.get("CLIPFORGE_OPENAI_TTS_MODEL", "tts-1"),
+        "openai_image": lambda: os.environ.get("CLIPFORGE_OPENAI_IMAGE_MODEL", "gpt-image-1"),
+        "elevenlabs": lambda: os.environ.get("CLIPFORGE_ELEVENLABS_MODEL", "eleven_multilingual_v2"),
+        "fal_video": lambda: os.environ.get("CLIPFORGE_FAL_T2V_MODEL", "fal-ai/kling-video/v2.1/master/text-to-video"),
+        "fal_avatar": lambda: os.environ.get("CLIPFORGE_FAL_AVATAR_MODEL", "fal-ai/sadtalker"),
+    }.get(provider_id, lambda: None)()
+
+
 def estimate_project(project: dict) -> dict:
     """Schätzt die Kosten eines vollständigen Renders (ohne Cache-Treffer)."""
     from .providers import get_image, get_voice
@@ -195,11 +207,22 @@ def estimate_project(project: dict) -> dict:
                           "amount_usd": round(ap.estimate_cost(secs), 4)})
         except Exception:  # noqa: BLE001
             pass
+    alternatives = {"Voice": "lokale Stimme (eSpeak/Piper/macOS say/Windows SAPI) — 0 USD",
+                    "KI-Bilder": "Motion-Hintergrund oder eigene Medien — 0 USD",
+                    "KI-Video": "Bild mit Kamerafahrt oder eigene Clips — 0 USD",
+                    "Talking": "Standbild des Avatars — 0 USD"}
+    for it in items:
+        it["alternative"] = next((v for k, v in alternatives.items() if it["what"].startswith(k)), None)
+        it["model"] = provider_model(it["provider"])
     total = round(sum(i["amount_usd"] for i in items), 4)
     limit = float(project.get("budget_limit_usd") or 0.0)
     return {
         "currency": "USD", "is_estimate": True, "items": items, "total_usd": total,
         "budget_limit_usd": limit, "within_budget": total <= limit + 1e-9,
+        "budget_remaining_usd": round(max(0.0, limit - total), 4),
+        "variance_note": ("Listenpreis-Schätzung: tatsächliche Abrechnung erfolgt beim Anbieter und kann "
+                          "abweichen (Tarif, Wechselkurs, Wiederholungen bei Fehlern). Ohne verlässlichen Preis "
+                          "wird kein Betrag angezeigt."),
         "note": ("Schätzung auf Basis von Listenpreisen; lokale Verarbeitung ist "
                  "kostenlos. Bereits erzeugte Assets werden wiederverwendet."),
     }
