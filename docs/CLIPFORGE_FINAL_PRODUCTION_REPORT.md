@@ -38,6 +38,7 @@ des Nutzers in dieser Umgebung nicht verifiziert werden konnten.
 - **macOS:** Homebrew-`ffmpeg` 8+/9 enthält kein libass/freetype → jeder Export mit Untertiteln schlug fehl (68 Tests im ersten macOS-CI-Lauf). Jetzt: `ffmpeg-full` in CI und Anleitung, Doctor prüft die Filter, Fehlercode `ffmpeg_feature_missing` nennt Ursache und Lösung.
 - **macOS-Stimmprobe:** Die Hörprobe mit der Systemstimme `say` schlug immer fehl, weil die Zwischendatei auf `.raw` endete (FFmpeg kann daraus kein Ausgabeformat ableiten). Jetzt `.src.wav`.
 - **Tests mit festen Linux-Annahmen:** Ein Stimmentest erwartete bei „auto“ eSpeak (macOS wählt korrekt `say`) → eSpeak wird dort ausdrücklich gewählt. Der Unschärfe-Test misst jetzt in Vorschau-Auflösung statt 72 px (Linux 2 → 26 Zwischentöne, Schwelle ≤ 4 → ≥ 15).
+- **Instabiler Test (macOS):** `test_rank_mode_prefers_quiet_laughter_over_loud_music` nahm an, ohne Ereignis-Ranking gewinne die laute Musik. Tatsächlich haben Musik und Lachen dort denselben Score (37,3), die Reihenfolge hing an der Gleitkomma-Rundung. Der Test prüft jetzt die eigentliche Aussage: gleichauf ohne Ranking, mit Ranking klarer Vorsprung für das Lachen (47,2 gegen 36,0). Rauschquellen haben einen festen Seed.
 - **Windows-CI:** Test las kurzlebige `.tmp`-Dateien atomarer Schreibvorgänge, die Windows beim Schreiben sperrt (`PermissionError`). Die Zieldateien werden weiterhin vollständig auf das Token geprüft — keine Abschwächung der Prüfung.
 - Planer: Musikname verschluckte den Rest des Satzes; Zahlwörter nach „Clip“ wurden nicht erkannt.
 - Evaluations-Vergleich lieferte 404 ohne Markierungen (Browser-Konsolenfehler) → leeres Ergebnis.
@@ -51,7 +52,7 @@ des Nutzers in dieser Umgebung nicht verifiziert werden konnten.
 | Backend lokal (Linux, mit freien Testmodellen) | **585 bestanden**, 4 übersprungen (Ollama-Live: nicht erreichbar → ehrlich übersprungen) |
 | Playwright E2E (Chromium) | alle bestanden, inkl. neuer Flows N (Live-Vorschau) und M (Evaluationsseite) |
 | `tsc` + ESLint | sauber |
-| GitHub Actions | `58ee17c`: **alle Jobs grün, auch macOS (Apple Silicon)**; davor `9b6a172` macOS 581/584, `efd5a26` macOS 68 Fehler (libass) |
+| GitHub Actions | `efd5a26` macOS 68 Fehler (libass) → `9b6a172` 3 → `58ee17c` ein Lauf komplett grün, ein zweiter Lauf 1 Fehler (instabiler Test, s. Abschnitt 3) → Ergebnis des Folgelaufs im PR. Linux, Windows, E2E, Docker, Frontend durchgehend grün |
 
 ## 5. Performance
 
@@ -107,7 +108,7 @@ YouTube · Hardware-Kodierung · Lauf auf dem MacBook M3 Pro · LLM-Antwort-Stre
 
 ## 11. Nächste Schritte (genau)
 
-1. macOS-Job ist auf `58ee17c` grün — nach 2–3 weiteren grünen Läufen `continue-on-error` entfernen (Eigentümer).
+1. macOS-Job: nach 2–3 aufeinanderfolgenden grünen Läufen `continue-on-error` entfernen (Eigentümer).
 2. Auf dem M3 Pro: `brew install ffmpeg-full`, `python scripts/clipforge_doctor.py`, `./scripts/start_local.sh`.
 3. Mit Freigabe: `ollama pull qwen2.5:7b`, dann `cd api && python -m pytest tests/test_ollama_live.py -v -rs`.
 4. Mit Freigabe: faster-whisper `small` laden, eine eigene Aufnahme transkribieren, Status unter Einstellungen prüfen.

@@ -10,11 +10,11 @@ from clipforge.stream import audio_events as ae
 from clipforge.stream import evaluate as ev
 from clipforge.stream import signals
 
-BG = "anoisesrc=c=pink:a=0.02:r=16000"
+BG = "anoisesrc=c=pink:a=0.02:r=16000:seed=2026"
 EVENTS = {
     "music": "aevalsrc='0.15*sin(2*PI*220*t)+0.12*sin(2*PI*277*t)+0.1*sin(2*PI*330*t)':s=16000",
-    "applause": "anoisesrc=c=white:a=0.5:r=16000,volume='if(lt(mod(t*9.3+0.37*sin(t*7),1),0.25),1,0.05)':eval=frame",
-    "cheering": "anoisesrc=c=white:a=0.5:r=16000,highpass=f=300,lowpass=f=6000",
+    "applause": "anoisesrc=c=white:a=0.5:r=16000:seed=2026,volume='if(lt(mod(t*9.3+0.37*sin(t*7),1),0.25),1,0.05)':eval=frame",
+    "cheering": "anoisesrc=c=white:a=0.5:r=16000:seed=2026,highpass=f=300,lowpass=f=6000",
     "screaming": "aevalsrc='0.6*sin(2*PI*800*t+6*sin(2*PI*6*t))+0.3*sin(2*PI*1600*t+12*sin(2*PI*6*t))':s=16000",
     "laughter": "aevalsrc='0.5*(gt(sin(2*PI*5*t),0))*(sin(2*PI*260*t)+0.5*sin(2*PI*520*t)+0.3*sin(2*PI*780*t))':s=16000",
 }
@@ -65,9 +65,18 @@ def test_rank_mode_prefers_quiet_laughter_over_loud_music(tmp_path):
     video = _video_with_audio(tmp_path, wav)
     explain = analyze(video, max_clips=2, audio_events_mode="explain")
     rank = analyze(video, max_clips=2, audio_events_mode="rank")
-    top_explain, top_rank = explain["highlights"][0], rank["highlights"][0]
-    assert 13 <= top_explain["t"] <= 28                     # ohne Ereignisse gewinnt die laute Musik
-    assert 44 <= top_rank["t"] <= 52                        # mit Ereignissen das Lachen
+    def by_region(res):
+        music = next(h for h in res["highlights"] if 13 <= h["t"] <= 28)
+        laugh = next(h for h in res["highlights"] if 44 <= h["t"] <= 52)
+        return music["score"], laugh["score"]
+    # ohne Ereignis-Ranking sind laute Musik und Lachen gleichauf (Lautheit/Kontrast);
+    # die Reihenfolge wäre dann Zufall der Gleitkomma-Rundung je Plattform
+    m_ex, l_ex = by_region(explain)
+    assert abs(m_ex - l_ex) <= 2.0, (m_ex, l_ex)
+    # mit Ereignis-Ranking liegt das Lachen klar vorn (lokal 47,2 gegen 36,0)
+    m_rk, l_rk = by_region(rank)
+    top_rank = rank["highlights"][0]
+    assert 44 <= top_rank["t"] <= 52 and l_rk - m_rk >= 5.0, (m_rk, l_rk)
     assert any("Lachen" in r for r in top_rank["reasons"])
     assert rank["audio_events"]["mode"] == "rank" and "laughter" in rank["audio_events"]["heatmap"]
     off = analyze(video, max_clips=2, audio_events_mode="off")
