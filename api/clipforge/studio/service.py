@@ -1174,6 +1174,14 @@ class StudioService:
             raise StudioError("render_not_found", "Render nicht gefunden.", 404)
         return data
 
+    def render_base_file(self, pid: str, render_id: str) -> str:
+        """Szenenprogramm ohne Timeline-Spuren (Grundebene der Live-Vorschau)."""
+        require_id(render_id, "Render-ID")
+        path = os.path.join(self.store.dir(pid), "renders", f"{render_id}.base.mp4")
+        if not os.path.isfile(path):
+            raise StudioError("render_not_found", "Keine Grundebene zu diesem Render.", 404)
+        return path
+
     def render_file(self, pid: str, render_id: str) -> str:
         require_id(render_id, "Render-ID")
         path = os.path.join(self.store.dir(pid), "renders", f"{render_id}.mp4")

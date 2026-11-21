@@ -1184,6 +1184,10 @@ def init_studio(app: FastAPI, registry, youtube_status=None,
     def project_timeline_ops(pid: str, req: TimelineOps) -> dict:
         return svc.timeline_ops(pid, req.ops, req.expected_version)
 
+    @r.get("/projects/{pid}/renders/{render_id}/base")
+    def render_base(pid: str, render_id: str):
+        return FileResponse(svc.render_base_file(pid, render_id), media_type="video/mp4")
+
     @r.post("/projects/{pid}/renders/{render_id}/thumbnails")
     def render_thumbnails(pid: str, render_id: str) -> dict:
         from clipforge.studio import thumbnails

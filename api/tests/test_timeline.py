@@ -173,3 +173,31 @@ def test_patch_api_accepts_timeline_and_audio(tmp_path):
     assert r.status_code == 200, r.text
     p = r.json()["project"]
     assert p["audio"]["loudnorm"] is True and p["timeline"]["tracks"][0]["locked"] is True
+
+
+def test_preview_keeps_base_layer_without_overlays(tmp_path):
+    """Live-Vorschau braucht die Grundebene OHNE Timeline-Spuren (sonst doppelte Overlays)."""
+    from studio_helpers import make_client, wait_task
+    client, app_module = make_client(str(tmp_path))
+    r = client.post("/api/studio/projects", json={"workflow": "script", "voice": {"provider": "mock"},
+                                                  "script": "Hallo und willkommen. Heute zeige ich dir drei Tricks."})
+    pid = r.json()["project"]["id"]
+    wait_task(client, r.json()["task_id"])
+    with open(_png(str(tmp_path / "g.png"), "lime"), "rb") as fh:
+        name = client.post(f"/api/studio/projects/{pid}/media", files={"file": ("g.png", fh, "image/png")}).json()["name"]
+    v = client.get(f"/api/studio/projects/{pid}").json()["project"]["version"]
+    client.post(f"/api/studio/projects/{pid}/timeline/ops", json={"expected_version": v, "ops": [
+        {"op": "add_item", "track_kind": "overlay", "item": {"src": name, "start": 0, "duration": 2, "x": 0.85,
+                                                              "y": 0.15, "scale": 0.2}}]})
+    t = wait_task(client, client.post(f"/api/studio/projects/{pid}/render", json={"mode": "preview"}).json()["task"]["id"], 300)
+    assert t["status"] == "succeeded", t
+    rid = t["result"]["render_id"]
+    rep = client.get(f"/api/studio/projects/{pid}").json()["renders"][0]
+    assert rep["base_file"] == f"{rid}.base.mp4"
+    base = client.get(f"/api/studio/projects/{pid}/renders/{rid}/base")
+    assert base.status_code == 200
+    path = str(tmp_path / "base.mp4")
+    open(path, "wb").write(base.content)
+    assert _rgb_at(path, 0.5, 36, 64)(30, 9)[1] < 150          # kein grünes Overlay in der Grundebene
+    final = app_module.studio.service.render_file(pid, rid)
+    assert _rgb_at(final, 0.5, 36, 64)(30, 9)[1] > 180          # im Render schon

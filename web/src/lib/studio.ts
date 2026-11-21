@@ -316,6 +316,8 @@ export type RenderReport = {
   fallbacks: { scene_id: string; kind: string; provider: string; reason: string }[];
   quality?: { checks: QualityCheck[]; passed: boolean };
   scene_id?: string;
+  timeline?: Record<string, number>;
+  base_file?: string;
 };
 
 export type MediaItem = {
@@ -862,6 +864,7 @@ export const studio = {
   quality: (id: string) => get<{ checks: QualityCheck[]; estimated_seconds: number; blocking: boolean }>(`/projects/${id}/quality`),
   render: (id: string, mode: "final" | "preview") =>
     post<{ task: Task }>(`/projects/${id}/render`, { mode }).then((d) => d.task),
+  renderBaseUrl: (id: string, renderId: string) => `${API_BASE}/api/studio/projects/${id}/renders/${renderId}/base`,
   renderUrl: (id: string, renderId: string, download = false) =>
     `${API_BASE}/api/studio/projects/${id}/renders/${renderId}/file${download ? "?download=true" : ""}`,
   exportToJob: (id: string, renderId?: string) =>

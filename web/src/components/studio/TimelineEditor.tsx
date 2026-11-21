@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Ease, MediaItem, Timeline, TimelineItem, TimelineOp, TimelineTrack, TrackKind } from "@/lib/studio";
+import TimelinePreview from "./TimelinePreview";
 import { btnCls, cardCls, inputCls, labelCls } from "./ui";
 
 /**
@@ -48,9 +49,12 @@ export default function TimelineEditor(props: {
   media: MediaItem[];
   baseDuration: number | null;
   previewUrl: string | null;
+  baseUrl: string | null;
+  aspectRatio: string;
+  mediaUrl: (name: string) => string;
   onOps: (ops: TimelineOp[]) => Promise<boolean>;
 }) {
-  const { timeline, media, baseDuration, previewUrl, onOps } = props;
+  const { timeline, media, baseDuration, previewUrl, baseUrl, aspectRatio, mediaUrl, onOps } = props;
   const [zoom, setZoom] = useState(60); // Pixel pro Sekunde
   const [playhead, setPlayhead] = useState(0);
   const [selected, setSelected] = useState<string[]>([]);
@@ -203,18 +207,22 @@ export default function TimelineEditor(props: {
         </div>
       </div>
 
+      <TimelinePreview
+        timeline={timeline}
+        aspectRatio={aspectRatio}
+        playhead={playhead}
+        setPlayhead={setPlayhead}
+        end={end}
+        baseUrl={baseUrl}
+        mediaUrl={mediaUrl}
+        isVideo={(name) => media.find((m) => m.name === name)?.kind === "video"}
+      />
       {previewUrl && (
-        <video
-          ref={videoRef}
-          src={previewUrl}
-          controls
-          className="max-h-56 rounded-lg"
-          onTimeUpdate={(e) => {
-            if (!e.currentTarget.paused) setPlayhead(e.currentTarget.currentTime);
-          }}
-        />
+        <details className="text-xs text-neutral-400">
+          <summary className="cursor-pointer">Gerenderte Vorschau (Referenz, mit Ton)</summary>
+          <video ref={videoRef} src={previewUrl} controls className="mt-2 max-h-56 rounded-lg" />
+        </details>
       )}
-      {!previewUrl && <p className="text-xs text-neutral-500">Vorschau: nach „Vorschau rendern“ hier abspielbar (Abspielkopf synchron).</p>}
 
       <div className="flex flex-wrap gap-2">
         {(["split", "duplicate", "delete", "ripple_delete", "group", "ungroup"] as const).map((op) => (

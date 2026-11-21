@@ -530,6 +530,14 @@ export default function EditorPage() {
                   media={view?.media ?? []}
                   baseDuration={project.scenes.length ? (view?.renders?.[0]?.duration ?? null) : null}
                   previewUrl={view?.renders?.[0] ? studio.renderUrl(id, view.renders[0].render_id) : null}
+                  baseUrl={(() => {
+                    const r = view?.renders?.find((x) => x.mode !== "scene");
+                    if (!r || !project.scenes.length) return null;
+                    if (r.base_file) return studio.renderBaseUrl(id, r.render_id);
+                    return r.timeline ? null : studio.renderUrl(id, r.render_id);
+                  })()}
+                  aspectRatio={project.aspect_ratio}
+                  mediaUrl={(name) => studio.mediaUrl(id, name)}
                   onOps={runTimelineOps}
                 />
                 <ol id="scene-list" className="space-y-3">

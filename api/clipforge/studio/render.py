@@ -678,6 +678,12 @@ class StudioRenderer:
             return self._render_timeline_only(out_path, tl)
         report = self._render_scenes(out_path)
         if tl_mod.has_content(tl):
+            # Grundebene ohne Timeline-Spuren für die Live-Vorschau im Editor aufbewahren
+            # (nur Vorschau-Renders, um Speicher zu sparen)
+            if self.preview:
+                base = out_path[:-4] + ".base.mp4"
+                shutil.copyfile(out_path, base)
+                report["base_file"] = os.path.basename(base)
             from .timeline_render import composite
             work = os.path.join(self.dir, "cache", f"tl_{new_id()}")
             os.makedirs(work, exist_ok=True)
