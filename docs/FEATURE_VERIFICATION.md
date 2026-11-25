@@ -36,6 +36,7 @@ Pfade relativ zu `api/clipforge/` (Backend), `web/src/` (Frontend), Tests in `ap
 | Live: Warteschlange (1 Schnitt/Takt, Obergrenze, Status) | A | `LiveSession._enqueue/tick` | `test_only_one_cut_per_tick`, Grenz-Test | – | – |
 | Kick-Live-Chat | E | – | – | keine offizielle stabile API | – |
 | Download fremder Streams | E | – | – | bewusst ausgeschlossen (Nutzungsbedingungen) | – |
+| Link-Import YouTube/Twitch per yt-dlp (opt-in, Rechte je Link, Chat-Replay YouTube, danach Analyse) | B | `stream/link_import.py`, `StreamService.create_from_link`, `LinkImport.tsx` | `test_link_import` (nachgebildeter Downloader), E2E Flow O | verstößt gegen Plattform-AGB (Hinweis + Einschalten durch Nutzer); echter Download hier nicht ausgeführt; Twitch ohne Chat | erster echter Link auf dem Mac des Nutzers |
 
 ## KI-Videoeditor und Agent
 

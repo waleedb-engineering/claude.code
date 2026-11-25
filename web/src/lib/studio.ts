@@ -123,6 +123,19 @@ export type StreamMeta = {
   live?: { task_id: string; status: string; channel: string | null } | null;
   jobs?: { job_id: string; highlights: string[] }[];
   error?: string;
+  source_link?: { platform: string; kind: string; url: string; imported_at: string | null; uploader?: string } | null;
+};
+
+export type LinkImportStatus = {
+  enabled: boolean;
+  installed: boolean;
+  version: string | null;
+  pinned: string;
+  js_runtime: string | null;
+  max_hours: number;
+  max_height: number;
+  terms: string;
+  install_hint: string | null;
 };
 
 export type Highlight = {
@@ -718,6 +731,11 @@ export const studio = {
       "/translation/engines",
     ),
   streams: () => get<{ streams: StreamMeta[] }>("/streams").then((d) => d.streams),
+  linkImportStatus: () => get<LinkImportStatus>("/stream-link-import"),
+  setLinkImport: (enabled: boolean, acknowledged: boolean) =>
+    request<LinkImportStatus>("PUT", "/stream-link-import", { enabled, acknowledged }),
+  streamFromLink: (body: Record<string, unknown>) =>
+    post<{ stream: StreamMeta; task: Task }>("/stream-link-import/start", body),
   createStream: (body: Record<string, unknown>) => post<{ stream: StreamMeta }>("/streams", body).then((d) => d.stream),
   stream: (id: string) => get<{ stream: StreamMeta; analysis: StreamAnalysis | null }>(`/streams/${id}`),
   deleteStream: (id: string) => request<{ deleted: boolean }>("DELETE", `/streams/${id}`),

@@ -26,7 +26,7 @@ class TaskCanceled(Exception):
 
 
 # Aufgaben, die große Dateien schreiben → vorher freien Speicher prüfen
-HEAVY_KINDS = {"render", "ingest", "stream_analyze", "stream_render", "stream_preview", "stream_live",
+HEAVY_KINDS = {"render", "ingest", "stream_analyze", "stream_link_import", "stream_render", "stream_preview", "stream_live",
                "bg_remove", "face_swap", "rerender", "batch"}
 
 

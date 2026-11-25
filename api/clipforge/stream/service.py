@@ -49,6 +49,8 @@ class StreamService:
         tasks.register("stream_render", self._task_render)
         tasks.register("stream_preview", self._task_preview)
         tasks.register("stream_live", self._task_live)
+        tasks.register("stream_link_import", self._task_link_import)
+        self.ydl_factory = None  # Tests: nachgebildeter Downloader
 
     # ------------------------------------------------------------ Ablage
     def _base(self) -> str:
@@ -134,6 +136,72 @@ class StreamService:
                         "last": round(msgs[-1].t, 1),
                         "users": len({m.user for m in msgs}), "original_name": (filename or "")[:120]}
         return self._save(meta)
+
+    # ------------------------------------------------------------ Link-Import
+    def create_from_link(self, *, url: str, rights_confirmed: bool, analyze: dict | None,
+                         user: str | None) -> dict:
+        """Neue Quelle aus einem YouTube-/Twitch-Link; Download + Analyse als ein Job."""
+        from . import link_import
+        if not link_import.settings().get("enabled"):
+            raise StudioError("link_import_disabled",
+                              "Link-Import ist aus. Bitte zuerst unter Streams → Link-Import einschalten.", 403)
+        link = link_import.parse_link(url)
+        meta = self.create(title=f"{link['platform'].capitalize()} {link['id']}", platform=link["platform"],
+                           rights_confirmed=rights_confirmed, user=user)
+        meta["source_link"] = {**link, "imported_at": None, "tool": "yt-dlp"}
+        meta["status"] = "downloading"
+        self._save(meta)
+        task = self.tasks.submit("stream_link_import", None,
+                                 {"stream_id": meta["id"], "url": link["url"], "analyze": analyze})
+        return {"stream": self.load(meta["id"]), "task": task}
+
+    def _task_link_import(self, task: dict, progress, should_cancel) -> dict:
+        from . import link_import
+        p = task["params"]
+        sid = p["stream_id"]
+        progress("Video wird geladen …")
+        try:
+            got = link_import.download(p["url"], self.dir(sid), progress=progress,
+                                       should_cancel=should_cancel, ydl_factory=self.ydl_factory)
+        except Exception as exc:
+            meta = self.load(sid)
+            meta["status"] = "failed"
+            meta["error"] = getattr(exc, "message", str(exc))[:200]
+            self._save(meta)
+            raise
+        from ..ffmpeg_utils import probe
+        info = probe(got["video"])
+        meta = self.load(sid)
+        if got["title"]:
+            meta["title"] = got["title"]
+        meta["video"] = {"file": os.path.basename(got["video"]), "original_name": got["title"],
+                         "bytes": os.path.getsize(got["video"]), "duration": round(info.duration or 0, 2),
+                         "width": info.width, "height": info.height, "has_audio": info.has_audio}
+        meta["source_link"].update({"imported_at": now_iso(), "uploader": got["uploader"],
+                                    "was_live": got["was_live"]})
+        meta["status"] = "ready"
+        self._save(meta)
+        chat_note = "kein Chat-Replay"
+        if got["chat"]:
+            try:
+                with open(got["chat"], "rb") as fh:
+                    self.upload_chat(sid, "live_chat.json", fh.read())
+                chat_note = f"Chat-Replay übernommen ({self.load(sid)['chat']['messages']} Nachrichten)"
+            except StudioError as exc:
+                chat_note = f"Chat-Replay unlesbar: {exc.message}"
+            finally:
+                os.remove(got["chat"])
+        progress(f"Video geladen ({info.duration or 0:.0f} s); {chat_note}.")
+        if p.get("analyze") is None:
+            return {"stream_id": sid, "chat": chat_note}
+        # gleich weiter: Analyse im selben Job (eine Fortschrittsanzeige für den Nutzer)
+        progress("Highlights werden gesucht …")
+        analyze_task = {"params": {"stream_id": sid, **self._analyze_params(p.get("analyze") or {})}}
+        meta = self.load(sid)
+        meta["status"] = "analyzing"
+        self._save(meta)
+        result = self._task_analyze(analyze_task, progress, should_cancel)
+        return {"stream_id": sid, "chat": chat_note, **result}
 
     def _chat(self, sid: str) -> list[ChatMessage] | None:
         rows = read_json(os.path.join(self.dir(sid), "chat.json"), None)
@@ -288,6 +356,14 @@ class StreamService:
     # ---------------------------------------------------------- Analyse
     def start_analyze(self, sid: str, params: dict) -> dict:
         self.source_path(sid)
+        clean = self._analyze_params(params)
+        meta = self.load(sid)
+        meta["status"] = "analyzing"
+        self._save(meta)
+        return self.tasks.submit("stream_analyze", None, {"stream_id": sid, **clean})
+
+    @staticmethod
+    def _analyze_params(params: dict) -> dict:
         clean = {"keywords": [str(k)[:40] for k in (params.get("keywords") or [])][:20],
                  "chat_delay": params.get("chat_delay"),
                  "max_clips": max(1, min(60, int(params.get("max_clips") or 8))),
@@ -302,10 +378,7 @@ class StreamService:
             clean["chat_delay"] = max(0.0, min(30.0, float(clean["chat_delay"])))
         if clean["min_len"] > clean["max_len"]:
             raise StudioError("validation_error", "Mindestlänge darf nicht größer als die Maximallänge sein.")
-        meta = self.load(sid)
-        meta["status"] = "analyzing"
-        self._save(meta)
-        return self.tasks.submit("stream_analyze", None, {"stream_id": sid, **clean})
+        return clean
 
     def _transcriber(self):
         if self.transcriber is not None:

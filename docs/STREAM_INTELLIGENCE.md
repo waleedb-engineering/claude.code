@@ -13,8 +13,34 @@ vertikale Clips. Oberfläche: **Studio → Streams**. Code: `api/clipforge/strea
 | OBS | ja | Video: ja (wachsende MKV, nur lokal) | Pfad zur Aufnahme |
 | Upload | ja | – | beliebiges eigenes Video |
 
-ClipForge lädt **keine** fremden Streams herunter (Nutzungsbedingungen) und
-fragt vor jeder Analyse eine Rechtebestätigung ab.
+Standardmäßig lädt ClipForge **nichts** von YouTube/Twitch herunter und fragt vor
+jeder Analyse eine Rechtebestätigung ab.
+
+## Link-Import (opt-in, YouTube/Twitch)
+
+Link einfügen → ClipForge lädt das Video, übernimmt bei YouTube den Chat-Replay,
+analysiert und zeigt Highlight-Vorschläge zur Auswahl — ohne manuellen Upload.
+
+- **Aus**, bis der Nutzer ihn unter *Streams → Aus Link clippen* einschaltet und den
+  Hinweis bestätigt: YouTube und Twitch erlauben Downloads nur über eigene Funktionen;
+  der Download mit yt-dlp verstößt gegen ihre Nutzungsbedingungen (auch bei eigenen
+  Videos) und kann zur Sperre von Konto/IP führen.
+- **Je Link** bestätigt der Nutzer, dass es sein Inhalt ist oder er die Erlaubnis hat
+  (gespeichert mit Zeitpunkt, `verified: false`).
+- Nur `youtube.com/watch|live|shorts`, `youtu.be`, `twitch.tv/videos/…`, Twitch-Clips.
+  yt-dlp läuft mit `allowed_extractors` (kein generischer Extraktor → keine beliebigen
+  URLs), ohne Wiedergabelisten, ohne nachgeladene Skripte (`remote_components` leer).
+- Grenzen: laufende Live-Streams abgelehnt (dafür Live-Modus/OBS), max. 6 h
+  (`CLIPFORGE_LINK_MAX_HOURS`), max. 1080p (`CLIPFORGE_LINK_MAX_HEIGHT`),
+  Speicherplatz-Prüfung, Abbruch jederzeit (Teil-Download wird gelöscht).
+- Twitch-Chat kommt nicht mit (yt-dlp liefert ihn nicht) → TwitchDownloader-Export
+  nachträglich hochladen.
+- yt-dlp ist fest gepinnt (`requirements.txt`); YouTube braucht zusätzlich eine
+  JavaScript-Laufzeit (deno, node oder bun — auf dem Mac reicht `brew install node`).
+  Plattformen ändern sich oft: schlägt der Download fehl, yt-dlp aktualisieren.
+- **Verifiziert:** Ablauf mit nachgebildetem Downloader (`tests/test_link_import.py`,
+  E2E Flow O). **Nicht** verifiziert: Download gegen die echten Plattformen — in dieser
+  Entwicklungsumgebung wird bewusst nichts von YouTube/Twitch geladen.
 
 ## Signale (je Sekunde, alles lokal)
 

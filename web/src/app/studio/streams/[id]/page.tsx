@@ -71,6 +71,29 @@ export default function StreamDetailPage() {
     return () => clearTimeout(first);
   }, [load]);
 
+  // vom Link-Import: laufenden Download/Analyse-Job verfolgen (…?task=<id>)
+  useEffect(() => {
+    const tid = new URLSearchParams(window.location.search).get("task");
+    if (!tid) return;
+    const signal = { cancelled: false };
+    (async () => {
+      try {
+        const done = await waitForTask(tid, setTask, signal);
+        if (signal.cancelled) return;
+        setTask(null);
+        window.history.replaceState(null, "", window.location.pathname);
+        if (done.status !== "succeeded") setError(done.error?.message ?? "Fehlgeschlagen.");
+        await load();
+      } catch (e) {
+        setTask(null);
+        setError(errorMessage(e));
+      }
+    })();
+    return () => {
+      signal.cancelled = true;
+    };
+  }, [load]);
+
   useEffect(() => {
     if (meta?.live?.status !== "running") return;
     const timer = setInterval(async () => {
@@ -129,6 +152,11 @@ export default function StreamDetailPage() {
       {task && (
         <p role="status" className="rounded-lg border border-indigo-500/40 bg-indigo-500/10 px-3 py-2 text-sm text-indigo-200">
           ⏳ {task.progress[task.progress.length - 1] ?? "…"}
+          {task.kind === "stream_link_import" && (
+            <button type="button" className="ml-3 text-xs underline" onClick={() => studio.cancelTask(task.id).catch(() => undefined)}>
+              Abbrechen
+            </button>
+          )}
         </p>
       )}
 

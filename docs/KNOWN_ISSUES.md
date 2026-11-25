@@ -287,3 +287,10 @@ freien Mehrspur-Schnitte).
 - **Tracking:** nur an synthetisch bewegten Testgesichtern geprüft; schnelle Schwenks werden bewusst gedämpft (max. 0,35 Bildbreiten/s).
 - **Ausgabeprüfung:** misst nur technische Größen; ob die Pointe drin ist, entscheidet die Review-Stufe.
 - **LLM-Antwort-Streaming:** nicht umgesetzt (Status D).
+
+## Link-Import (25.11.2026)
+
+- Nutzt yt-dlp — gegen die Nutzungsbedingungen von YouTube/Twitch; deshalb nur nach ausdrücklichem Einschalten. Risiko: Sperre von Konto/IP.
+- Gegen die echten Plattformen noch nicht ausgeführt (nur nachgebildeter Downloader). Bricht yt-dlp nach Plattform-Änderungen, hilft meist ein Update.
+- YouTube braucht eine JavaScript-Laufzeit (deno/node/bun); ohne sie schlagen viele Downloads fehl. Das Docker-Image enthält keine — Link-Import ist für den lokalen Betrieb gedacht.
+- Twitch-Chat wird nicht mitgeladen.

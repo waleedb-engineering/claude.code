@@ -150,6 +150,18 @@ class StreamCreate(BaseModel):
     rights_confirmed: bool = False
 
 
+class LinkImportSettings(BaseModel):
+    enabled: bool
+    acknowledged: bool = False
+
+
+class StreamFromLink(BaseModel):
+    url: str = Field(min_length=8, max_length=500)
+    rights_confirmed: bool = False
+    # fehlt → gleich analysieren (Standardwerte); null → nur laden
+    analyze: dict | None = Field(default_factory=dict)
+
+
 class StreamAnalyze(BaseModel):
     keywords: list[str] = Field(default_factory=list, max_length=20)
     chat_delay: float | None = Field(default=None, ge=0, le=30)
@@ -886,6 +898,21 @@ def init_studio(app: FastAPI, registry, youtube_status=None,
 
     # ---------------------------------------------------- Stream Intelligence
     streams = studio.streams
+
+    @r.get("/stream-link-import")
+    def link_import_status() -> dict:
+        from clipforge.stream import link_import
+        return link_import.status()
+
+    @r.put("/stream-link-import")
+    def link_import_settings(req: LinkImportSettings, request: Request) -> dict:
+        from clipforge.stream import link_import
+        return link_import.set_enabled(req.enabled, req.acknowledged, getattr(request.state, "user", None))
+
+    @r.post("/stream-link-import/start", status_code=202)
+    def link_import_start(req: StreamFromLink, request: Request) -> dict:
+        return streams.create_from_link(url=req.url, rights_confirmed=req.rights_confirmed,
+                                        analyze=req.analyze, user=getattr(request.state, "user", None))
 
     @r.get("/streams")
     def stream_list() -> dict:
