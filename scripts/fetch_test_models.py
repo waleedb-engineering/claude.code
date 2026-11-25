@@ -9,6 +9,8 @@ Danach: CLIPFORGE_TEST_MODELS_DIR=<zielordner> pytest api/tests
 import hashlib
 import os
 import sys
+import time
+import urllib.error
 import urllib.request
 
 FILES = {
@@ -23,8 +25,11 @@ FILES = {
         "face_recognition_sface/face_recognition_sface_2021dec.onnx", "sha256",
         "0ba9fbfa01b5270c96627c4ef784da859931e02f04419c829e83484087c34e79"),
     # OpenCV-Beispielbilder (nur für Tests, nicht Teil von ClipForge)
-    "lena.jpg": ("https://raw.githubusercontent.com/opencv/opencv/4.x/samples/data/lena.jpg", None, None),
-    "messi5.jpg": ("https://raw.githubusercontent.com/opencv/opencv/4.x/samples/data/messi5.jpg", None, None),
+    # fester Tag statt wanderndem Branch, mit Prüfsumme
+    "lena.jpg": ("https://raw.githubusercontent.com/opencv/opencv/4.10.0/samples/data/lena.jpg", "sha256",
+                 "7de7ed51a1594fff247f4cae2301eceacf5313d6011e37b4a4c8733f7bb72c07"),
+    "messi5.jpg": ("https://raw.githubusercontent.com/opencv/opencv/4.10.0/samples/data/messi5.jpg", "sha256",
+                   "1d570e49654e84c7a943918537bd9e5e1ef82920152e147c834006e235be97c9"),
 }
 
 
@@ -34,7 +39,15 @@ def main(target: str) -> int:
         dest = os.path.join(target, name)
         if not os.path.exists(dest):
             print("lade", name)
-            urllib.request.urlretrieve(url, dest)  # noqa: S310 — feste URLs
+            for attempt in range(4):  # GitHub-Downloads scheitern gelegentlich kurzzeitig (404/5xx)
+                try:
+                    urllib.request.urlretrieve(url, dest)  # noqa: S310 — feste URLs
+                    break
+                except (urllib.error.URLError, OSError) as exc:
+                    if attempt == 3:
+                        raise
+                    print(f"  Versuch {attempt + 1} fehlgeschlagen ({exc}), neuer Versuch …")
+                    time.sleep(5 * (attempt + 1))
         if algo:
             h = hashlib.new(algo)
             with open(dest, "rb") as fh:
