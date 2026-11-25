@@ -134,3 +134,44 @@ def test_labels_evaluation_variants_and_tuning_api(tmp_path):
     r = client.post("/api/studio/stream-weights/tune", json={}).json()
     assert r["cases"] == 2 and r["f1_leave_one_out"] is not None and r["applied"] is False
     assert client.get("/api/studio/stream-weights").json()["tuned"] is None
+
+
+def test_long_streams_allow_more_highlights(tmp_path):
+    """3-h-Benchmark: bei 66 Ereignissen begrenzte die alte Obergrenze (20) den Recall."""
+    client, _ = make_client(str(tmp_path))
+    sid = client.post("/api/studio/streams", json={"title": "L", "platform": "obs",
+                                                   "rights_confirmed": True}).json()["stream"]["id"]
+    with open(_stream(str(tmp_path / "v.mp4")), "rb") as fh:
+        client.post(f"/api/studio/streams/{sid}/video", files={"file": ("v.mp4", fh, "video/mp4")})
+    assert client.post(f"/api/studio/streams/{sid}/analyze", json={"max_clips": 61}).status_code == 422
+    t = wait_task(client, client.post(f"/api/studio/streams/{sid}/analyze",
+                                      json={"max_clips": 60, "transcribe": False}).json()["task"]["id"])
+    assert t["status"] == "succeeded" and t["params"]["max_clips"] == 60
+
+
+def test_weight_compare_history_and_rollback(tmp_path):
+    client, app_module = make_client(str(tmp_path))
+    sids = []
+    for i in range(2):
+        sid = client.post("/api/studio/streams", json={"title": f"R{i}", "platform": "twitch",
+                                                       "rights_confirmed": True}).json()["stream"]["id"]
+        with open(_stream(str(tmp_path / f"v{i}.mp4")), "rb") as fh:
+            client.post(f"/api/studio/streams/{sid}/video", files={"file": ("v.mp4", fh, "video/mp4")})
+        client.post(f"/api/studio/streams/{sid}/chat", files={"file": ("c.json", _twitch_chat(), "application/json")})
+        wait_task(client, client.post(f"/api/studio/streams/{sid}/analyze",
+                                      json={"transcribe": False, "max_clips": 3}).json()["task"]["id"])
+        client.put(f"/api/studio/streams/{sid}/labels", json={"highlights": [{"start": 60, "end": 70, "peak": 60}]})
+        sids.append(sid)
+    cmp = client.get("/api/studio/stream-weights/compare").json()
+    assert len(cmp["streams"]) == 2 and cmp["real_streams"] == 2 and cmp["tuned"] is None
+    assert cmp["total_default"]["tp"] == 2 and cmp["streams"][0]["default"]["recall"] == 1.0
+    assert client.post("/api/studio/stream-weights/rollback").status_code == 409   # nichts zurückzunehmen
+    svc = app_module.studio.streams
+    svc._set_weights({"weights": {"chat_rate": 0.5}, "at": "x"})                   # wie eine Übernahme
+    svc._set_weights({"weights": {"chat_rate": 0.9}, "at": "y"})
+    assert client.get("/api/studio/stream-weights").json()["tuned"]["weights"] == {"chat_rate": 0.9}
+    assert client.post("/api/studio/stream-weights/rollback").json()["tuned"]["weights"] == {"chat_rate": 0.5}
+    assert client.post("/api/studio/stream-weights/rollback").json()["tuned"] is None   # zurück auf Standard
+    svc._set_weights({"weights": {"chat_rate": 0.7}, "at": "z"})
+    assert client.delete("/api/studio/stream-weights").status_code == 200
+    assert client.post("/api/studio/stream-weights/rollback").json()["tuned"]["weights"] == {"chat_rate": 0.7}

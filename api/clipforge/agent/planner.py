@@ -27,7 +27,42 @@ NUM = {"eins": 1, "ein": 1, "einen": 1, "eine": 1, "zwei": 2, "drei": 3, "vier":
 ORD = {"erste": 1, "ersten": 1, "zweite": 2, "zweiten": 2, "dritte": 3, "dritten": 3, "vierte": 4,
        "vierten": 4, "fünfte": 5, "fünften": 5, "letzte": -1, "letzten": -1, "first": 1,
        "second": 2, "third": 3, "last": -1}
-COST = {"rules": 0.0, "ollama": 0.0, "anthropic": 0.01, "openai": 0.005}  # Richtwert je Nachricht
+COST = {"rules": 0.0, "ollama": 0.0, "anthropic": 0.01, "openai": 0.005, "gemini": 0.0}  # Richtwert je Nachricht
+# Preis hängt vom Tarif ab (Gratis-Kontingent möglich) → nie ohne ausdrückliche Bestätigung,
+# aber kein erfundener Betrag
+PAID_UNKNOWN = {"gemini"}
+MEMORY_RECENT = 6
+
+
+def memory_context(history: list[dict]) -> str:
+    """Gesprächsgedächtnis je Projekt: letzte Wechsel wörtlich, Älteres zusammengefasst."""
+    turns = [h for h in history if h.get("role") in ("user", "assistant")]
+    if not turns:
+        return ""
+    recent, older = turns[-MEMORY_RECENT * 2:], turns[:-MEMORY_RECENT * 2]
+    lines = []
+    if older:
+        done: dict[str, int] = {}
+        asks = []
+        for h in older:
+            if h["role"] == "user":
+                asks.append(h.get("text", "")[:60])
+            for st in ((h.get("plan") or {}).get("steps") or []):
+                if (h.get("plan") or {}).get("status") == "executed":
+                    done[st["tool"]] = done.get(st["tool"], 0) + 1
+        lines.append(f"Zusammenfassung früherer Schritte ({len(older)} Nachrichten): "
+                     + (", ".join(f"{k}×{v}" for k, v in done.items()) or "keine ausgeführten Änderungen")
+                     + (f"; frühere Wünsche u. a.: {' | '.join(asks[-3:])}" if asks else ""))
+    for h in recent:
+        if h["role"] == "user":
+            lines.append(f"Nutzer: {h.get('text', '')[:200]}")
+        else:
+            plan = h.get("plan") or {}
+            steps = ", ".join(f"{st['tool']}({json.dumps(st.get('args', {}), ensure_ascii=False)[:80]})"
+                              for st in plan.get("steps") or [])
+            lines.append(f"Assistent: {steps or h.get('text', '')[:120]} [{plan.get('status', '')}"
+                         f"{', rückgängig' if plan.get('undone') else ''}]")
+    return "\n".join(lines)[-3000:]
 
 # Test-Hook: (engine, system, message, tools) -> list[{"tool":…, "args":…}] | str
 LLM_CALL = None
@@ -47,6 +82,9 @@ def _index(text: str, word: str, count: int) -> int | None:
     m = re.search(rf"\b{word}\s*(?:nr\.?\s*)?(\d+)\b", text)
     if m:
         return int(m.group(1))
+    m = re.search(rf"\b{word}\s+(eins|zwei|drei|vier|fünf|sechs|sieben|acht|neun|zehn|one|two|three|four|five)\b", text)
+    if m:
+        return NUM[m.group(1)]
     m = re.search(rf"\b(\w+)\s+{word}\b", text)
     if m and m.group(1) in ORD:
         v = ORD[m.group(1)]
@@ -61,12 +99,8 @@ def rule_plan(message: str, kind: str, count: int) -> tuple[list[dict], list[str
     unit = "clip" if kind == "stream" else "szene"
     idx = _index(t, "clip", count) or _index(t, "szene", count) or _index(t, "scene", count)
 
-    if re.search(r"übersetz|translate|deutsche version|english version|synchronisiert", t):
-        notes.append(UNSUPPORTED["translate"])
     if re.search(r"verfolg|tracking|track the|folge dem", t):
         notes.append(UNSUPPORTED["track"])
-    if re.search(r"keyframe", t):
-        notes.append(UNSUPPORTED["keyframe"])
     if re.search(r"b-roll|broll", t):
         notes.append(UNSUPPORTED["broll"])
 
@@ -126,6 +160,46 @@ def rule_plan(message: str, kind: str, count: int) -> tuple[list[dict], list[str
         m = re.search(r"(\w+)\s+(versionen|varianten|variants).{0,30}(hook|einstieg)", t)
         if m:
             steps.append({"tool": "generate_hook_variants", "args": {"count": int(_n(m.group(1)) or 3)}})
+        # Übersetzen / Synchronisieren
+        if re.search(r"übersetz|translate|deutsche version|english version|synchronis|auf deutsch|in german|"
+                     r"auf englisch|in english|ins deutsche|ins englische", t):
+            target = "en" if re.search(r"englisch|english", t) else "de"
+            mode = "dub" if re.search(r"stimme|voice|synchron|dub|vertonung|sprecher", t) else "subtitles"
+            steps.append({"tool": "translate_video", "args": {"target": target, "mode": mode,
+                                                              "engine": "argos"}})
+            notes.append("Übersetzung lokal mit Argos (kostenlos, Sprachmodell muss installiert sein). "
+                         "Für bessere Qualität „engine anthropic“ (kostenpflichtig) wählen.")
+        # Split-Screen
+        if re.search(r"split.?screen|geteilte?r? bildschirm|gameplay (unten|darunter|below)", t):
+            gp = re.search(r"(?:gameplay|video)\s+[„\"']([^“\"']+)[“\"']", message, re.I)
+            steps.append({"tool": "create_split_screen", "args": {**({"gameplay": gp.group(1)} if gp else {}),
+                                                                   **({"scene": idx} if idx else {})}})
+        # Text-Element: Text „Abonnieren!“ von 2 bis 5 Sekunden (oben)
+        m = re.search(r"text\s+[„\"']([^“\"']{1,120})[“\"']", message, re.I)
+        if m:
+            rng = re.search(r"(?:von|from)\s+(\d+(?:[.,]\d+)?)\s*(?:s|sek\w*)?\s+(?:bis|to)\s+(\d+(?:[.,]\d+)?)", t)
+            a0, a1 = (_n(rng.group(1)), _n(rng.group(2))) if rng else (0.0, 3.0)
+            pos = re.search(r"\b(oben|mitte|unten|top|middle|bottom)\b", t)
+            col = re.search(r"\b(weiß|white|gelb|yellow|rot|red|grün|green|blau|blue|orange|pink)\w*", t)
+            steps.append({"tool": "timeline_add_text", "args": {
+                "text": m.group(1), "start": a0 or 0.0, "duration": max(0.5, (a1 or 3.0) - (a0 or 0.0)),
+                **({"position": {"oben": "top", "top": "top", "mitte": "middle", "middle": "middle"}.get(pos.group(1), "bottom")} if pos else {}),
+                **({"color": col.group(1)} if col else {})}})
+        # Logo/Bild als Overlay: „Leg das Logo oben rechts drüber“
+        m = re.search(r"(logo|bild|grafik|sticker|overlay)\b", t)
+        if m and re.search(r"leg|füg|setz|add|platzier|zeig|einblend", t):
+            corner = next((v for k, v in (("oben rechts", "top_right"), ("oben links", "top_left"),
+                                          ("unten rechts", "bottom_right"), ("unten links", "bottom_left"),
+                                          ("top right", "top_right"), ("top left", "top_left"),
+                                          ("mitte", "center")) if k in t), "top_right")
+            name = re.search(r"[„\"']([^“\"']+\.(?:png|jpg|jpeg|webp|mp4|mov))[“\"']", message, re.I)
+            steps.append({"tool": "timeline_add_media", "args": {
+                "media": name.group(1) if name else (m.group(1) if m.group(1) == "logo" else ""),
+                "track_kind": "overlay", "position": corner, "scale": 0.22,
+                "duration": 5.0, "fade": 0.3 if re.search(r"einblend|blende\w*\b.*\bein\b|fade|weich", t) else 0.0}})
+        if re.search(r"keyframe", t) and not steps:
+            notes.append("Keyframes: z. B. „timeline_keyframe“ über Claude/Ollama oder im Editor im "
+                         "Eigenschaften-Bereich setzen (Element, Eigenschaft, Zeit, Wert).")
         # Zoom: „zoom auf das Gesicht in Szene 2“, „zoom langsam rein“, „kein zoom“
         if re.search(r"zoom|heranzoom|ranzoom|reinzoom", t) and not re.search(r"zoom-übergang|zoom übergang", t):
             if re.search(r"(kein|ohne|entfern|remove|no)\w*\s+(den\s+)?zoom|zoom\s+(entfernen|weg|aus)", t):
@@ -141,15 +215,19 @@ def rule_plan(message: str, kind: str, count: int) -> tuple[list[dict], list[str
                 steps.append({"tool": "zoom_scene", "args": {**({"scene": idx} if idx else {}), "factor": factor,
                                                               "focus": focus,
                                                               "ramp": bool(re.search(r"langsam|einfahr|slow|ramp", t))}})
+                if re.search(r"wenn|when|sobald|beim|während", t) and not idx:
+                    notes.append("Zoom gilt je Szene. Für einen Moment-genauen Zoom die Szene nennen "
+                                 "(z. B. „Szene 3“) oder im Stream-Clip den Gesichts-Reframe nutzen.")
         # Untertitel-Aussehen
         if re.search(r"untertitel|caption|subtitle", t):
             look = {}
-            cols = [c for c in re.findall(r"\b(weiß|white|gelb|yellow|rot|red|grün|green|blau|blue|orange|pink|lila|purple|türkis|cyan|schwarz|black)\w*", t)]
-            if cols:
-                if re.search(r"hervorheb|highlight|aktuelle wort|markier", t):
-                    look["highlight_color"] = cols[0]
-                else:
-                    look["color"] = cols[0]
+            col_rx = r"\b(weiß|white|gelb|yellow|rot|red|grün|green|blau|blue|orange|pink|lila|purple|türkis|cyan|schwarz|black)\w*"
+            hl = re.search(r"hervorheb|highlight|aktuelle wort|markier|wichtige wörter|important words", t)
+            for cm in re.finditer(col_rx, t):
+                # Farbe nach dem Hervorhebungs-Hinweis (oder direkt davor bei „rot hervorheben“) → Hervorhebung
+                after_hl = hl and (cm.start() > hl.start() or 0 <= hl.start() - cm.end() <= 12)
+                key = "highlight_color" if after_hl else "color"
+                look.setdefault(key, cm.group(1))
             pos = re.search(r"\b(oben|top|mitte|middle|center|unten|bottom)\b", t)
             if pos:
                 look["position"] = {"oben": "top", "top": "top", "mitte": "middle", "middle": "middle",
@@ -164,10 +242,12 @@ def rule_plan(message: str, kind: str, count: int) -> tuple[list[dict], list[str
             if look:
                 steps.append({"tool": "set_caption_appearance", "args": look})
         # Musik / Effekte / Lautheit
-        m = re.search(r"(füge|leg|add|setz)\w*\s+(?:(?:eine?n?|die|some)\s+)?(?:hintergrund)?(musik|music)(?:\s+[„\"']?([\w .-]+?)[“\"']?)?\s*(hinzu|ein|unter|$)", t)
+        m = re.search(r"(füge|leg|add|setz)\w*\s+(?:(?:eine?n?|die|some)\s+)?(?:hintergrund)?(musik|music)"
+                      r"(?:\s+(?:[„\"']([^“\"']{1,60})[“\"']|([\w.-]+)))?", t)
         if m or re.search(r"(mit|with)\s+(hintergrund)?musik", t):
-            name = (m.group(3) or "").strip() if m else ""
-            if name in ("hinzu", "ein", "unter", "dazu", "rein", "drunter"):
+            name = ((m.group(3) or m.group(4) or "").strip()) if m else ""
+            if name in ("hinzu", "ein", "unter", "dazu", "rein", "drunter", "und", "and", "an", "mit", "leiser",
+                        "lauter", "bitte"):
                 name = ""
             steps.append({"tool": "add_background_music", "args": {"track": name}})
         elif re.search(r"(keine|ohne|entfern\w*)\s+(die\s+)?musik|musik\s+(entfernen|weg|raus)", t):
@@ -191,10 +271,11 @@ def rule_plan(message: str, kind: str, count: int) -> tuple[list[dict], list[str
             steps.append({"tool": "export_video", "args": {}})
     else:
         nums = "|".join(NUM)
-        m = re.search(rf"\b(\d+|{nums})\s+(?:[\wäöüß-]+\s+){{0,2}}(tiktoks?|clips?|shorts?|highlights?|momente?)", t)
+        m = re.search(rf"\b(\d+|{nums})\s+(?:[\wäöüß-]+\s+){{0,2}}(tiktoks?|clips?|shorts?|highlights?|momente?|szenen?|scenes?|stellen)", t)
         want = int(_n(m.group(1)) or 5) if m else 5
         if re.search(r"analysier|finde|find|suche|erstelle|create", t) and re.search(
-                r"stream|moment|highlight|tiktok|clip|short", t) and not re.search(r"clip\s*\d", t):
+                r"stream|moment|highlight|tiktok|clip|short|szene|stelle", t) and not re.search(r"clip\s*\d", t) \
+                and not idx:
             focus = "funny" if re.search(r"lustig|funny|witzig|lach", t) else "any"
             steps.append({"tool": "find_highlights", "args": {"count": want, "focus": focus}})
             if re.search(r"erstelle|create|mach", t):
@@ -212,6 +293,12 @@ def rule_plan(message: str, kind: str, count: int) -> tuple[list[dict], list[str
             steps.append({"tool": "set_clip_variant", "args": {"clip": idx, "variant": v}})
         elif re.search(r"variante|varianten|variants", t) and idx:
             steps.append({"tool": "list_clip_variants", "args": {"clip": idx}})
+        # „… und zoome beim Höhepunkt auf mein Gesicht“ → mit Gesichts-Tracking (enger) rendern
+        if idx and re.search(r"zoom|näher|nah ran", t) and re.search(r"gesicht|face|streamer|mich|facecam", t):
+            steps.append({"tool": "render_clips", "args": {"clips": [idx], "framing": "track", "track_zoom": 1.4,
+                                                            "remove_pauses": True}})
+            notes.append("Zoom auf das Gesicht: Clip wird mit Gesichts-Tracking (1,4× enger) gerendert — "
+                         "der Ausschnitt folgt dem Gesicht über den ganzen Clip.")
         if re.search(r"liste|zeig|show|list", t) and not steps:
             steps.append({"tool": "list_highlights", "args": {}})
     return steps, notes
@@ -243,11 +330,13 @@ def ollama_url() -> str:
     return url
 
 
-def llm_plan(engine: str, message: str, state: dict, kind: str) -> tuple[list[dict], str]:
+def llm_plan(engine: str, message: str, state: dict, kind: str, memory: str = "") -> tuple[list[dict], str]:
     tools = [t.schema() for t in for_context(kind)]
     from ..skills import planner_context
     system = SYSTEM + ("\n\n" + planner_context() if planner_context() else "")
-    user = f"Projektzustand:\n{json.dumps(state, ensure_ascii=False)[:6000]}\n\nBefehl: {message}"
+    user = (f"Projektzustand:\n{json.dumps(state, ensure_ascii=False)[:6000]}\n\n"
+            + (f"Bisheriger Verlauf in diesem Projekt:\n{memory}\n\n" if memory else "")
+            + f"Befehl: {message}")
     if LLM_CALL is not None:
         out = LLM_CALL(engine, system, user, tools)
         return (out, "") if isinstance(out, list) else ([], str(out))
@@ -265,6 +354,8 @@ def llm_plan(engine: str, message: str, state: dict, kind: str) -> tuple[list[di
                  if b.get("type") == "tool_use"]
         text = " ".join(b.get("text", "") for b in data.get("content", []) if b.get("type") == "text")
         return calls, text.strip()
+    if engine == "gemini":
+        return _gemini(system, user, tools)
     fn_tools = [{"type": "function", "function": {"name": t["name"], "description": t["description"],
                                                   "parameters": t["input_schema"]}} for t in tools]
     msgs = [{"role": "system", "content": system}, {"role": "user", "content": user}]
@@ -303,6 +394,43 @@ def llm_plan(engine: str, message: str, state: dict, kind: str) -> tuple[list[di
     return calls, str(msg.get("content") or "").strip()
 
 
+def _gemini_schema(schema: dict) -> dict:
+    """Gemini verlangt bei Arrays ein 'items'-Schema."""
+    props = {}
+    for name, spec in (schema.get("properties") or {}).items():
+        spec = dict(spec)
+        if spec.get("type") == "array" and "items" not in spec:
+            spec["items"] = {"type": "integer" if name == "clips" else "string"}
+        props[name] = spec
+    out = {"type": "object", "properties": props}
+    if schema.get("required"):
+        out["required"] = schema["required"]
+    return out
+
+
+def gemini_model() -> str:
+    return os.environ.get("CLIPFORGE_GEMINI_MODEL", "gemini-2.0-flash")
+
+
+def _gemini(system: str, user: str, tools: list[dict]) -> tuple[list[dict], str]:
+    from ..studio.credentials import secret
+    key = secret("GEMINI_API_KEY")
+    if not key:
+        raise StudioError("credential_not_set", "Kein Gemini-Schlüssel hinterlegt.", 409)
+    decls = [{"name": t["name"], "description": t["description"],
+              "parameters": _gemini_schema(t["input_schema"])} for t in tools]
+    data = _http_json(f"https://generativelanguage.googleapis.com/v1beta/models/{gemini_model()}:generateContent", {
+        "systemInstruction": {"parts": [{"text": system}]},
+        "contents": [{"role": "user", "parts": [{"text": user}]}],
+        "tools": [{"functionDeclarations": decls}],
+        "generationConfig": {"temperature": 0}}, {"x-goog-api-key": key})
+    parts = ((data.get("candidates") or [{}])[0].get("content") or {}).get("parts") or []
+    calls = [{"tool": p["functionCall"].get("name"), "args": p["functionCall"].get("args") or {}}
+             for p in parts if isinstance(p.get("functionCall"), dict)]
+    text = " ".join(p.get("text", "") for p in parts if p.get("text"))
+    return calls, text.strip()
+
+
 def engines() -> list[dict]:
     from ..studio.credentials import secret
     out = [{"id": "rules", "label": "Regelbasiert (lokal, kostenlos)", "ready": True, "paid": False,
@@ -314,8 +442,14 @@ def engines() -> list[dict]:
                 "models": [m["name"] for m in st["models"]], "model": st["model"], "live_verified": False,
                 "hint": "" if st["reachable"] and st["model"] else
                 (st.get("hint") or st["model_reason"] + ". " + st["recommendation"].get("command", ""))})
+    from ..config import get_settings
     out.append({"id": "anthropic", "label": "Claude (kostenpflichtig)", "ready": bool(secret("ANTHROPIC_API_KEY")),
-                "paid": True, "cost_per_message_usd": COST["anthropic"], "live_verified": False})
+                "paid": True, "cost_per_message_usd": COST["anthropic"], "live_verified": False,
+                "model": get_settings().llm_model})
     out.append({"id": "openai", "label": "OpenAI (kostenpflichtig)", "ready": bool(secret("OPENAI_API_KEY")),
-                "paid": True, "cost_per_message_usd": COST["openai"], "live_verified": False})
+                "paid": True, "cost_per_message_usd": COST["openai"], "live_verified": False,
+                "model": os.environ.get("CLIPFORGE_OPENAI_AGENT_MODEL", "gpt-4o-mini")})
+    out.append({"id": "gemini", "label": "Gemini (Kosten je nach Google-Tarif)", "ready": bool(secret("GEMINI_API_KEY")),
+                "paid": True, "cost_per_message_usd": None, "live_verified": False, "model": gemini_model(),
+                "note": "Preis abhängig vom Tarif (Gratis-Kontingent möglich) — jede Nachricht braucht Bestätigung."})
     return out

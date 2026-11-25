@@ -68,3 +68,15 @@ cd api && python -m clipforge.stream.evaluate /tmp/bench --max-clips 25 --json /
 3. **Speicher** unkritisch (< 0,5 GB je FFmpeg-Prozess); die Task-Queue rendert
    mit begrenzter Parallelität, der Live-Modus schneidet max. einen Clip pro Takt.
 4. **Dateiverwaltung**: Signal-Cache je Stream ≈ 4 Werte × Sekunden (3 h ≈ 1 MB JSON).
+
+
+## Production-Runde (21.11.2026, gleiche Hardware)
+
+| Messung | Ergebnis |
+|---|---|
+| Stream-Messung 10 min 360p mit Audio-Ereignis-Merkmalen | 7,5 s je Datei (**80×** Echtzeit, unverändert) |
+| Stream-Messung 60 min 720p mit Audio-Ereignis-Merkmalen | 94 s (**38×** Echtzeit; vorher 117 s — Schwankung des Containers, nicht als Verbesserung werten) |
+| F1 synthetisch, `explain` vs. `rank` | 0,833 / 0,833 (3×10 min), 0,913 / 0,913 (60 min) — kein Unterschied messbar |
+| CPU-Kodierung libx264 1080p, 10 s Testbild | 4,4 s (2,27× Echtzeit) |
+| Hardware-Encoder | NVENC/QSV/VAAPI im FFmpeg-Build gelistet, Probelauf scheitert (keine GPU) → nicht genutzt |
+| 3-h-Stream 360p (66 Ereignisse, synthetisch) | Messung 133 s (81×), RAM ≤ 148 MB FFmpeg; F1 0,47 mit max. 20 Highlights, 0,90 mit 80 → Obergrenze auf 60 angehoben |

@@ -68,7 +68,7 @@ if command -v ffmpeg >/dev/null 2>&1 && command -v ffprobe >/dev/null 2>&1; then
   ok "ffmpeg/ffprobe gefunden."
 else
   warn "ffmpeg/ffprobe NICHT gefunden. Bitte manuell installieren (z.B. 'apt install ffmpeg' /"
-  warn "'brew install ffmpeg') — wird NICHT automatisch systemweit installiert."
+  warn "'brew install ffmpeg-full', siehe docs/INSTALL.md) — wird NICHT automatisch systemweit installiert."
 fi
 
 # --- 7) Doctor ausführen ------------------------------------------------------

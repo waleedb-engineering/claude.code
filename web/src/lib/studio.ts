@@ -51,6 +51,36 @@ export type Scene = {
   sfx?: { track: string; at: number; volume: number }[];
 };
 
+export type Ease = "linear" | "ease_in" | "ease_out" | "ease_in_out";
+export type Keyframe = { t: number; v: number; ease: Ease };
+export type TimelineItem = {
+  id: string;
+  start: number;
+  duration: number;
+  group?: string;
+  src?: string;
+  in?: number;
+  x?: number;
+  y?: number;
+  scale?: number;
+  rotation?: number;
+  opacity?: number;
+  volume?: number;
+  fade_in?: number;
+  fade_out?: number;
+  blur?: number;
+  audio?: boolean;
+  text?: string;
+  color?: string;
+  size?: number;
+  position?: "top" | "middle" | "bottom";
+  keyframes?: Record<string, Keyframe[]>;
+};
+export type TrackKind = "video" | "overlay" | "audio" | "caption";
+export type TimelineTrack = { id: string; kind: TrackKind; name: string; muted: boolean; locked: boolean; hidden: boolean; items: TimelineItem[] };
+export type Timeline = { version: number; tracks: TimelineTrack[] };
+export type TimelineOp = Record<string, unknown> & { op: string };
+
 export type ZoomFocus = "center" | "face" | "top" | "bottom" | "left" | "right";
 export const CAPTION_FONTS = ["Arial", "Helvetica", "Verdana", "Impact", "Georgia", "DejaVu Sans", "Liberation Sans"] as const;
 
@@ -93,6 +123,19 @@ export type StreamMeta = {
   live?: { task_id: string; status: string; channel: string | null } | null;
   jobs?: { job_id: string; highlights: string[] }[];
   error?: string;
+  source_link?: { platform: string; kind: string; url: string; imported_at: string | null; uploader?: string } | null;
+};
+
+export type LinkImportStatus = {
+  enabled: boolean;
+  installed: boolean;
+  version: string | null;
+  pinned: string;
+  js_runtime: string | null;
+  max_hours: number;
+  max_height: number;
+  terms: string;
+  install_hint: string | null;
 };
 
 export type Highlight = {
@@ -162,7 +205,7 @@ export type AgentMessage = {
     status: "pending" | "done" | "partial" | "discarded" | "empty";
     needs_confirmation: boolean;
     steps: { tool: string; args: Record<string, unknown>; label: string; confirm: boolean; cost: string }[];
-    results?: { tool: string; ok: boolean; change?: string; error?: string; task_id?: string }[];
+    results?: { tool: string; ok: boolean; status?: "ok" | "failed" | "skipped"; change?: string; error?: string; task_id?: string }[];
     undone?: boolean;
   };
 };
@@ -197,6 +240,7 @@ export type Project = {
     size?: number;
   };
   audio?: { loudnorm: boolean; target_lufs: number };
+  timeline?: Timeline;
   visuals: {
     image_provider: string;
     gameplay_media: string | null;
@@ -214,6 +258,35 @@ export type Project = {
   version: number;
   created_at: string;
   updated_at: string;
+};
+
+export type LibraryItem = {
+  id: string;
+  name: string;
+  file: string;
+  media_type: "video" | "image" | "audio";
+  kind: string;
+  tags: string[];
+  sha256: string;
+  bytes: number;
+  duration?: number;
+  width?: number | null;
+  height?: number | null;
+  provenance: { source: string; author: string | null; url: string | null; license: { name: string | null; url: string | null } };
+  created_at: string;
+  usage: { project_id: string; media: string; at: string }[];
+  duplicate?: boolean;
+};
+
+type EvalNums = { precision: number; recall: number; f1: number; duplicates: number; time_offset_mean_s: number | null };
+export type WeightCompare = {
+  streams: { id: string; name: string; synthetic: boolean; labels: number; default: EvalNums; current: EvalNums }[];
+  tuned: { weights: Record<string, number>; at?: string } | null;
+  history: { replaced_at: string; weights: unknown }[];
+  total_default: EvalNums & { tp: number; fp: number; fn: number };
+  total_current: EvalNums & { tp: number; fp: number; fn: number };
+  real_streams: number;
+  note: string;
 };
 
 export type ProjectSummary = {
@@ -267,6 +340,16 @@ export type RenderReport = {
   fallbacks: { scene_id: string; kind: string; provider: string; reason: string }[];
   quality?: { checks: QualityCheck[]; passed: boolean };
   scene_id?: string;
+  timeline?: Record<string, number>;
+  base_file?: string;
+  output_checks?: {
+    platform: string;
+    passed: boolean | null;
+    warnings: number;
+    checks: { id: string; level: "ok" | "warn" | "fail"; message: string }[];
+    review_items: Record<string, string>;
+  };
+  review?: { checklist: Record<string, boolean>; verdict: "approved" | "changes_requested"; note: string; by: string; at: string };
 };
 
 export type MediaItem = {
@@ -378,8 +461,10 @@ export type Estimate = {
   spent_usd: number;
   budget_limit_usd: number;
   within_budget: boolean;
-  items: { provider: string; what: string; amount_usd: number }[];
+  items: { provider: string; what: string; amount_usd: number; model?: string | null; alternative?: string | null }[];
   note: string;
+  variance_note?: string;
+  budget_remaining_usd?: number;
 };
 
 export type AutomationRun = {
@@ -646,6 +731,11 @@ export const studio = {
       "/translation/engines",
     ),
   streams: () => get<{ streams: StreamMeta[] }>("/streams").then((d) => d.streams),
+  linkImportStatus: () => get<LinkImportStatus>("/stream-link-import"),
+  setLinkImport: (enabled: boolean, acknowledged: boolean) =>
+    request<LinkImportStatus>("PUT", "/stream-link-import", { enabled, acknowledged }),
+  streamFromLink: (body: Record<string, unknown>) =>
+    post<{ stream: StreamMeta; task: Task }>("/stream-link-import/start", body),
   createStream: (body: Record<string, unknown>) => post<{ stream: StreamMeta }>("/streams", body).then((d) => d.stream),
   stream: (id: string) => get<{ stream: StreamMeta; analysis: StreamAnalysis | null }>(`/streams/${id}`),
   deleteStream: (id: string) => request<{ deleted: boolean }>("DELETE", `/streams/${id}`),
@@ -663,6 +753,9 @@ export const studio = {
   putStreamLabels: (id: string, highlights: Record<string, unknown>[]) =>
     request<unknown>("PUT", `/streams/${id}/labels`, { highlights }),
   streamEvaluation: (id: string) => get<StreamEvaluation>(`/streams/${id}/evaluation`),
+  compareStreamWeights: () => get<WeightCompare>("/stream-weights/compare"),
+  rollbackStreamWeights: () => post<{ tuned: unknown }>("/stream-weights/rollback"),
+  resetStreamWeights: () => request<{ reset: boolean }>("DELETE", "/stream-weights"),
   tuneStreamWeights: (apply: boolean) =>
     post<{ f1_default: number; f1_tuned: number; f1_leave_one_out: number | null; cases: number; applied: boolean; best_group_factors: Record<string, number> }>(
       "/stream-weights/tune",
@@ -718,7 +811,7 @@ export const studio = {
     }>("/agent/ollama"),
   ollamaTest: () => post<{ ok: boolean; stage: string; message: string; model?: string; seconds?: number }>("/agent/ollama/test"),
   agentEngines: () =>
-    get<{ engines: { id: string; label: string; ready: boolean; paid: boolean; hint?: string; cost_per_message_usd?: number }[] }>(
+    get<{ engines: { id: string; label: string; ready: boolean; paid: boolean; hint?: string; cost_per_message_usd?: number | null; model?: string }[] }>(
       "/agent/engines",
     ),
   agentHistory: (kind: string, id: string) => get<{ messages: AgentMessage[] }>(`/agent/${kind}/${id}`).then((d) => d.messages),
@@ -726,6 +819,9 @@ export const studio = {
     post<{ message: AgentMessage }>(`/agent/${kind}/${id}`, { message, engine, confirm_cost: confirmCost }).then((d) => d.message),
   agentExecute: (kind: string, id: string, entryId: string, confirm = false) =>
     post<{ message: AgentMessage }>(`/agent/${kind}/${id}/${entryId}/execute`, { confirm }).then((d) => d.message),
+  agentRetry: (kind: string, id: string, entryId: string, confirm = false) =>
+    post<{ message: AgentMessage }>(`/agent/${kind}/${id}/${entryId}/retry`, { confirm }),
+  agentCancel: (kind: string, id: string, entryId: string) => post<{ message: AgentMessage }>(`/agent/${kind}/${id}/${entryId}/cancel`),
   agentDiscard: (kind: string, id: string, entryId: string) => post<unknown>(`/agent/${kind}/${id}/${entryId}/discard`),
   agentUndo: (kind: string, id: string) => post<{ project: Project }>(`/agent/${kind}/${id}/undo`),
   hardware: () =>
@@ -778,6 +874,19 @@ export const studio = {
       "Idempotency-Key": idempotencyKey,
     }),
   project: (id: string) => get<ProjectView>(`/projects/${id}`),
+  library: (q = "", kind = "", tag = "") =>
+    get<{ items: LibraryItem[]; tags: string[]; kinds: string[] }>(
+      `/library?q=${encodeURIComponent(q)}${kind ? `&kind=${kind}` : ""}${tag ? `&tag=${encodeURIComponent(tag)}` : ""}`,
+    ),
+  libraryUpload: (file: File, fields: Record<string, string>, onProgress?: (f: number) => void) =>
+    uploadFile<{ item: LibraryItem }>("/library", file, onProgress, fields).then((d) => d.item),
+  libraryPatch: (id: string, body: Record<string, unknown>) =>
+    request<{ item: LibraryItem }>("PATCH", `/library/${id}`, body).then((d) => d.item),
+  libraryDelete: (id: string, force = false) => request<{ deleted: boolean }>("DELETE", `/library/${id}${force ? "?force=true" : ""}`),
+  libraryFileUrl: (id: string) => `${API_BASE}/api/studio/library/${id}/file`,
+  libraryUse: (id: string, projectId: string) => post<{ media: MediaItem }>(`/library/${id}/use`, { project_id: projectId }),
+  timelineOps: (id: string, ops: TimelineOp[], expectedVersion: number) =>
+    post<{ project: Project; results: Record<string, string>[] }>(`/projects/${id}/timeline/ops`, { ops, expected_version: expectedVersion }),
   patchProject: (id: string, patch: Record<string, unknown>) =>
     request<{ project: Project }>("PATCH", `/projects/${id}`, patch).then((d) => d.project),
   deleteProject: (id: string) => request<{ deleted: boolean }>("DELETE", `/projects/${id}`),
@@ -800,6 +909,9 @@ export const studio = {
   quality: (id: string) => get<{ checks: QualityCheck[]; estimated_seconds: number; blocking: boolean }>(`/projects/${id}/quality`),
   render: (id: string, mode: "final" | "preview") =>
     post<{ task: Task }>(`/projects/${id}/render`, { mode }).then((d) => d.task),
+  reviewRender: (id: string, renderId: string, body: Record<string, unknown>) =>
+    request<{ review: unknown }>("PUT", `/projects/${id}/renders/${renderId}/review`, body),
+  renderBaseUrl: (id: string, renderId: string) => `${API_BASE}/api/studio/projects/${id}/renders/${renderId}/base`,
   renderUrl: (id: string, renderId: string, download = false) =>
     `${API_BASE}/api/studio/projects/${id}/renders/${renderId}/file${download ? "?download=true" : ""}`,
   exportToJob: (id: string, renderId?: string) =>

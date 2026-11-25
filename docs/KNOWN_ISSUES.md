@@ -266,3 +266,31 @@ freien Mehrspur-Schnitte).
   (wirken beim Rendern; Render-Bericht listet sie unter `captions.layout`).
 - **Mediathek** nur je Projekt; keine globale Mediathek-Seite.
 - **JSON-Persistenz** ohne prozessübergreifende Transaktionen (`STORAGE_EVALUATION.md`).
+
+
+## Production-Runde (21.11.2026)
+
+- **Timeline-Vorschau** zeigt den letzten Render; neue Spuren/Keyframes sieht man erst nach „Vorschau rendern“.
+- **Keyframes** für Zuschnitt und Unschärfe fehlen (beide nur statisch).
+- **Audio-Ereignisse** sind eine Heuristik ohne Training; Standard „nur erklärend“.
+- **Tracking** nur horizontal (Hochformat aus Querformat); kein Objekt-Tracking jenseits von Gesichtern.
+- **OpenCV ≥ 5** hat keine Haar-Kaskaden: Abhängigkeit auf < 5 begrenzt; mit YuNet-Modell funktioniert die Gesichtserkennung auch ohne Haar.
+- **Gemini/Claude/OpenAI/Ollama** nicht live getestet; LLM-Antworten werden nicht gestreamt.
+- **Hardware-Kodierung** nur nach echtem Probelauf, hier ohne GPU nicht nutzbar; Standard CPU.
+- **Übersetzung per Chat** legt ein neues Projekt an; Argos-Sprachmodell muss lokal installiert sein.
+
+## Quality-Sprint (21.11.2026)
+
+- **macOS + Homebrew:** `brew install ffmpeg` (ab 8.x) enthält kein libass/freetype — Exporte mit Untertiteln scheitern mit `ffmpeg_feature_missing`. Lösung: `brew install ffmpeg-full` (siehe `INSTALL.md`); `scripts/clipforge_doctor.py` prüft das.
+- **macOS-CI:** läuft auf `macos-latest` nicht blockierend; die Hörprobe mit `say` scheiterte an der Dateiendung der Zwischendatei (behoben); auf einem echten Mac noch nicht geprüft.
+- **Live-Vorschau:** Browser-Komposition ist eine Annäherung (Schriftbild, Unschärfe, Interpolation können vom FFmpeg-Ergebnis abweichen); maßgeblich ist der Render. Die Basisebene entsteht erst mit einem Vorschau-Render.
+- **Tracking:** nur an synthetisch bewegten Testgesichtern geprüft; schnelle Schwenks werden bewusst gedämpft (max. 0,35 Bildbreiten/s).
+- **Ausgabeprüfung:** misst nur technische Größen; ob die Pointe drin ist, entscheidet die Review-Stufe.
+- **LLM-Antwort-Streaming:** nicht umgesetzt (Status D).
+
+## Link-Import (25.11.2026)
+
+- Nutzt yt-dlp — gegen die Nutzungsbedingungen von YouTube/Twitch; deshalb nur nach ausdrücklichem Einschalten. Risiko: Sperre von Konto/IP.
+- Gegen die echten Plattformen noch nicht ausgeführt (nur nachgebildeter Downloader). Bricht yt-dlp nach Plattform-Änderungen, hilft meist ein Update.
+- YouTube braucht eine JavaScript-Laufzeit (deno/node/bun); ohne sie schlagen viele Downloads fehl. Das Docker-Image enthält keine — Link-Import ist für den lokalen Betrieb gedacht.
+- Twitch-Chat wird nicht mitgeladen.

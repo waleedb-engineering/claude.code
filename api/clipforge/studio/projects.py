@@ -248,6 +248,13 @@ def migrate(data: dict) -> dict:
     p["options"] = ProductionOptions.from_dict(legacy).to_dict()
     p["budget_limit_usd"] = _clamp(p.get("budget_limit_usd"), 0.0, 10000.0, 0.0)
     p["lineage"] = p.get("lineage") if isinstance(p.get("lineage"), dict) else {}
+    from . import timeline as tl_mod
+    try:
+        p["timeline"] = tl_mod.normalize(p.get("timeline"))
+    except StudioError:
+        # beschädigte Timeline nie das ganze Projekt unlesbar machen
+        p["timeline_backup"] = p.get("timeline")
+        p["timeline"] = tl_mod.empty()
     disc = p.get("disclosure") if isinstance(p.get("disclosure"), list) else []
     p["disclosure"] = [str(x)[:60] for x in disc if str(x).strip()][:3]
     p.setdefault("linked_job_id", None)
@@ -263,7 +270,7 @@ def migrate(data: dict) -> dict:
 
 _EDITABLE = ("title", "language", "tone", "style", "aspect_ratio", "resolution",
              "scenes", "voice", "music", "captions", "visuals", "budget_limit_usd",
-             "options", "transitions", "audio")
+             "options", "transitions", "audio", "timeline")
 
 
 def apply_patch(project: dict, patch: dict, project_dir: str) -> dict:
@@ -344,6 +351,11 @@ def apply_patch(project: dict, patch: dict, project_dir: str) -> dict:
                 raise StudioError("validation_error", "Ungültige Produktionsoptionen.")
             p["options"] = ProductionOptions.from_dict(
                 {**p.get("options", {}), **value}, strict=True).to_dict()
+        elif key == "timeline":
+            from . import timeline as tl_mod
+            if not isinstance(value, dict):
+                raise StudioError("validation_error", "Ungültige Timeline.")
+            p["timeline"] = tl_mod.normalize(value, project_dir)
         elif key == "audio":
             if not isinstance(value, dict):
                 raise StudioError("validation_error", "Ungültige Audio-Einstellungen.")

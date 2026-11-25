@@ -14,15 +14,13 @@ export const primaryCls =
 export const cardCls = "rounded-2xl border border-neutral-800 bg-neutral-900/40 p-4";
 export const labelCls = "mb-1 block text-xs font-medium text-neutral-300";
 
+// Unterbereiche des Studios (Hauptbereiche stehen in der globalen Navigation)
 const TABS: { href: string; key: TKey }[] = [
   { href: "/studio", key: "nav.dashboard" },
-  { href: "/studio/create", key: "nav.create" },
-  { href: "/studio/streams", key: "nav.streams" },
-  { href: "/studio/automations", key: "nav.automations" },
-  { href: "/studio/analytics", key: "nav.analytics" },
   { href: "/studio/ideas", key: "nav.ideas" },
   { href: "/studio/trends", key: "nav.trends" },
-  { href: "/studio/setup", key: "nav.setup" },
+  { href: "/studio/automations", key: "nav.automations" },
+  { href: "/settings/brand-kit", key: "nav.brand" },
 ];
 
 export function LocaleToggle() {

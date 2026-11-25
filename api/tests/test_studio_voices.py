@@ -83,8 +83,9 @@ def test_render_uses_real_speech_and_word_accurate_captions():
     tmp = tempfile.mkdtemp(prefix="voice_")
     try:
         svc, _ = make_service(tmp)
+        # ausdrücklich eSpeak: liefert Wortzeiten; „auto“ wählt auf macOS/Windows die Systemstimme
         p = svc.create_project({"workflow": "script", "script": SCRIPT, "resolution": "720p",
-                                "voice": {"provider": "auto", "speed": 1.2}})
+                                "voice": {"provider": "espeak", "speed": 1.2}})
         svc.tasks.submit("ingest", p["id"], {}, run_inline=True)
         t = svc.tasks.submit("render", p["id"], {"mode": "final"}, run_inline=True)
         assert t["status"] == "succeeded", t

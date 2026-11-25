@@ -60,6 +60,7 @@ class AgentService:
             raise StudioError("validation_error", "Bitte einen Befehl eingeben.")
         self._path(kind, target)
         ctx = Ctx(self.svc, self.streams, kind, target)
+        memory = planner.memory_context(self.history(kind, target))
         self._append(kind, target, {"role": "user", "text": message})
         state = self._state(ctx)
         cost = planner.COST.get(engine)
@@ -72,6 +73,10 @@ class AgentService:
             text = ""
         else:
             rid = None
+            if engine in planner.PAID_UNKNOWN and not confirm_cost:
+                raise StudioError("cost_confirmation_required",
+                                  f"{engine}: Kosten hängen vom Tarif ab (evtl. Gratis-Kontingent). Bitte bestätigen.",
+                                  402, {"estimated_usd": None})
             if cost > 0:
                 if not confirm_cost:
                     raise StudioError("cost_confirmation_required",
@@ -85,7 +90,7 @@ class AgentService:
                 ledger = CostLedger(pdir, self.svc.store.load(target).get("budget_limit_usd") or 0.0)
                 rid = ledger.reserve(cost, f"Editor-Agent ({engine})")
             try:
-                calls, text = planner.llm_plan(engine, message, state, kind)
+                calls, text = planner.llm_plan(engine, message, state, kind, memory)
                 if rid:
                     ledger.commit(rid, cost, engine, "agent")
             except ProviderError as exc:
@@ -136,18 +141,70 @@ class AgentService:
                               "Dieser Plan startet einen Render/Export — bitte bestätigen.", 400)
         ctx = Ctx(self.svc, self.streams, kind, target)
         before = self.svc.store.load(target)["version"] if kind == "project" else None
-        results = []
-        for step in plan["steps"]:
+        plan["results"] = self._run_steps(ctx, plan["steps"], 0, [])
+        plan["status"] = "done" if all(r["ok"] for r in plan["results"]) else "partial"
+        plan["version_before"] = before
+        self._replace(kind, target, entry)
+        return entry
+
+    @staticmethod
+    def _run_steps(ctx, steps: list[dict], start: int, done: list[dict]) -> list[dict]:
+        """Schritte ab ``start`` ausführen; nach einem Fehler werden die übrigen übersprungen."""
+        results = list(done[:start])
+        failed = False
+        for i, step in enumerate(steps[start:], start=start):
             tool = TOOLS[step["tool"]]
+            if failed:
+                results.append({"index": i, "tool": tool.name, "ok": False, "status": "skipped"})
+                continue
             try:
                 res = tool.run(ctx, validate(tool, step["args"]))
-                results.append({"tool": tool.name, "ok": True, **res})
+                results.append({"index": i, "tool": tool.name, "ok": True, "status": "ok", **res})
             except StudioError as exc:
-                results.append({"tool": tool.name, "ok": False, "error": exc.message})
-                break
-        plan["status"] = "done" if all(r["ok"] for r in results) else "partial"
-        plan["results"] = results
-        plan["version_before"] = before
+                results.append({"index": i, "tool": tool.name, "ok": False, "status": "failed", "error": exc.message})
+                failed = True
+            except Exception as exc:  # noqa: BLE001 — ein defektes Werkzeug darf den Plan nicht abbrechen lassen
+                results.append({"index": i, "tool": tool.name, "ok": False, "status": "failed",
+                                "error": f"Unerwarteter Fehler ({type(exc).__name__})"})
+                failed = True
+        return results
+
+    def retry(self, kind: str, target: str, entry_id: str, confirm: bool = False) -> dict:
+        """Teilweise ausgeführten Plan ab dem fehlgeschlagenen Schritt erneut ausführen."""
+        entry = next((x for x in self.history(kind, target) if x["id"] == entry_id), None)
+        if entry is None or "plan" not in entry:
+            raise StudioError("plan_not_found", "Plan nicht gefunden.", 404)
+        plan = entry["plan"]
+        if plan["status"] != "partial" or plan.get("undone"):
+            raise StudioError("validation_error", "Nur teilweise ausgeführte Pläne lassen sich wiederholen.", 409)
+        first = next(r["index"] for r in plan["results"] if not r["ok"])
+        rest = plan["steps"][first:]
+        if any(TOOLS[s["tool"]].confirm for s in rest) and not confirm:
+            raise StudioError("confirmation_required",
+                              "Die verbleibenden Schritte starten einen Render/Export — bitte bestätigen.", 400)
+        ctx = Ctx(self.svc, self.streams, kind, target)
+        plan["results"] = self._run_steps(ctx, plan["steps"], first, plan["results"])
+        plan["status"] = "done" if all(r["ok"] for r in plan["results"]) else "partial"
+        plan["retries"] = int(plan.get("retries") or 0) + 1
+        self._replace(kind, target, entry)
+        return entry
+
+    def cancel(self, kind: str, target: str, entry_id: str) -> dict:
+        """Vom Plan gestartete Hintergrundaufgaben (Render, Analyse, Übersetzung) abbrechen."""
+        entry = next((x for x in self.history(kind, target) if x["id"] == entry_id), None)
+        if entry is None or "plan" not in entry:
+            raise StudioError("plan_not_found", "Plan nicht gefunden.", 404)
+        canceled = []
+        for r in entry["plan"].get("results") or []:
+            tid = r.get("task_id")
+            if not tid:
+                continue
+            try:
+                t = self.svc.tasks.cancel(tid)
+                canceled.append({"task_id": tid, "status": t.get("status")})
+            except StudioError as exc:
+                canceled.append({"task_id": tid, "error": exc.message})
+        entry["plan"]["canceled_tasks"] = canceled
         self._replace(kind, target, entry)
         return entry
 

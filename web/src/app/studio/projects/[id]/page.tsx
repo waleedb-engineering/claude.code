@@ -15,11 +15,14 @@ import {
   type QualityCheck,
   type Scene,
   type Task,
+  type TimelineOp,
 } from "@/lib/studio";
 import SceneCard from "@/components/studio/SceneCard";
 import SettingsPanel from "@/components/studio/SettingsPanel";
 import SocialCopyPanel from "@/components/studio/SocialCopyPanel";
 import AgentChat from "@/components/studio/AgentChat";
+import TimelineEditor from "@/components/studio/TimelineEditor";
+import RenderQuality from "@/components/studio/RenderQuality";
 import Timeline from "@/components/studio/Timeline";
 import { ErrorBox, Loading, Notice, Pill, btnCls, cardCls, fmtDate, inputCls, primaryCls } from "@/components/studio/ui";
 
@@ -47,6 +50,7 @@ function editable(p: Project): Record<string, unknown> {
     options: p.options,
     transitions: p.transitions,
     audio: p.audio,
+    timeline: p.timeline,
     budget_limit_usd: p.budget_limit_usd,
   };
 }
@@ -221,6 +225,26 @@ export default function EditorPage() {
     dirty.current = true;
     setSaveState("dirty");
   }, [future]);
+
+  const runTimelineOps = useCallback(
+    async (ops: TimelineOp[]): Promise<boolean> => {
+      if (!(await flush())) return false;
+      const cur = projectRef.current;
+      if (!cur) return false;
+      try {
+        const r = await studio.timelineOps(id, ops, cur.version);
+        setPast((h) => [...h.slice(-HISTORY_LIMIT + 1), cur]);
+        setFuture([]);
+        applyServer(r.project);
+        return true;
+      } catch (e) {
+        setError(errorMessage(e));
+        return false;
+      }
+    },
+    [flush, id, applyServer],
+  );
+
 
   // Tastatur: Strg/Cmd+S speichern (überall), Strg/Cmd+Z / +Shift+Z bzw. +Y außerhalb von Textfeldern
   useEffect(() => {
@@ -502,6 +526,21 @@ export default function EditorPage() {
                     }
                   />
                 )}
+                <TimelineEditor
+                  timeline={project.timeline ?? { version: 1, tracks: [] }}
+                  media={view?.media ?? []}
+                  baseDuration={project.scenes.length ? (view?.renders?.[0]?.duration ?? null) : null}
+                  previewUrl={view?.renders?.[0] ? studio.renderUrl(id, view.renders[0].render_id) : null}
+                  baseUrl={(() => {
+                    const r = view?.renders?.find((x) => x.mode !== "scene");
+                    if (!r || !project.scenes.length) return null;
+                    if (r.base_file) return studio.renderBaseUrl(id, r.render_id);
+                    return r.timeline ? null : studio.renderUrl(id, r.render_id);
+                  })()}
+                  aspectRatio={project.aspect_ratio}
+                  mediaUrl={(name) => studio.mediaUrl(id, name)}
+                  onOps={runTimelineOps}
+                />
                 <ol id="scene-list" className="space-y-3">
                   {project.scenes.map((scene, i) => (
                     <SceneCard
@@ -684,6 +723,7 @@ export default function EditorPage() {
                         ⚠ {w}
                       </p>
                     ))}
+                    <RenderQuality projectId={id} render={r} onSaved={() => void refresh(false)} />
                     <a href={studio.renderUrl(id, r.render_id, true)} className={btnCls}>
                       {t("ed.download")}
                     </a>

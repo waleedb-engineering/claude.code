@@ -312,7 +312,8 @@ def t_render_highlights(ctx, a):
             raise StudioError("agent_invalid", f"Clip {i} gibt es nicht.")
         ids.append(hs[i - 1]["id"])
     task = ctx.streams.start_render(ctx.target, ids, {
-        "reframe_mode": "smart", "remove_silence": a.get("remove_pauses", True),
+        "reframe_mode": a.get("framing", "smart"), "track_zoom": a.get("track_zoom", 1.0),
+        "remove_silence": a.get("remove_pauses", True),
         "caption_style": "high_energy" if a.get("animated_captions", True) else "clean"})
     return {"task_id": task["id"], "change": f"{len(ids)} vertikale Clips werden gerendert"}
 
@@ -484,6 +485,171 @@ def t_list_variants(ctx, a):
             "note": "Eignung ist eine prüfbare Heuristik (Ereignis enthalten, Satzgrenzen, Länge), keine Viralitätsprognose."}
 
 
+# ------------------------------------------------------- Timeline-Werkzeuge
+POS = {"top_left": (0.18, 0.12), "top_right": (0.82, 0.12), "bottom_left": (0.18, 0.88),
+       "bottom_right": (0.82, 0.88), "center": (0.5, 0.5), "top": (0.5, 0.12), "bottom": (0.5, 0.88)}
+
+
+def _tl_items(p: dict) -> list[tuple[dict, dict]]:
+    return [(t, i) for t in p["timeline"]["tracks"] for i in t["items"]]
+
+
+def _tl_ref(p: dict, ref) -> str:
+    """Element per Nummer (1-basiert, Reihenfolge wie in timeline_state) oder ID."""
+    items = _tl_items(p)
+    if isinstance(ref, int) or (isinstance(ref, str) and ref.isdigit()):
+        n = int(ref)
+        if not 1 <= n <= len(items):
+            raise StudioError("agent_invalid", f"Timeline-Element {n} gibt es nicht (1–{len(items)}).")
+        return items[n - 1][1]["id"]
+    if any(i["id"] == ref for _, i in items):
+        return ref
+    raise StudioError("agent_invalid", f"Timeline-Element '{ref}' nicht gefunden.")
+
+
+def _tl_apply(ctx, ops: list[dict]) -> dict:
+    p = _project(ctx)
+    return ctx.svc.timeline_ops(ctx.target, ops, p["version"])
+
+
+def _media_match(ctx, wanted: str, kinds: set) -> str:
+    import os
+    media = os.path.join(ctx.svc.store.dir(ctx.target), "media")
+    names = sorted(n for n in (os.listdir(media) if os.path.isdir(media) else [])
+                   if os.path.splitext(n)[1].lower() in kinds)
+    w = (wanted or "").lower()
+    hit = next((n for n in names if w and (n.lower() == w or w in n.lower())), None) or (names[0] if names and not w else None)
+    if not hit:
+        raise StudioError("agent_invalid", f"Mediendatei '{wanted}' nicht im Projekt. Vorhanden: "
+                          + (", ".join(names[:8]) or "keine"))
+    return hit
+
+
+def t_tl_state(ctx, a):
+    p = _project(ctx)
+    out, n = [], 0
+    for t in p["timeline"]["tracks"]:
+        items = []
+        for i in t["items"]:
+            n += 1
+            items.append({"nr": n, "id": i["id"], "start": i["start"], "duration": i["duration"],
+                          "src": i.get("src"), "text": i.get("text"), "keyframes": sorted(i.get("keyframes") or {})})
+        out.append({"track": t["id"], "kind": t["kind"], "name": t["name"], "muted": t["muted"],
+                    "locked": t["locked"], "hidden": t["hidden"], "items": items})
+    return {"tracks": out}
+
+
+def _ensure_track(ctx, kind: str) -> str:
+    p = _project(ctx)
+    t = next((t for t in p["timeline"]["tracks"] if t["kind"] == kind and not t["locked"]), None)
+    if t:
+        return t["id"]
+    res = _tl_apply(ctx, [{"op": "add_track", "kind": kind}])
+    return res["results"][0]["track"]
+
+
+def t_tl_add_media(ctx, a):
+    from ..studio.audio import AUDIO_EXT
+    from ..studio.projects import IMAGE_EXT, VIDEO_EXT
+    kind = a.get("track_kind", "overlay")
+    exts = AUDIO_EXT | VIDEO_EXT if kind == "audio" else IMAGE_EXT | VIDEO_EXT
+    src = _media_match(ctx, a.get("media", ""), exts)
+    track = _ensure_track(ctx, kind)
+    item = {"src": src, "start": a.get("start", 0.0), "duration": a.get("duration", 3.0)}
+    if kind != "audio":
+        x, y = POS.get(a.get("position", "center"), (0.5, 0.5))
+        item.update(x=x, y=y, scale=a.get("scale", 1.0 if kind == "video" else 0.3),
+                    fade_in=a.get("fade", 0.0), fade_out=a.get("fade", 0.0))
+    if "volume" in a:
+        item["volume"] = a["volume"]
+    res = _tl_apply(ctx, [{"op": "add_item", "track": track, "item": item}])
+    return {"item": res["results"][0]["item"], "version": res["project"]["version"],
+            "change": f"{src} auf {kind}-Spur bei {item['start']:.1f} s ({item['duration']:.1f} s)"}
+
+
+def t_tl_add_text(ctx, a):
+    track = _ensure_track(ctx, "caption")
+    item = {"text": a["text"], "start": a.get("start", 0.0), "duration": a.get("duration", 3.0),
+            "color": _color(a["color"]) if a.get("color") else "#ffffff",
+            "position": a.get("position", "bottom"), "size": a.get("size", 1.0)}
+    res = _tl_apply(ctx, [{"op": "add_item", "track": track, "item": item}])
+    return {"item": res["results"][0]["item"],
+            "change": f"Text „{a['text'][:40]}“ {item['start']:.1f}–{item['start'] + item['duration']:.1f} s"}
+
+
+def t_tl_edit(ctx, a):
+    p = _project(ctx)
+    iid = _tl_ref(p, a["item"])
+    act = a["action"]
+    op = {"item": iid}
+    if act == "move":
+        op.update(op="move", start=a.get("time", 0.0), snap=True)
+    elif act in ("trim_start", "trim_end"):
+        op.update(op="trim", edge=act.split("_")[1], time=a.get("time", 0.0), snap=False)
+    elif act == "split":
+        op.update(op="split", at=a.get("time", 0.0))
+    elif act == "slip":
+        op.update(op="slip", delta=a.get("delta", 0.0))
+    else:
+        op["op"] = act
+    _tl_apply(ctx, [op])
+    return {"change": f"Element {a['item']}: {act}" + (f" bei {a['time']:.1f} s" if "time" in a else "")}
+
+
+def t_tl_keyframe(ctx, a):
+    p = _project(ctx)
+    iid = _tl_ref(p, a["item"])
+    ops = [{"op": "set_keyframe", "item": iid, "prop": a["prop"], "t": a["t"], "v": a["v"],
+            "ease": a.get("ease", "linear")}]
+    if "t2" in a and "v2" in a:
+        ops.append({"op": "set_keyframe", "item": iid, "prop": a["prop"], "t": a["t2"], "v": a["v2"],
+                    "ease": "linear"})
+    _tl_apply(ctx, ops)
+    return {"change": f"Keyframe {a['prop']}={a['v']} bei {a['t']:.1f} s"
+                      + (f" → {a['v2']} bei {a['t2']:.1f} s" if "t2" in a else "") + f" ({a.get('ease', 'linear')})"}
+
+
+def t_tl_track(ctx, a):
+    p = _project(ctx)
+    tracks = p["timeline"]["tracks"]
+    n = a["track"]
+    if not 1 <= n <= len(tracks):
+        raise StudioError("agent_invalid", f"Spur {n} gibt es nicht (1–{len(tracks)}).")
+    flags = {k: a[k] for k in ("muted", "locked", "hidden") if k in a}
+    _tl_apply(ctx, [{"op": "set_track", "track": tracks[n - 1]["id"], **flags}])
+    return {"change": f"Spur {n}: " + ", ".join(f"{k}={'an' if v else 'aus'}" for k, v in flags.items())}
+
+
+def t_split_screen(ctx, a):
+    from ..studio.projects import VIDEO_EXT
+    p = copy.deepcopy(_project(ctx))
+    gp = _media_match(ctx, a.get("gameplay", ""), VIDEO_EXT)
+    p["visuals"] = {**p["visuals"], "gameplay_media": gp}
+    targets = _scene_range(p, a)
+    for s in targets:
+        s["visual"] = {**s["visual"], "mode": "split"}
+    return {**_save(ctx, p, ("visuals", "scenes")),
+            "change": f"Split-Screen: oben Szene/Facecam, unten {gp} ({len(targets)} Szenen)"}
+
+
+def t_translate(ctx, a):
+    """Neues Projekt „Video übersetzen“ aus dem letzten Render (Untertitel oder Synchronstimme)."""
+    renders = ctx.svc.list_renders(ctx.target)
+    if not renders:
+        raise StudioError("agent_invalid", "Zuerst rendern — übersetzt wird das fertige Video.")
+    p = _project(ctx)
+    new = ctx.svc.create_project({"workflow": "translate", "title": f"{p['title']} ({a['target'].upper()})",
+                                  "translation": {"target": a["target"], "mode": a.get("mode", "dub"),
+                                                  "engine": a.get("engine", "argos")}})
+    path = ctx.svc.render_file(ctx.target, renders[0]["render_id"])
+    with open(path, "rb") as fh:
+        ctx.svc.upload_source(new["id"], "render.mp4", fh)
+    task = ctx.svc.start_ingest(new["id"])
+    return {"project_id": new["id"], "task_id": task["id"],
+            "change": f"Übersetzungsprojekt angelegt ({a['target']}, {a.get('mode', 'dub')}) — "
+                      "Ergebnis im neuen Projekt prüfen"}
+
+
 N = {"type": "number"}
 I = {"type": "integer", "minimum": 1}
 TOOLS: dict[str, Tool] = {t.name: t for t in [
@@ -537,6 +703,42 @@ TOOLS: dict[str, Tool] = {t.name: t for t in [
          "project", {}, mutating=False, run=t_title),
     Tool("generate_thumbnail", "Thumbnail-Vorschläge aus dem letzten Render erzeugen.", "project", {},
          mutating=False, run=t_thumbnails),
+    Tool("timeline_state", "Mehrspur-Timeline lesen (Spuren, nummerierte Elemente, Keyframes).", "project", {},
+         mutating=False, run=t_tl_state),
+    Tool("timeline_add_media", "Bild/Video/Audio aus dem Projekt auf eine Spur legen (overlay, video, audio).",
+         "project", {"media": {"type": "string"}, "track_kind": {"type": "string", "enum": ["overlay", "video", "audio"]},
+                     "start": {**N, "minimum": 0, "maximum": 14400}, "duration": {**N, "minimum": 0.1, "maximum": 3600},
+                     "position": {"type": "string", "enum": list(POS)}, "scale": {**N, "minimum": 0.05, "maximum": 4},
+                     "volume": {**N, "minimum": 0, "maximum": 3}, "fade": {**N, "minimum": 0, "maximum": 5}},
+         ("media",), run=t_tl_add_media),
+    Tool("timeline_add_text", "Text-Element auf die Untertitel-Spur legen.", "project",
+         {"text": {"type": "string"}, "start": {**N, "minimum": 0, "maximum": 14400},
+          "duration": {**N, "minimum": 0.1, "maximum": 600}, "color": {"type": "string"},
+          "position": {"type": "string", "enum": ["top", "middle", "bottom"]}, "size": {**N, "minimum": 0.4, "maximum": 3}},
+         ("text",), run=t_tl_add_text),
+    Tool("timeline_edit", "Timeline-Element bearbeiten: move, trim_start, trim_end, split, slip, delete, "
+         "ripple_delete, duplicate (time = Timeline-Sekunde).", "project",
+         {"item": {"type": "string"}, "action": {"type": "string", "enum": ["move", "trim_start", "trim_end", "split",
+                                                                           "slip", "delete", "ripple_delete", "duplicate"]},
+          "time": {**N, "minimum": 0, "maximum": 14400}, "delta": {**N, "minimum": -3600, "maximum": 3600}},
+         ("item", "action"), run=t_tl_edit),
+    Tool("timeline_keyframe", "Keyframe setzen (x, y, scale, rotation, opacity, volume, crop_*, blur; t = Sekunde ab "
+         "Elementbeginn), optional zweiter Keyframe t2/v2 für eine Animation.", "project",
+         {"item": {"type": "string"}, "prop": {"type": "string", "enum": ["x", "y", "scale", "rotation", "opacity", "volume", "crop_left",
+                                               "crop_right", "crop_top", "crop_bottom", "blur"]},
+          "t": {**N, "minimum": 0, "maximum": 14400}, "v": N, "t2": {**N, "minimum": 0, "maximum": 14400}, "v2": N,
+          "ease": {"type": "string", "enum": ["linear", "ease_in", "ease_out", "ease_in_out"]}},
+         ("item", "prop", "t", "v"), run=t_tl_keyframe),
+    Tool("timeline_track", "Spur stummschalten, sperren oder ausblenden (Nummer 1-basiert).", "project",
+         {"track": I, "muted": {"type": "boolean"}, "locked": {"type": "boolean"}, "hidden": {"type": "boolean"}},
+         ("track",), run=t_tl_track),
+    Tool("create_split_screen", "Split-Screen: Szene/Facecam oben, Gameplay-Video aus dem Projekt unten.", "project",
+         {"gameplay": {"type": "string"}, "scene": I}, run=t_split_screen),
+    Tool("translate_video", "Fertiges Video übersetzen (neues Projekt): Untertitel oder Synchronstimme.", "project",
+         {"target": {"type": "string", "enum": ["de", "en"]}, "mode": {"type": "string", "enum": ["subtitles", "dub"]},
+          "engine": {"type": "string", "enum": ["argos", "anthropic", "manual"]}},
+         ("target",), confirm=True, run=t_translate,
+         cost_note="lokal mit Argos kostenlos (Sprachmodell nötig); mit anthropic kostenpflichtig (Budget greift)"),
     Tool("render_preview", "Schnelle Vorschau rendern.", "project", {}, run=t_render_preview),
     Tool("export_video", "Finales Video rendern.", "project", {}, confirm=True, run=t_export,
          cost_note="kostenlos, außer das Projekt nutzt bezahlte Anbieter (Budget greift)"),
@@ -556,16 +758,16 @@ TOOLS: dict[str, Tool] = {t.name: t for t in [
          ("clip", "variant"), run=t_clip_variant),
     Tool("render_clips", "Highlights als vertikale Clips rendern.", "stream",
          {"clips": {"type": "array"}, "count": {"type": "integer", "minimum": 1, "maximum": 20},
-          "remove_pauses": {"type": "boolean"}, "animated_captions": {"type": "boolean"}},
+          "remove_pauses": {"type": "boolean"}, "animated_captions": {"type": "boolean"},
+          "framing": {"type": "string", "enum": ["smart", "track", "center", "face"]},
+          "track_zoom": {**N, "minimum": 1.0, "maximum": 2.0}},
          confirm=True, run=t_render_highlights),
 ]}
 
 # Bewusst NICHT verfügbar (ehrliche Antwort statt Scheinfunktion)
 UNSUPPORTED = {
-    "translate": "Übersetzen geht über den Workflow „Video übersetzen“ (eigenes Projekt aus dem Video).",
     "track": "Durchgehende Objektverfolgung (Tracking) gibt es nicht; Zoom nutzt einen festen Fokus je "
              "Szene, Stream-Clips folgen Gesichtern per Smart-Reframe.",
-    "keyframe": "Freie Keyframes gibt es nicht; Zoom kann statisch oder einfahrend sein.",
     "broll": "B-Roll per Chat ist nicht angebunden — im Editor über „B-Roll vorschlagen“ (Pexels/Pixabay/Mediathek).",
 }
 

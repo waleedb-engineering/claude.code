@@ -7,7 +7,7 @@ faster-whisper>=1.0.0
 pydantic>=2.0.0
 # Smart-Reframe: lokale Gesichtserkennung (OpenCV Haar-Cascade), headless ohne
 # GUI-/System-GL-Abhängigkeiten. Optional: fehlt es, fällt Reframe auf Center.
-opencv-python-headless>=4.8.0
+opencv-python-headless>=4.8.0,<5  # OpenCV 5 entfernte CascadeClassifier (Haar-Gesichtserkennung)
 # YouTube-OAuth-Token-Ablage (Phase 2, Option B): OS-Keychain via keyring.
 # OPTIONAL & defensiv importiert — fehlt keyring oder ein nutzbares Backend,
 # meldet die Readiness sauber "blocked" (kein Plaintext-Fallback, kein Crash).
@@ -37,3 +37,7 @@ espeakng-loader>=0.2.4
 cryptography>=42.0.0  # verschlüsselte API-Schlüssel im Online-Betrieb (CLIPFORGE_AUTH=accounts)
 sentencepiece>=0.2.0  # lokale Übersetzung (Argos/OPUS-MT über CTranslate2 aus faster-whisper)
 tzdata>=2024.1  # Zeitzonen für Automationen (Windows hat keine System-Datenbank)
+# Link-Import (YouTube/Twitch) — nur aktiv, wenn der Nutzer ihn ausdrücklich einschaltet
+# (Nutzungsbedingungen der Plattformen, siehe clipforge/stream/link_import.py).
+# Fest gepinnt; [default] bringt yt-dlp-ejs für YouTube mit (braucht deno/node/bun).
+yt-dlp[default]==2026.10.26

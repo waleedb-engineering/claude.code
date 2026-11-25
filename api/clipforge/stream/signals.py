@@ -30,7 +30,10 @@ def audio_features(path: str, should_cancel=None) -> dict:
     """→ {loudness_db[], centroid_hz[]} je Sekunde."""
     proc = _pipe(["ffmpeg", "-v", "error", "-i", path, "-vn", "-ac", "1", "-ar", str(SR),
                   "-f", "s16le", "-"])
+    from . import audio_events
+    extra = audio_events.enabled()
     loud, cent = [], []
+    feats: dict[str, list] = {}
     freqs = np.fft.rfftfreq(SR // 4, 1 / SR)
     try:
         while True:
@@ -53,12 +56,15 @@ def audio_features(path: str, should_cancel=None) -> dict:
                 if s > 1e-6:
                     cs.append(float((mag * freqs).sum() / s))
             cent.append(float(np.mean(cs)) if cs else 0.0)
+            if extra:
+                for k, v in audio_events.second_features(x, SR).items():
+                    feats.setdefault(k, []).append(v)
     finally:
         proc.stdout.close()
         proc.wait(timeout=30)
     if not loud:
         raise SignalError("Keine Audiospur gefunden.")
-    return {"loudness_db": loud, "centroid_hz": cent}
+    return {"loudness_db": loud, "centroid_hz": cent, **feats}
 
 
 def video_features(path: str, should_cancel=None) -> dict:

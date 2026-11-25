@@ -49,6 +49,8 @@ class StreamService:
         tasks.register("stream_render", self._task_render)
         tasks.register("stream_preview", self._task_preview)
         tasks.register("stream_live", self._task_live)
+        tasks.register("stream_link_import", self._task_link_import)
+        self.ydl_factory = None  # Tests: nachgebildeter Downloader
 
     # ------------------------------------------------------------ Ablage
     def _base(self) -> str:
@@ -134,6 +136,72 @@ class StreamService:
                         "last": round(msgs[-1].t, 1),
                         "users": len({m.user for m in msgs}), "original_name": (filename or "")[:120]}
         return self._save(meta)
+
+    # ------------------------------------------------------------ Link-Import
+    def create_from_link(self, *, url: str, rights_confirmed: bool, analyze: dict | None,
+                         user: str | None) -> dict:
+        """Neue Quelle aus einem YouTube-/Twitch-Link; Download + Analyse als ein Job."""
+        from . import link_import
+        if not link_import.settings().get("enabled"):
+            raise StudioError("link_import_disabled",
+                              "Link-Import ist aus. Bitte zuerst unter Streams → Link-Import einschalten.", 403)
+        link = link_import.parse_link(url)
+        meta = self.create(title=f"{link['platform'].capitalize()} {link['id']}", platform=link["platform"],
+                           rights_confirmed=rights_confirmed, user=user)
+        meta["source_link"] = {**link, "imported_at": None, "tool": "yt-dlp"}
+        meta["status"] = "downloading"
+        self._save(meta)
+        task = self.tasks.submit("stream_link_import", None,
+                                 {"stream_id": meta["id"], "url": link["url"], "analyze": analyze})
+        return {"stream": self.load(meta["id"]), "task": task}
+
+    def _task_link_import(self, task: dict, progress, should_cancel) -> dict:
+        from . import link_import
+        p = task["params"]
+        sid = p["stream_id"]
+        progress("Video wird geladen …")
+        try:
+            got = link_import.download(p["url"], self.dir(sid), progress=progress,
+                                       should_cancel=should_cancel, ydl_factory=self.ydl_factory)
+        except Exception as exc:
+            meta = self.load(sid)
+            meta["status"] = "failed"
+            meta["error"] = getattr(exc, "message", str(exc))[:200]
+            self._save(meta)
+            raise
+        from ..ffmpeg_utils import probe
+        info = probe(got["video"])
+        meta = self.load(sid)
+        if got["title"]:
+            meta["title"] = got["title"]
+        meta["video"] = {"file": os.path.basename(got["video"]), "original_name": got["title"],
+                         "bytes": os.path.getsize(got["video"]), "duration": round(info.duration or 0, 2),
+                         "width": info.width, "height": info.height, "has_audio": info.has_audio}
+        meta["source_link"].update({"imported_at": now_iso(), "uploader": got["uploader"],
+                                    "was_live": got["was_live"]})
+        meta["status"] = "ready"
+        self._save(meta)
+        chat_note = "kein Chat-Replay"
+        if got["chat"]:
+            try:
+                with open(got["chat"], "rb") as fh:
+                    self.upload_chat(sid, "live_chat.json", fh.read())
+                chat_note = f"Chat-Replay übernommen ({self.load(sid)['chat']['messages']} Nachrichten)"
+            except StudioError as exc:
+                chat_note = f"Chat-Replay unlesbar: {exc.message}"
+            finally:
+                os.remove(got["chat"])
+        progress(f"Video geladen ({info.duration or 0:.0f} s); {chat_note}.")
+        if p.get("analyze") is None:
+            return {"stream_id": sid, "chat": chat_note}
+        # gleich weiter: Analyse im selben Job (eine Fortschrittsanzeige für den Nutzer)
+        progress("Highlights werden gesucht …")
+        analyze_task = {"params": {"stream_id": sid, **self._analyze_params(p.get("analyze") or {})}}
+        meta = self.load(sid)
+        meta["status"] = "analyzing"
+        self._save(meta)
+        result = self._task_analyze(analyze_task, progress, should_cancel)
+        return {"stream_id": sid, "chat": chat_note, **result}
 
     def _chat(self, sid: str) -> list[ChatMessage] | None:
         rows = read_json(os.path.join(self.dir(sid), "chat.json"), None)
@@ -288,22 +356,29 @@ class StreamService:
     # ---------------------------------------------------------- Analyse
     def start_analyze(self, sid: str, params: dict) -> dict:
         self.source_path(sid)
+        clean = self._analyze_params(params)
+        meta = self.load(sid)
+        meta["status"] = "analyzing"
+        self._save(meta)
+        return self.tasks.submit("stream_analyze", None, {"stream_id": sid, **clean})
+
+    @staticmethod
+    def _analyze_params(params: dict) -> dict:
         clean = {"keywords": [str(k)[:40] for k in (params.get("keywords") or [])][:20],
                  "chat_delay": params.get("chat_delay"),
-                 "max_clips": max(1, min(20, int(params.get("max_clips") or 8))),
+                 "max_clips": max(1, min(60, int(params.get("max_clips") or 8))),
                  "pre": max(2.0, min(30.0, float(params.get("pre") or 10))),
                  "post": max(2.0, min(30.0, float(params.get("post") or 8))),
                  "max_len": max(10.0, min(180.0, float(params.get("max_len") or 60))),
                  "min_len": max(3.0, min(60.0, float(params.get("min_len") or 12))),
+                 "audio_events": params.get("audio_events") if params.get("audio_events") in
+                 ("off", "explain", "rank") else "explain",
                  "transcribe": bool(params.get("transcribe", True))}
         if clean["chat_delay"] is not None:
             clean["chat_delay"] = max(0.0, min(30.0, float(clean["chat_delay"])))
         if clean["min_len"] > clean["max_len"]:
             raise StudioError("validation_error", "Mindestlänge darf nicht größer als die Maximallänge sein.")
-        meta = self.load(sid)
-        meta["status"] = "analyzing"
-        self._save(meta)
-        return self.tasks.submit("stream_analyze", None, {"stream_id": sid, **clean})
+        return clean
 
     def _transcriber(self):
         if self.transcriber is not None:
@@ -330,6 +405,7 @@ class StreamService:
             result = analyze_mod.analyze(
                 self.source_path(sid), chat=self._chat(sid), measured=measured,
                 weights=tuned["weights"] if tuned else None, min_len=p.get("min_len", 12.0),
+                audio_events_mode=p.get("audio_events", "explain"),
                 transcriber=self._transcriber() if p.get("transcribe") else None,
                 settings=get_settings(), keywords=p.get("keywords"), chat_delay=p.get("chat_delay"),
                 max_clips=p["max_clips"], pre=p["pre"], post=p["post"], max_len=p["max_len"],
@@ -425,7 +501,8 @@ class StreamService:
         if not ids:
             raise StudioError("validation_error", "Bitte mindestens ein Highlight wählen.")
         opts = {"reframe_mode": options.get("reframe_mode") if options.get("reframe_mode") in
-                ("smart", "center", "face") else "smart",
+                ("smart", "center", "face", "track") else "smart",
+                "track_zoom": max(1.0, min(2.0, float(options.get("track_zoom") or 1.0))),
                 "remove_silence": bool(options.get("remove_silence", True)),
                 "caption_mode": "karaoke" if options.get("caption_mode", "karaoke") == "karaoke" else "standard",
                 "caption_style": options.get("caption_style") if options.get("caption_style") in
@@ -464,13 +541,19 @@ class StreamService:
                 out = os.path.join(job_dir, f"clip_{i:02d}_score{int(sc)}.mp4")
                 render_clip(src, clip, out, settings, remove_silence=p["remove_silence"],
                             caption_mode=p["caption_mode"], caption_style=p["caption_style"],
-                            reframe_mode=p["reframe_mode"], progress=progress)
+                            reframe_mode=p["reframe_mode"], progress=progress,
+                            track_zoom=p.get("track_zoom", 1.0))
                 clip.output_path = out
                 try:
                     clip.content_package, _ = generate_content_package(clip, settings, language="de")
                 except Exception:  # noqa: BLE001 — Texte sind optional
                     clip.content_package = None
                 d = clip.to_dict()
+                try:
+                    from ..output_quality import analyze as output_analyze
+                    d["output_checks"] = output_analyze(out, platform="tiktok")
+                except Exception as exc:  # noqa: BLE001
+                    d["output_checks"] = {"error": type(exc).__name__, "checks": [], "passed": None}
                 d["stream"] = {"stream_id": sid, "highlight": h["id"], "chat_categories":
                                h.get("chat_categories"), "top_terms": h.get("top_terms")}
                 clips.append(d)
@@ -560,9 +643,8 @@ class StreamService:
         data = read_json(self._weights_path(), None)
         return data if isinstance(data, dict) and isinstance(data.get("weights"), dict) else None
 
-    def tune(self, apply: bool = False) -> dict:
-        """Gewichte aus allen eigenen, markierten und gemessenen Aufnahmen schätzen."""
-        from .evaluate import load_labels, tune
+    def _labelled_cases(self) -> list[dict]:
+        from .evaluate import load_labels
         cases = []
         for meta in self.list():
             d = self.dir(meta["id"])
@@ -570,8 +652,43 @@ class StreamService:
             raw = read_json(os.path.join(d, "labels.json"), None)
             if not isinstance(measured, dict) or not isinstance(raw, dict) or not raw.get("highlights"):
                 continue
-            cases.append({"name": meta["title"], "measured": measured, "chat": self._chat(meta["id"]),
-                          "labels": load_labels(raw)})
+            a = read_json(os.path.join(d, "analysis.json"), {}) or {}
+            cases.append({"id": meta["id"], "name": meta["title"], "measured": measured,
+                          "chat": self._chat(meta["id"]), "labels": load_labels(raw),
+                          "synthetic": bool(raw.get("synthetic")),
+                          "max_clips": int((a.get("params") or {}).get("max_clips") or 8)})
+        return cases
+
+    def compare_weights(self) -> dict:
+        """Alle markierten Streams mit Standard- und aktuell übernommenen Gewichten auswerten."""
+        from .evaluate import aggregate, detect, evaluate
+        cases = self._labelled_cases()
+        tuned = self.tuned_weights()
+        if not cases:
+            return {"streams": [], "tuned": tuned, "history": self.weights_history(), "total_default": None,
+                    "total_current": None, "real_streams": 0, "empty": True,
+                    "note": "Noch keine markierten Streams."}
+        rows, agg = [], {"default": [], "current": []}
+        for c in cases:
+            n = max(c["max_clips"], len(c["labels"]) + 2)
+            r_def = evaluate(detect(c["measured"], c["chat"], max_clips=n), c["labels"])
+            r_cur = evaluate(detect(c["measured"], c["chat"], max_clips=n,
+                                    weights=tuned["weights"] if tuned else None), c["labels"])
+            agg["default"].append(r_def)
+            agg["current"].append(r_cur)
+            rows.append({"id": c["id"], "name": c["name"], "synthetic": c["synthetic"], "labels": len(c["labels"]),
+                         "default": {k: r_def[k] for k in ("precision", "recall", "f1", "duplicates", "time_offset_mean_s")},
+                         "current": {k: r_cur[k] for k in ("precision", "recall", "f1", "duplicates", "time_offset_mean_s")}})
+        real = [i for i, c in enumerate(cases) if not c["synthetic"]]
+        return {"streams": rows, "tuned": tuned, "history": self.weights_history(),
+                "total_default": aggregate(agg["default"]), "total_current": aggregate(agg["current"]),
+                "real_streams": len(real),
+                "note": "Nur vom Nutzer markierte Aufnahmen; Werte gelten für diese Aufnahmen, nicht allgemein."}
+
+    def tune(self, apply: bool = False) -> dict:
+        """Gewichte aus allen eigenen, markierten und gemessenen Aufnahmen schätzen."""
+        from .evaluate import tune
+        cases = self._labelled_cases()
         if not cases:
             raise StudioError("labels_missing", "Keine analysierte Aufnahme mit markierten Highlights.", 404)
         res = tune(cases)
@@ -583,11 +700,45 @@ class StreamService:
             if (res["f1_leave_one_out"] or 0) < res["f1_default"]:
                 raise StudioError("validation_error",
                                   "Getunte Gewichte sind in der Kreuzprüfung nicht besser als der Standard.")
-            write_json_atomic(self._weights_path(), {"weights": res["weights"], "at": now_iso(),
-                                                     "cases": len(cases), "f1_loo": res["f1_leave_one_out"]})
+            self._set_weights({"weights": res["weights"], "at": now_iso(), "cases": len(cases),
+                               "f1_loo": res["f1_leave_one_out"], "f1_default": res["f1_default"],
+                               "factors": res["best_group_factors"]})
             res["applied"] = True
         return res
 
+    # Gewichtshistorie: jede Übernahme sichert die vorherigen Gewichte (Rücksprung möglich)
+    def _history_path(self) -> str:
+        return os.path.join(self._base(), "weights_history.json")
+
+    def weights_history(self) -> list[dict]:
+        data = read_json(self._history_path(), [])
+        return data if isinstance(data, list) else []
+
+    def _set_weights(self, entry: dict | None) -> None:
+        prev = self.tuned_weights()
+        hist = self.weights_history()
+        hist.append({"replaced_at": now_iso(), "weights": prev})  # None = Standard
+        write_json_atomic(self._history_path(), hist[-20:])
+        if entry is None:
+            if os.path.exists(self._weights_path()):
+                os.remove(self._weights_path())
+        else:
+            write_json_atomic(self._weights_path(), entry)
+
+    def rollback_weights(self) -> dict | None:
+        """Vorherige Gewichte wiederherstellen (auch „Standard“, falls vorher keine übernommen waren)."""
+        hist = self.weights_history()
+        if not hist:
+            raise StudioError("validation_error", "Keine frühere Gewichtung vorhanden.", 409)
+        last = hist.pop()
+        write_json_atomic(self._history_path(), hist)
+        if last["weights"] is None:
+            if os.path.exists(self._weights_path()):
+                os.remove(self._weights_path())
+        else:
+            write_json_atomic(self._weights_path(), last["weights"])
+        return self.tuned_weights()
+
     def reset_weights(self) -> None:
-        if os.path.exists(self._weights_path()):
-            os.remove(self._weights_path())
+        if self.tuned_weights() is not None:
+            self._set_weights(None)

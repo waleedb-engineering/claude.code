@@ -625,7 +625,12 @@ def test_mutations_require_token_and_foreign_origins_are_rejected():
         for root, _, files in os.walk(tmp):
             for name in files:
                 full = os.path.join(root, name)
-                try:  # Hintergrundaufgaben legen kurzlebige .tmp-Dateien an
+                if name.endswith(".tmp"):
+                    # kurzlebige Zwischendateien atomarer Schreibvorgänge (unter Windows
+                    # während des Schreibens gesperrt); ihr Inhalt landet in der Zieldatei,
+                    # die hier ebenfalls geprüft wird
+                    continue
+                try:
                     if full != token_file and os.path.getsize(full) < 2_000_000:
                         assert token.encode() not in open(full, "rb").read(), full
                 except FileNotFoundError:

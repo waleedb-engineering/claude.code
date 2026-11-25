@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { useT } from "@/lib/i18n";
 import { errorMessage, studio, type StreamMeta } from "@/lib/studio";
 import { ErrorBox, Notice, cardCls, inputCls, labelCls, primaryCls } from "@/components/studio/ui";
+import LinkImport from "@/components/studio/LinkImport";
 
 export default function StreamsPage() {
   const t = useT();
@@ -43,8 +44,12 @@ export default function StreamsPage() {
       <div>
         <h1 className="text-2xl font-bold text-white">{t("st.title")}</h1>
         <p className="mt-1 text-sm text-neutral-300">{t("st.hint")}</p>
+        <Link href="/studio/streams/evaluation" className="mt-2 inline-block text-sm text-indigo-300 underline">
+          Erkennung auswerten →
+        </Link>
       </div>
       <ErrorBox message={error} />
+      <LinkImport />
       <form onSubmit={create} className={`${cardCls} grid gap-3 sm:grid-cols-3`}>
         <h2 className="text-sm font-semibold text-neutral-200 sm:col-span-3">{t("st.new")}</h2>
         <div>
